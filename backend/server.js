@@ -1,8 +1,6 @@
 import express from "express";
 import http from "http";
 import dns from "node:dns";
-import { Server } from "socket.io";
-import { io as ioClient } from "socket.io-client";
 import cors from "cors";
 import axios from "axios";
 import crypto from "crypto";
@@ -21,14 +19,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const server = http.createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"],
-  },
-});
-
 const PORT = process.env.PORT || 5001;
 const TARGET_BASE = "https://nice444.com";
 
@@ -532,160 +522,8 @@ app.post("/api/casino/launch-url", async (req, res) => {
   });
 });
 
-// --- REAL NICE444 CASINO SOCKET & RESULTS (100% NATIVE NICE444 SCRAPING) ---
-let casinoSocket = null;
-const casinoOddsCache = new Map(); // gameId -> latest packet
-const activeCasinoSubscribers = new Map(); // gameId -> Set of socket.id
-
-async function ensureNiceCasinoSocket() {
-  if (casinoSocket && casinoSocket.connected) {
-    return casinoSocket;
-  }
-  const token = await getDemoToken();
-  if (!token) {
-    console.warn("Unable to get Nice444 token for casino socket");
-    return null;
-  }
-
-  if (!casinoSocket) {
-    casinoSocket = ioClient("https://casino.nice444.com", {
-      path: "/universecasino",
-      transports: ["websocket"],
-      reconnection: true,
-      reconnectionDelay: 2000,
-      reconnectionAttempts: Infinity,
-      auth: { token, uType: "usr" },
-    });
-
-    casinoSocket.on("connect", () => {
-      console.log("Connected to Real Nice444 Casino Socket (/universecasino)");
-      for (const gId of activeCasinoSubscribers.keys()) {
-        casinoSocket.emit("SCSN", { eventId: gId });
-      }
-    });
-
-    const handleCasinoPacket = (raw) => {
-      try {
-        const data = typeof raw === "string" ? JSON.parse(raw) : raw;
-        if (!data) return;
-
-        let payload = data.data;
-        if (Array.isArray(payload)) {
-          payload = payload[0] || {};
-        }
-
-        const eventId = String(
-          data.eventId || payload?.eventId || payload?._id || data._id || "",
-        );
-
-        if (!eventId) return;
-
-        const existing = casinoOddsCache.get(eventId) || {
-          eventId,
-          marketArr: [],
-          cardsArr: {},
-          leftSec: 0,
-          roundId: "",
-          status: "ONLINE",
-        };
-
-        // Deep clone existing marketArr if present to ensure immutability
-        let currentMarketArr = existing.marketArr
-          ? JSON.parse(JSON.stringify(existing.marketArr))
-          : [];
-
-        // If incoming packet contains complete marketArr, store ALL markets
-        if (Array.isArray(payload?.marketArr) && payload.marketArr.length > 0) {
-          currentMarketArr = payload.marketArr;
-        } else if (Array.isArray(data.marketArr) && data.marketArr.length > 0) {
-          currentMarketArr = data.marketArr;
-        }
-
-        // Merge cardsArr
-        const currentCards = {
-          ...(existing.cardsArr || {}),
-          ...(payload?.cardsArr || {}),
-          ...(data.cardsArr || {}),
-        };
-
-        // Extract timers and status
-        const leftSec =
-          payload?.leftSec !== undefined
-            ? payload.leftSec
-            : data.leftSec !== undefined
-              ? data.leftSec
-              : existing.leftSec;
-        const roundId = payload?.roundId || data.roundId || existing.roundId;
-        const roundStatus =
-          payload?.roundStatus || data.roundStatus || existing.roundStatus;
-        const status = payload?.status || data.status || existing.status;
-        const eventName =
-          payload?.eventName || data.eventName || existing.eventName;
-
-        // Apply dotted updates (e.g. marketArr.0.runners.1.price.back.0.size: 2274325)
-        if (payload && typeof payload === "object" && !Array.isArray(payload)) {
-          for (const [key, val] of Object.entries(payload)) {
-            if (key.includes(".")) {
-              const parts = key.split(".");
-              if (parts[0] === "marketArr" && currentMarketArr.length > 0) {
-                const mIdx = parseInt(parts[1], 10);
-                if (currentMarketArr[mIdx]) {
-                  const rIdx = parseInt(parts[3], 10);
-                  const prop = parts[parts.length - 1]; // "size" or "price"
-                  const backIdx = parseInt(parts[6] || 0, 10);
-                  if (
-                    currentMarketArr[mIdx].runners &&
-                    currentMarketArr[mIdx].runners[rIdx]
-                  ) {
-                    const runner = currentMarketArr[mIdx].runners[rIdx];
-                    if (!runner.price)
-                      runner.price = { back: [{ price: 0, size: 0 }] };
-                    if (!runner.price.back)
-                      runner.price.back = [{ price: 0, size: 0 }];
-                    if (!runner.price.back[backIdx])
-                      runner.price.back[backIdx] = { price: 0, size: 0 };
-                    runner.price.back[backIdx][prop] = val;
-                  }
-                }
-              }
-            }
-          }
-        }
-
-        const merged = {
-          eventId,
-          eventName,
-          roundId,
-          leftSec,
-          roundStatus,
-          status,
-          cardsArr: currentCards,
-          marketArr: currentMarketArr,
-          data: payload,
-        };
-
-        casinoOddsCache.set(eventId, merged);
-        io.to(`casino:${eventId}`).emit("casino:live:odds", merged);
-      } catch (err) {
-        console.warn("Casino packet parse error:", err.message);
-      }
-    };
-
-    casinoSocket.on("casino_odds", handleCasinoPacket);
-    casinoSocket.on("message", handleCasinoPacket);
-
-    casinoSocket.on("connect_error", (err) => {
-      console.warn("Nice444 Casino socket error:", err.message);
-    });
-  }
-
-  return casinoSocket;
-}
-
-// Start casino socket in background with slight delay to ensure network route readiness
-setTimeout(() => {
-  ensureNiceCasinoSocket().catch(() => {});
-}, 3000);
+// --- IN-MEMORY CACHE FOR CASINO ODDS (PURE REST API ARCHITECTURE) ---
+const casinoOddsCache = new Map();
 
 app.get("/api/casino/watch-link/:gameId", async (req, res) => {
   const { gameId } = req.params;
@@ -1089,87 +927,16 @@ const queryFirestoreForEvent = async (eventId, sportId = "4") => {
 };
 
 // --- WEBSOCKET REAL-TIME BROADCASTER ---
-const activeMatchSubscriptions = new Map(); // socket.id -> { eventId, sportId, timer }
-
-io.on("connection", (socket) => {
-  // Casino Live Table Subscription
-  socket.on("casino:subscribe", async ({ gameId }) => {
-    if (!gameId) return;
-    const gId = String(gameId);
-    socket.join(`casino:${gId}`);
-
-    const cs = await ensureNiceCasinoSocket();
-    if (!activeCasinoSubscribers.has(gId)) {
-      activeCasinoSubscribers.set(gId, new Set());
-    }
-    activeCasinoSubscribers.get(gId).add(socket.id);
-    if (cs && cs.connected) {
-      cs.emit("SCSN", { eventId: gId });
-    }
-
-    // Immediate cached state
-    if (casinoOddsCache.has(gId)) {
-      socket.emit("casino:live:odds", casinoOddsCache.get(gId));
-    }
-  });
-
-  socket.on("casino:unsubscribe", ({ gameId }) => {
-    if (!gameId) return;
-    const gId = String(gameId);
-    socket.leave(`casino:${gId}`);
-
-    if (activeCasinoSubscribers.has(gId)) {
-      activeCasinoSubscribers.get(gId).delete(socket.id);
-      if (activeCasinoSubscribers.get(gId).size === 0) {
-        activeCasinoSubscribers.delete(gId);
-        if (casinoSocket && casinoSocket.connected) {
-          casinoSocket.emit("USCSN", { eventId: gId });
-        }
-      }
-    }
-  });
-
-  socket.on("subscribe:match", ({ eventId, sportId }) => {
-    // Clear any previous timer
-    if (activeMatchSubscriptions.has(socket.id)) {
-      clearInterval(activeMatchSubscriptions.get(socket.id).timer);
-    }
-
-    const sendUpdate = async () => {
-      const realOdds = await queryFirestoreForEvent(eventId, sportId);
-      socket.emit("match:live:rates", realOdds);
-    };
-
-    sendUpdate(); // Send immediate initial state
-    const timer = setInterval(sendUpdate, 700); // Poll Firestore every 700ms for instant real-time rate updates
-    activeMatchSubscriptions.set(socket.id, { eventId, sportId, timer });
-  });
-
-  socket.on("unsubscribe:match", () => {
-    if (activeMatchSubscriptions.has(socket.id)) {
-      clearInterval(activeMatchSubscriptions.get(socket.id).timer);
-      activeMatchSubscriptions.delete(socket.id);
-    }
-  });
-
-  socket.on("disconnect", () => {
-    if (activeMatchSubscriptions.has(socket.id)) {
-      clearInterval(activeMatchSubscriptions.get(socket.id).timer);
-      activeMatchSubscriptions.delete(socket.id);
-    }
-    // Clean up casino rooms
-    for (const [gId, subs] of activeCasinoSubscribers.entries()) {
-      if (subs.has(socket.id)) {
-        subs.delete(socket.id);
-        if (subs.size === 0) {
-          activeCasinoSubscribers.delete(gId);
-          if (casinoSocket && casinoSocket.connected) {
-            casinoSocket.emit("USCSN", { eventId: gId });
-          }
-        }
-      }
-    }
-  });
+// --- LIVE REST API FOR REAL-TIME ODDS POLLING (100% PURE REST ARCHITECTURE) ---
+app.get("/api/sports/live-rates/:eventId", async (req, res) => {
+  const { eventId } = req.params;
+  const { sportId = "4" } = req.query;
+  try {
+    const realOdds = await queryFirestoreForEvent(eventId, sportId);
+    return res.json({ success: true, data: realOdds });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // Serve compiled frontend if present (supports ../frontend/dist and ./dist)
@@ -1204,8 +971,8 @@ app.get("*", (req, res, next) => {
 });
 
 if (!process.env.VERCEL) {
-  server.listen(PORT, () => {
-    console.log(`Backend server + WebSocket running on http://localhost:${PORT}`);
+  app.listen(PORT, () => {
+    console.log(`Backend server running on http://localhost:${PORT}`);
   });
 }
 

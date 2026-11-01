@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Tv, ArrowLeft, RefreshCw, Volume2 } from 'lucide-react';
 import axios from 'axios';
-import { io } from 'socket.io-client';
 
 // Format size: 10000000 -> 10M, 2500000 -> 2.5M, 22800 -> 22.8K
 const formatSize = (size) => {
@@ -117,94 +116,112 @@ export default function MatchDetailTablesView({ event, onBack }) {
     } catch (e) {}
   };
 
-  // 3. Connect to live WebSocket for real-time rates
+  // Process real-time rates update
+  const handleRatesUpdate = (data) => {
+    if (!data) return;
+    const newFlashBack = new Set();
+    const newFlashLay = new Set();
+
+    if (data.news) {
+      setNews(data.news);
+    }
+
+    // Check Match Odds updates
+    if (data.matchOdds && Array.isArray(data.matchOdds.runners)) {
+      data.matchOdds.runners.forEach((r) => {
+        const prev = prevRatesRef.current[`mo_${r.selectionId}`];
+        if (prev && r.back?.price !== null && prev.backPrice !== r.back?.price) {
+          newFlashBack.add(`mo_b_${r.selectionId}`);
+        }
+        if (prev && r.lay?.price !== null && prev.layPrice !== r.lay?.price) {
+          newFlashLay.add(`mo_l_${r.selectionId}`);
+        }
+        prevRatesRef.current[`mo_${r.selectionId}`] = {
+          backPrice: r.back?.price,
+          layPrice: r.lay?.price
+        };
+      });
+      setMatchOdds(data.matchOdds);
+    }
+
+    // Check Bookmaker updates
+    if (data.bookmaker && Array.isArray(data.bookmaker.runners)) {
+      data.bookmaker.runners.forEach((r) => {
+        const prev = prevRatesRef.current[`bm_${r.selectionId}`];
+        if (prev && r.back?.price !== null && prev.backPrice !== r.back?.price) {
+          newFlashBack.add(`bm_b_${r.selectionId}`);
+        }
+        if (prev && r.lay?.price !== null && prev.layPrice !== r.lay?.price) {
+          newFlashLay.add(`bm_l_${r.selectionId}`);
+        }
+        prevRatesRef.current[`bm_${r.selectionId}`] = {
+          backPrice: r.back?.price,
+          layPrice: r.lay?.price
+        };
+      });
+      setBookmaker(data.bookmaker);
+    }
+
+    // Check Live Fancy updates
+    if (Array.isArray(data.fancy) && data.fancy.length > 0) {
+      data.fancy.forEach((f) => {
+        const prev = prevRatesRef.current[`fc_${f.marketId}`];
+        if (prev && prev.yesPrice !== f.yes?.price) {
+          newFlashBack.add(`fc_y_${f.marketId}`);
+        }
+        if (prev && prev.noPrice !== f.no?.price) {
+          newFlashLay.add(`fc_n_${f.marketId}`);
+        }
+        prevRatesRef.current[`fc_${f.marketId}`] = {
+          yesPrice: f.yes?.price,
+          noPrice: f.no?.price
+        };
+      });
+      setFancyMarkets(data.fancy);
+    }
+
+    if (newFlashBack.size > 0 || newFlashLay.size > 0) {
+      setFlashBackSet(newFlashBack);
+      setFlashLaySet(newFlashLay);
+      setTimeout(() => {
+        setFlashBackSet(new Set());
+        setFlashLaySet(new Set());
+      }, 220); // Quick 200ms visual flash
+    }
+  };
+
+  // 3. Direct REST API live rates: 1s for in-play, 5s for upcoming / non-in-play
   useEffect(() => {
     fetchMarketSnapshot();
     fetchWatchLink();
 
-    const wsUrl = import.meta.env.VITE_WS_URL || undefined;
-    const socket = io(wsUrl);
     const eventId = String(event.exEventId || event._id);
     const sportId = String(event.sportId || '4');
+    const isInPlay = Boolean(
+      event.inPlay ||
+      event.inplay ||
+      event.isPlay ||
+      event.oddsData?.inPlay ||
+      event.oddsData?.inplay
+    );
+    const pollInterval = isInPlay ? 1000 : 5000;
 
-    socket.emit('subscribe:match', { eventId, sportId });
+    let isMounted = true;
+    const pollRates = async () => {
+      try {
+        const res = await axios.get(`/api/sports/live-rates/${eventId}?sportId=${sportId}`);
+        if (isMounted && res.data?.success && res.data?.data) {
+          handleRatesUpdate(res.data.data);
+        }
+      } catch (e) {}
+    };
 
-    socket.on('match:live:rates', (data) => {
-      if (!data) return;
-      const newFlashBack = new Set();
-      const newFlashLay = new Set();
-
-      if (data.news) {
-        setNews(data.news);
-      }
-
-      // Check Match Odds updates
-      if (data.matchOdds && Array.isArray(data.matchOdds.runners)) {
-        data.matchOdds.runners.forEach((r) => {
-          const prev = prevRatesRef.current[`mo_${r.selectionId}`];
-          if (prev && r.back?.price !== null && prev.backPrice !== r.back?.price) {
-            newFlashBack.add(`mo_b_${r.selectionId}`);
-          }
-          if (prev && r.lay?.price !== null && prev.layPrice !== r.lay?.price) {
-            newFlashLay.add(`mo_l_${r.selectionId}`);
-          }
-          prevRatesRef.current[`mo_${r.selectionId}`] = {
-            backPrice: r.back?.price,
-            layPrice: r.lay?.price
-          };
-        });
-        setMatchOdds(data.matchOdds);
-      }
-
-      // Check Bookmaker updates
-      if (data.bookmaker && Array.isArray(data.bookmaker.runners)) {
-        data.bookmaker.runners.forEach((r) => {
-          const prev = prevRatesRef.current[`bm_${r.selectionId}`];
-          if (prev && r.back?.price !== null && prev.backPrice !== r.back?.price) {
-            newFlashBack.add(`bm_b_${r.selectionId}`);
-          }
-          if (prev && r.lay?.price !== null && prev.layPrice !== r.lay?.price) {
-            newFlashLay.add(`bm_l_${r.selectionId}`);
-          }
-          prevRatesRef.current[`bm_${r.selectionId}`] = {
-            backPrice: r.back?.price,
-            layPrice: r.lay?.price
-          };
-        });
-        setBookmaker(data.bookmaker);
-      }
-
-      // Check Live Fancy updates
-      if (Array.isArray(data.fancy) && data.fancy.length > 0) {
-        data.fancy.forEach((f) => {
-          const prev = prevRatesRef.current[`fc_${f.marketId}`];
-          if (prev && prev.yesPrice !== f.yes?.price) {
-            newFlashBack.add(`fc_y_${f.marketId}`);
-          }
-          if (prev && prev.noPrice !== f.no?.price) {
-            newFlashLay.add(`fc_n_${f.marketId}`);
-          }
-          prevRatesRef.current[`fc_${f.marketId}`] = {
-            yesPrice: f.yes?.price,
-            noPrice: f.no?.price
-          };
-        });
-        setFancyMarkets(data.fancy);
-      }
-
-      if (newFlashBack.size > 0 || newFlashLay.size > 0) {
-        setFlashBackSet(newFlashBack);
-        setFlashLaySet(newFlashLay);
-        setTimeout(() => {
-          setFlashBackSet(new Set());
-          setFlashLaySet(new Set());
-        }, 220); // Quick 200ms visual flash
-      }
-    });
+    pollRates();
+    const timer = setInterval(pollRates, pollInterval);
 
     return () => {
-      socket.emit('unsubscribe:match');
-      socket.disconnect();
+      isMounted = false;
+      clearInterval(timer);
     };
   }, [event]);
 

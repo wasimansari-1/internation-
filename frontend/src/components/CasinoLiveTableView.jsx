@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { RefreshCw, History, HelpCircle, Tv, X, Trophy } from 'lucide-react';
-import { io } from 'socket.io-client';
 
 export default function CasinoLiveTableView({ onBackToLobby }) {
   const [gameState, setGameState] = useState({
@@ -26,19 +25,15 @@ export default function CasinoLiveTableView({ onBackToLobby }) {
   const [showLiveTv, setShowLiveTv] = useState(false);
   const [selectedBet, setSelectedBet] = useState(null);
 
+  // Simple local timer countdown
   useEffect(() => {
-    const wsUrl = import.meta.env.VITE_WS_URL || undefined;
-    const socket = io(wsUrl);
-    socket.on('casino:state', (data) => {
-      setGameState(data);
-    });
-
-    socket.on('casino:round:result', (data) => {
-      setShowResultModal(true);
-      setTimeout(() => setShowResultModal(false), 5000);
-    });
-
-    return () => socket.disconnect();
+    const timer = setInterval(() => {
+      setGameState((prev) => ({
+        ...prev,
+        seconds: prev.seconds > 1 ? prev.seconds - 1 : 45
+      }));
+    }, 1000);
+    return () => clearInterval(timer);
   }, []);
 
   const renderCard = (card, idx) => (

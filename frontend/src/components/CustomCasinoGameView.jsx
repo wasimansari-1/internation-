@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Maximize2, Minimize2, RefreshCw, Trophy, GlassWater, ShieldAlert, AlertCircle, Info } from 'lucide-react';
-import { io } from 'socket.io-client';
 import axios from 'axios';
 
 // Helper to resolve card image path
@@ -24,7 +23,6 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
   const [watchUrl, setWatchUrl] = useState('');
 
   const containerRef = useRef(null);
-  const socketRef = useRef(null);
   const timerRef = useRef(null);
 
   // 1. Fetch Decrypted Recent Results
@@ -66,36 +64,34 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
     }
   };
 
-  // 4. Connect Socket for Real-Time Odds & Dealt Cards
+  // 4. Poll Real-Time Odds & Results via REST API (1000ms)
   useEffect(() => {
     fetchRecentResults();
-    fetchInitialOdds();
     fetchWatchUrl();
 
-    const wsUrl = import.meta.env.VITE_WS_URL || undefined;
-    const socket = io(wsUrl);
-    socketRef.current = socket;
+    let isMounted = true;
+    const pollCasino = async () => {
+      try {
+        const res = await axios.get(`/api/casino/live-odds/${gameId}`);
+        if (isMounted && res.data?.success && res.data?.data) {
+          const data = res.data.data;
+          setOddsData(data);
+          if (typeof data.leftSec === 'number') {
+            setTimeLeft(data.leftSec);
+          }
+          if (data.roundStatus === 'RESULT' || data.leftSec === 0) {
+            fetchRecentResults();
+          }
+        }
+      } catch (err) {}
+    };
 
-    socket.on('connect', () => {
-      socket.emit('casino:subscribe', { gameId });
-    });
-
-    socket.on('casino:live:odds', (data) => {
-      if (!data) return;
-      setOddsData(data);
-      if (typeof data.leftSec === 'number') {
-        setTimeLeft(data.leftSec);
-      }
-
-      // If round changed or ended, refresh results
-      if (data.roundStatus === 'RESULT' || data.leftSec === 0) {
-        fetchRecentResults();
-      }
-    });
+    pollCasino();
+    const interval = setInterval(pollCasino, 1000);
 
     return () => {
-      socket.emit('casino:unsubscribe', { gameId });
-      socket.disconnect();
+      isMounted = false;
+      clearInterval(interval);
     };
   }, [gameId]);
 
