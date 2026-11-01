@@ -1,5 +1,6 @@
 import express from "express";
 import http from "http";
+import https from "https";
 import dns from "node:dns";
 import cors from "cors";
 import axios from "axios";
@@ -7,13 +8,48 @@ import crypto from "crypto";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
-import { providerManager } from "./providers/index.js";
-import { casinoConfig } from "./config/casinoConfig.js";
+import { providerManager } from "./backend/providers/index.js";
+import { casinoConfig } from "./backend/config/casinoConfig.js";
 
 // Ensure IPv4 first on cloud hosts (avoids getaddrinfo ENOTFOUND on IPv6)
 try {
   dns.setDefaultResultOrder("ipv4first");
 } catch (e) {}
+
+// Robust DNS lookup with fallback for cloud serverless environments
+const customLookup = (hostname, options, callback) => {
+  if (typeof options === "function") {
+    callback = options;
+    options = {};
+  }
+  dns.lookup(hostname, options, (err, address, family) => {
+    if (!err && address) {
+      return callback(null, address, family);
+    }
+    const resolver = new dns.promises.Resolver();
+    resolver.setServers(["8.8.8.8", "1.1.1.1"]);
+    resolver.resolve4(hostname)
+      .then((addresses) => {
+        if (addresses && addresses.length > 0) {
+          callback(null, addresses[0], 4);
+        } else if (hostname.includes("nice444.com")) {
+          callback(null, "15.252.229.243", 4);
+        } else {
+          callback(err);
+        }
+      })
+      .catch(() => {
+        if (hostname.includes("nice444.com")) {
+          callback(null, "15.252.229.243", 4);
+        } else {
+          callback(err);
+        }
+      });
+  });
+};
+
+axios.defaults.httpsAgent = new https.Agent({ lookup: customLookup, keepAlive: true });
+axios.defaults.httpAgent = new http.Agent({ lookup: customLookup, keepAlive: true });
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
