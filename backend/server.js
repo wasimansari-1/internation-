@@ -662,8 +662,10 @@ async function ensureNiceCasinoSocket() {
   return casinoSocket;
 }
 
-// Start casino socket in background
-ensureNiceCasinoSocket();
+// Start casino socket in background with slight delay to ensure network route readiness
+setTimeout(() => {
+  ensureNiceCasinoSocket().catch(() => {});
+}, 3000);
 
 app.get("/api/casino/watch-link/:gameId", async (req, res) => {
   const { gameId } = req.params;
@@ -1150,14 +1152,35 @@ io.on("connection", (socket) => {
   });
 });
 
-// Serve compiled frontend (supports ../frontend/dist and ./dist)
+// Serve compiled frontend if present (supports ../frontend/dist and ./dist)
 const distPath = fs.existsSync(path.join(__dirname, "../frontend/dist"))
   ? path.join(__dirname, "../frontend/dist")
   : path.join(__dirname, "dist");
 
-app.use(express.static(distPath));
-app.get("*", (req, res) => {
-  res.sendFile(path.join(distPath, "index.html"));
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
+}
+
+app.get("/", (req, res) => {
+  const indexPath = path.join(distPath, "index.html");
+  if (fs.existsSync(indexPath)) {
+    return res.sendFile(indexPath);
+  }
+  res.json({
+    status: "online",
+    service: "Sports & Casino Backend API",
+    version: "1.0.0",
+    time: new Date().toISOString(),
+  });
+});
+
+app.get("*", (req, res, next) => {
+  if (req.path.startsWith("/api/")) return next();
+  const indexPath = path.join(distPath, "index.html");
+  if (fs.existsSync(indexPath)) {
+    return res.sendFile(indexPath);
+  }
+  res.status(404).json({ error: "Route not found" });
 });
 
 if (!process.env.VERCEL) {
