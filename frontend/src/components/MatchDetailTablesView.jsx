@@ -122,7 +122,8 @@ export default function MatchDetailTablesView({ event, onBack }) {
     fetchMarketSnapshot();
     fetchWatchLink();
 
-    const socket = io();
+    const wsUrl = import.meta.env.VITE_WS_URL || undefined;
+    const socket = io(wsUrl);
     const eventId = String(event.exEventId || event._id);
     const sportId = String(event.sportId || '4');
 

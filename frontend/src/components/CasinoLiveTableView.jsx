@@ -27,7 +27,8 @@ export default function CasinoLiveTableView({ onBackToLobby }) {
   const [selectedBet, setSelectedBet] = useState(null);
 
   useEffect(() => {
-    const socket = io();
+    const wsUrl = import.meta.env.VITE_WS_URL || undefined;
+    const socket = io(wsUrl);
     socket.on('casino:state', (data) => {
       setGameState(data);
     });

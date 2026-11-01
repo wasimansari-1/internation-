@@ -6,3 +6,4 @@ backend/dist/
 *.log
 .env
 .env.local
+

@@ -1160,6 +1160,10 @@ app.get("*", (req, res) => {
   res.sendFile(path.join(distPath, "index.html"));
 });
 
-server.listen(PORT, () => {
-  console.log(`Backend server + WebSocket running on http://localhost:${PORT}`);
-});
+if (!process.env.VERCEL) {
+  server.listen(PORT, () => {
+    console.log(`Backend server + WebSocket running on http://localhost:${PORT}`);
+  });
+}
+
+export default app;

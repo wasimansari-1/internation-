@@ -72,7 +72,8 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
     fetchInitialOdds();
     fetchWatchUrl();
 
-    const socket = io();
+    const wsUrl = import.meta.env.VITE_WS_URL || undefined;
+    const socket = io(wsUrl);
     socketRef.current = socket;
 
     socket.on('connect', () => {
