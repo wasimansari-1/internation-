@@ -7,8 +7,8 @@ import crypto from "crypto";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
-import { providerManager } from "./providers/index.js";
-import { casinoConfig } from "./config/casinoConfig.js";
+import { providerManager } from "./backend/providers/index.js";
+import { casinoConfig } from "./backend/config/casinoConfig.js";
 
 // Ensure IPv4 first on cloud hosts (avoids getaddrinfo ENOTFOUND on IPv6)
 try {
