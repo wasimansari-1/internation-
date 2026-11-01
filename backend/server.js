@@ -1,5 +1,6 @@
 import express from "express";
 import http from "http";
+import dns from "node:dns";
 import { Server } from "socket.io";
 import { io as ioClient } from "socket.io-client";
 import cors from "cors";
@@ -10,6 +11,11 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import { providerManager } from "./providers/index.js";
 import { casinoConfig } from "./config/casinoConfig.js";
+
+// Ensure IPv4 first on cloud hosts (avoids getaddrinfo ENOTFOUND on IPv6)
+try {
+  dns.setDefaultResultOrder("ipv4first");
+} catch (e) {}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -34,6 +40,19 @@ let cachedToken = null;
 let cachedIntCasinoToken = null;
 let cachedUserDetail = null;
 let tokenExpiry = 0;
+
+let tokenRetryTimer = null;
+const scheduleTokenRetry = () => {
+  if (tokenRetryTimer) return;
+  tokenRetryTimer = setTimeout(async () => {
+    tokenRetryTimer = null;
+    const t = await getDemoToken(true);
+    if (t) {
+      console.log("Nice444 session token successfully acquired on retry.");
+      ensureNiceCasinoSocket().catch(() => {});
+    }
+  }, 5000);
+};
 
 const getDemoToken = async (forceRefresh = false) => {
   if (!forceRefresh && cachedToken && Date.now() < tokenExpiry) {
@@ -67,6 +86,7 @@ const getDemoToken = async (forceRefresh = false) => {
     }
   } catch (err) {
     console.error("Error getting demo token:", err.message);
+    scheduleTokenRetry();
   }
   return cachedToken;
 };
