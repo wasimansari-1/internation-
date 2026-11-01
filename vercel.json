@@ -2,6 +2,11 @@
   "version": 2,
   "buildCommand": "npm run build",
   "outputDirectory": "frontend/dist",
+  "functions": {
+    "index.js": {
+      "includeFiles": "frontend/dist/**"
+    }
+  },
   "rewrites": [
     {
       "source": "/api/(.*)",

@@ -993,8 +993,10 @@ app.get("/api/sports/live-rates/:eventId", async (req, res) => {
   }
 });
 
-// Serve compiled frontend if present (supports ../frontend/dist and ./dist)
-const distPath = fs.existsSync(path.join(__dirname, "../frontend/dist"))
+// Serve compiled frontend if present (supports ./frontend/dist, ../frontend/dist and ./dist)
+const distPath = fs.existsSync(path.join(__dirname, "frontend/dist"))
+  ? path.join(__dirname, "frontend/dist")
+  : fs.existsSync(path.join(__dirname, "../frontend/dist"))
   ? path.join(__dirname, "../frontend/dist")
   : path.join(__dirname, "dist");
 
