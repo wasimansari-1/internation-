@@ -22,6 +22,15 @@ const customLookup = (hostname, options, callback) => {
     callback = options;
     options = {};
   }
+  const isAll = Boolean(options && options.all);
+  const deliver = (ip) => {
+    if (isAll) {
+      callback(null, [{ address: ip, family: 4 }]);
+    } else {
+      callback(null, ip, 4);
+    }
+  };
+
   dns.lookup(hostname, options, (err, address, family) => {
     if (!err && address) {
       return callback(null, address, family);
@@ -31,16 +40,16 @@ const customLookup = (hostname, options, callback) => {
     resolver.resolve4(hostname)
       .then((addresses) => {
         if (addresses && addresses.length > 0) {
-          callback(null, addresses[0], 4);
+          deliver(addresses[0]);
         } else if (hostname.includes("nice444.com")) {
-          callback(null, "15.252.229.243", 4);
+          deliver("15.252.229.243");
         } else {
           callback(err);
         }
       })
       .catch(() => {
         if (hostname.includes("nice444.com")) {
-          callback(null, "15.252.229.243", 4);
+          deliver("15.252.229.243");
         } else {
           callback(err);
         }
