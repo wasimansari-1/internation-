@@ -1,0 +1,80 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  background-color: #0b0f19;
+  color: #e2e8f0;
+  overflow-x: hidden;
+}
+
+code, pre {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0f172a;
+}
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+/* Odds Back & Lay Colors (Betfair Exchange standard) */
+.odds-back {
+  background-color: #72bbef;
+  color: #000;
+  font-weight: 700;
+}
+.odds-back:hover {
+  background-color: #55a8e2;
+}
+
+.odds-lay {
+  background-color: #faa9ba;
+  color: #000;
+  font-weight: 700;
+}
+.odds-lay:hover {
+  background-color: #f78da4;
+}
+
+/* Flash Animations on Live Rate Update (0.2s quick visual pulse) */
+@keyframes flashBackAnim {
+  0% { background-color: #22c55e !important; color: #ffffff !important; transform: scale(1.03); }
+  100% { background-color: #72bbef !important; color: #000000 !important; transform: scale(1); }
+}
+
+@keyframes flashLayAnim {
+  0% { background-color: #f43f5e !important; color: #ffffff !important; transform: scale(1.03); }
+  100% { background-color: #faa9ba !important; color: #000000 !important; transform: scale(1); }
+}
+
+.flash-back {
+  animation: flashBackAnim 0.2s ease-out;
+}
+
+.flash-lay {
+  animation: flashLayAnim 0.2s ease-out;
+}
+
+/* Animations */
+@keyframes pulseLive {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.live-indicator {
+  animation: pulseLive 1.5s infinite;
+}
