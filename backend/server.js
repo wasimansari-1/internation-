@@ -25,6 +25,15 @@ const TARGET_BASE = "https://nice444.com";
 app.use(cors());
 app.use(express.json());
 
+// Middleware to normalize Vercel serverless request path
+app.use((req, res, next) => {
+  const matched = req.headers["x-matched-path"];
+  if (matched && (req.url === "/api/index.js" || req.url === "/index.js" || req.url === "/api" || req.url.startsWith("/api/index.js"))) {
+    req.url = matched;
+  }
+  next();
+});
+
 // Token cache
 let cachedToken = null;
 let cachedIntCasinoToken = null;
