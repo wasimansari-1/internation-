@@ -27,8 +27,8 @@ app.use(express.json());
 
 // Middleware to normalize Vercel serverless request path
 app.use((req, res, next) => {
-  const matched = req.headers["x-matched-path"];
-  if (matched && (req.url === "/api/index.js" || req.url === "/index.js" || req.url === "/api" || req.url.startsWith("/api/index.js"))) {
+  const matched = req.headers["x-matched-path"] || req.headers["x-vercel-matched-path"];
+  if (matched && matched !== req.url && (req.url === "/api" || req.url === "/api/index.js" || req.url === "/index.js")) {
     req.url = matched;
   }
   next();
