@@ -108,6 +108,14 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
     };
   }, [gameId]);
 
+  // Smooth local countdown ticking every 1 second
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
     if (!isFullscreen) {
@@ -135,13 +143,84 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
     }
   };
 
-  // Extract cards dynamically from live odds data (supports 32 Cards, Dragon Tiger, Lucky 7, Teen Patti, etc.)
-  const cardsArr = oddsData?.cardsArr || {};
-  const cardEntries = Object.entries(cardsArr).filter(([k]) => k !== 'eventId' && k !== 'roundId');
+  // Template layout generator so cards are ALWAYS shown face-down ('0') even before first socket packet
+  const getDefaultCardEntries = (name = '', id = '') => {
+    const gName = String(name || '').toUpperCase();
+    const gId = String(id || '');
+
+    if (
+      gName.includes('TEEN PATTI') ||
+      gId === '99.0010' ||
+      gId === '99.0013' ||
+      gId === '99.0014' ||
+      gId === '99.0015' ||
+      gId === '99.0016'
+    ) {
+      return [
+        ['PLAYER_A', ['0', '0', '0']],
+        ['PLAYER_B', ['0', '0', '0']]
+      ];
+    }
+    if (
+      gName.includes('DRAGON') ||
+      gId === '99.0018' ||
+      gId === '99.0019' ||
+      gId === '99.0020' ||
+      gId === '99.0021'
+    ) {
+      return [
+        ['DRAGON', ['0']],
+        ['TIGER', ['0']]
+      ];
+    }
+    if (
+      gName.includes('LUCKY') ||
+      gId === '99.0030' ||
+      gId === '99.0031' ||
+      gId === '99.0032'
+    ) {
+      return [['CARD', ['0']]];
+    }
+    if (gName.includes('32 CARDS') || gId === '99.0022' || gId === '99.0023') {
+      return [
+        ['PLAYER_8', ['0']],
+        ['PLAYER_9', ['0']],
+        ['PLAYER_10', ['0']],
+        ['PLAYER_11', ['0']]
+      ];
+    }
+    if (gName.includes('ANDAR') || gId === '99.0025' || gId === '99.0034') {
+      return [
+        ['ANDAR', ['0']],
+        ['BAHAR', ['0']]
+      ];
+    }
+    if (gName.includes('BACCARAT') || gId === '99.0001' || gId === '99.0002') {
+      return [
+        ['PLAYER', ['0', '0']],
+        ['BANKER', ['0', '0']]
+      ];
+    }
+    return [
+      ['PLAYER_A', ['0']],
+      ['PLAYER_B', ['0']]
+    ];
+  };
+
+  // Extract cards dynamically from live odds data
+  const rawCardsArr = oddsData?.cardsArr || {};
+  let cardEntries = Object.entries(rawCardsArr).filter(
+    ([k]) => k !== 'eventId' && k !== 'roundId'
+  );
+
+  // Guarantee card back display so "WAITING FOR ROUND..." is NEVER shown
+  if (cardEntries.length === 0) {
+    cardEntries = getDefaultCardEntries(gameName, gameId);
+  }
 
   // Extract real cards directly from live scraped API data
-  // During open betting (timeLeft > 0), all cards remain CLOSED face-down ('0')
-  // When betting ends (timeLeft <= 0), dealer deals cards and only cards with real values flip open
+  // When card is "0" or not yet dealt, getCardImg renders /card/0.png (Card Back)
+  // As dealer flips each card in stream and API responds, that specific card flips open
   const getCardsList = (val) => {
     if (!val) return ['0'];
     let list = [];
@@ -155,12 +234,6 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
       list = [val];
     }
     if (list.length === 0) list = ['0'];
-
-    // If round betting is active, keep cards closed face-down
-    if (timeLeft > 0) {
-      return list.map(() => '0');
-    }
-
     return list;
   };
 

@@ -11,6 +11,84 @@ let casinoSocketConnecting = false;
 // Fallback table cache to guarantee 200 OK even if network/upstream is momentarily unreachable
 let cachedTableList = null;
 
+// Template layout generator so every game always has cards face-down ('0') even before socket packets arrive
+export function getDefaultCardsForTable(eventId = "", eventName = "") {
+  const name = String(eventName || "").toUpperCase();
+  const id = String(eventId || "");
+
+  if (
+    name.includes("TEEN PATTI") ||
+    id === "99.0010" ||
+    id === "99.0013" ||
+    id === "99.0014" ||
+    id === "99.0015" ||
+    id === "99.0016"
+  ) {
+    return {
+      PLAYER_A: { card_1: "0", card_2: "0", card_3: "0" },
+      PLAYER_B: { card_1: "0", card_2: "0", card_3: "0" },
+    };
+  }
+  if (
+    name.includes("DRAGON") ||
+    id === "99.0018" ||
+    id === "99.0019" ||
+    id === "99.0020" ||
+    id === "99.0021"
+  ) {
+    return {
+      DRAGON: { card_1: "0" },
+      TIGER: { card_1: "0" },
+    };
+  }
+  if (
+    name.includes("LUCKY") ||
+    id === "99.0030" ||
+    id === "99.0031" ||
+    id === "99.0032"
+  ) {
+    return {
+      CARD: { card_1: "0" },
+    };
+  }
+  if (
+    name.includes("32 CARDS") ||
+    id === "99.0022" ||
+    id === "99.0023"
+  ) {
+    return {
+      PLAYER_8: { card_1: "0" },
+      PLAYER_9: { card_1: "0" },
+      PLAYER_10: { card_1: "0" },
+      PLAYER_11: { card_1: "0" },
+    };
+  }
+  if (
+    name.includes("ANDAR") ||
+    id === "99.0025" ||
+    id === "99.0034"
+  ) {
+    return {
+      ANDAR: { card_1: "0" },
+      BAHAR: { card_1: "0" },
+    };
+  }
+  if (
+    name.includes("BACCARAT") ||
+    id === "99.0001" ||
+    id === "99.0002"
+  ) {
+    return {
+      PLAYER: { card_1: "0", card_2: "0" },
+      BANKER: { card_1: "0", card_2: "0" },
+    };
+  }
+  return {
+    PLAYER_A: { card_1: "0" },
+    PLAYER_B: { card_1: "0" },
+  };
+}
+
 export async function ensureNiceCasinoSocket() {
   if (casinoSocket && casinoSocket.connected) {
     return casinoSocket;
@@ -94,31 +172,49 @@ export async function ensureNiceCasinoSocket() {
           const eventName =
             payload?.eventName || data.eventName || existing.eventName;
 
-          // Check if round transitioned or a new betting phase started
+          // Initialize or preserve current cards layout
+          let currentCards;
+          if (existing.cardsArr && Object.keys(existing.cardsArr).length > 0) {
+            currentCards = JSON.parse(JSON.stringify(existing.cardsArr));
+          } else {
+            currentCards = getDefaultCardsForTable(eventId, eventName);
+          }
+
+          // Check if a brand new round has started
           const isNewRound =
             roundId && existing.roundId && String(roundId) !== String(existing.roundId);
-          const isBettingPhase =
-            roundStatus === "PLACE_THE_BET" ||
-            (typeof leftSec === "number" && leftSec > 0);
 
-          let currentCards;
-          if (isNewRound || isBettingPhase) {
-            // New round or open betting: DO NOT carry over open cards from previous round!
-            // Start fresh with whatever cardsArr the new round provided (usually all "0")
-            const freshCards = payload?.cardsArr || payload?.cards || data.cardsArr || data.cards || {};
-            currentCards = JSON.parse(JSON.stringify(freshCards));
-          } else {
-            // Cards dealing phase: preserve and accumulate revealed cards
-            currentCards = JSON.parse(JSON.stringify(existing.cardsArr || {}));
-            const incomingCards = payload?.cardsArr || payload?.cards || data.cardsArr || data.cards;
-            if (incomingCards && typeof incomingCards === "object") {
-              for (const [k, v] of Object.entries(incomingCards)) {
-                if (typeof v === "object" && v !== null && !Array.isArray(v)) {
-                  if (!currentCards[k] || typeof currentCards[k] !== "object") currentCards[k] = {};
-                  Object.assign(currentCards[k], v);
-                } else {
-                  currentCards[k] = v;
+          if (isNewRound) {
+            // New round: reset every card back to "0" (closed face down)
+            const template = getDefaultCardsForTable(eventId, eventName);
+            currentCards = JSON.parse(JSON.stringify(template));
+          }
+
+          // Merge any incoming cardsArr from packet
+          const incomingCards =
+            payload?.cardsArr || payload?.cards || data.cardsArr || data.cards;
+          if (incomingCards && typeof incomingCards === "object") {
+            for (const [k, v] of Object.entries(incomingCards)) {
+              if (typeof v === "object" && v !== null && !Array.isArray(v)) {
+                if (!currentCards[k] || typeof currentCards[k] !== "object") {
+                  currentCards[k] = {};
                 }
+                Object.assign(currentCards[k], v);
+              } else if (typeof v === "string") {
+                // E.g. { card: "0" } -> map into { CARD: { card_1: v } }
+                const upperK = k.toUpperCase();
+                if (!currentCards[upperK] || typeof currentCards[upperK] !== "object") {
+                  currentCards[upperK] = { card_1: v };
+                } else {
+                  currentCards[upperK].card_1 = v;
+                }
+              } else if (Array.isArray(v)) {
+                if (!currentCards[k] || typeof currentCards[k] !== "object") {
+                  currentCards[k] = {};
+                }
+                v.forEach((val, idx) => {
+                  currentCards[k][`card_${idx + 1}`] = val || "0";
+                });
               }
             }
           }
