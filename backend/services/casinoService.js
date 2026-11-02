@@ -17,6 +17,17 @@ export function getDefaultCardsForTable(eventId = "", eventName = "") {
   const id = String(eventId || "");
 
   if (
+    name.includes("DTL") ||
+    id === "99.0041" ||
+    id === "99.0004"
+  ) {
+    return {
+      DRAGON: { card_1: "0" },
+      TIGER: { card_1: "0" },
+      LION: { card_1: "0" },
+    };
+  }
+  if (
     name.includes("TEEN PATTI") ||
     id === "99.0010" ||
     id === "99.0013" ||
@@ -159,18 +170,39 @@ export async function ensureNiceCasinoSocket() {
             currentMarketArr = data.marketArr;
           }
 
-          const leftSec =
-            payload?.leftSec !== undefined
-              ? payload.leftSec
-              : data.leftSec !== undefined
-                ? data.leftSec
-                : existing.leftSec;
           const roundId = payload?.roundId || data.roundId || existing.roundId;
           const roundStatus =
             payload?.roundStatus || data.roundStatus || existing.roundStatus;
           const status = payload?.status || data.status || existing.status;
           const eventName =
             payload?.eventName || data.eventName || existing.eventName;
+
+          // Check if a brand new round has started
+          const isNewRound =
+            roundId && existing.roundId && String(roundId) !== String(existing.roundId);
+
+          let initialLeftSec = existing.initialLeftSec;
+          let leftSecReceivedAt = existing.leftSecReceivedAt;
+
+          if (payload?.leftSec !== undefined && Number(payload.leftSec) > 0) {
+            initialLeftSec = Number(payload.leftSec);
+            leftSecReceivedAt = Date.now();
+          } else if (data?.leftSec !== undefined && Number(data.leftSec) > 0) {
+            initialLeftSec = Number(data.leftSec);
+            leftSecReceivedAt = Date.now();
+          } else if (isNewRound) {
+            initialLeftSec = Number(payload?.seconds || data?.seconds || 20);
+            leftSecReceivedAt = Date.now();
+          } else if (!leftSecReceivedAt || initialLeftSec === undefined) {
+            initialLeftSec = Number(existing.leftSec || 20);
+            leftSecReceivedAt = Date.now();
+          }
+
+          const elapsedSec = Math.floor((Date.now() - leftSecReceivedAt) / 1000);
+          const computedLeftSec =
+            roundStatus === "RESULT_DECLARED" || status === "SUSPEND"
+              ? 0
+              : Math.max(0, initialLeftSec - elapsedSec);
 
           // Initialize or preserve current cards layout
           let currentCards;
@@ -179,10 +211,6 @@ export async function ensureNiceCasinoSocket() {
           } else {
             currentCards = getDefaultCardsForTable(eventId, eventName);
           }
-
-          // Check if a brand new round has started
-          const isNewRound =
-            roundId && existing.roundId && String(roundId) !== String(existing.roundId);
 
           if (isNewRound) {
             // New round: reset every card back to "0" (closed face down)
@@ -269,7 +297,9 @@ export async function ensureNiceCasinoSocket() {
             eventId,
             eventName,
             roundId,
-            leftSec,
+            leftSec: computedLeftSec,
+            initialLeftSec,
+            leftSecReceivedAt,
             roundStatus,
             status,
             cardsArr: currentCards,
@@ -312,7 +342,18 @@ export async function getScrapedCasinoLiveOdds(gameId) {
 
   const cached = casinoOddsCache.get(gId);
   if (cached && cached.roundId && Date.now() - (cached.lastUpdated || 0) < 45000) {
-    return cached;
+    const elapsed = Math.floor(
+      (Date.now() - (cached.leftSecReceivedAt || cached.lastUpdated || Date.now())) / 1000,
+    );
+    const liveLeftSec =
+      cached.roundStatus === "RESULT_DECLARED" || cached.status === "SUSPEND"
+        ? 0
+        : Math.max(0, (cached.initialLeftSec ?? cached.leftSec ?? 0) - elapsed);
+
+    return {
+      ...cached,
+      leftSec: liveLeftSec,
+    };
   }
 
   try {
@@ -337,10 +378,12 @@ export async function getScrapedCasinoLiveOdds(gameId) {
       eventId: gId,
       eventName: latest.eventName || `CASINO TABLE ${gId}`,
       roundId: latest.roundId || String(Date.now()),
-      leftSec: 0,
+      leftSec: 18,
+      initialLeftSec: 18,
+      leftSecReceivedAt: Date.now(),
       status: "ONLINE",
-      roundStatus: "BETTING_OPEN",
-      cardsArr: latest.cards || {},
+      roundStatus: "PLACE_THE_BET",
+      cardsArr: latest.cards || getDefaultCardsForTable(gId, latest.eventName),
       marketArr: [],
       winner: latest.winner || null,
       lastUpdated: Date.now(),

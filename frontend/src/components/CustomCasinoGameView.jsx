@@ -24,10 +24,11 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
   const [timeLeft, setTimeLeft] = useState(0);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [watchUrl, setWatchUrl] = useState('');
+  const [dtlTab, setDtlTab] = useState('DRAGON'); // 'DRAGON' | 'TIGER' | 'LION' for DTL games
 
   const containerRef = useRef(null);
-  const timerRef = useRef(null);
-  const prevRoundIdRef = useRef(null);
+  const targetEndRef = useRef(0);
+  const lastRoundIdRef = useRef(null);
 
   // 1. Fetch Decrypted Recent Results
   const fetchRecentResults = async () => {
@@ -83,9 +84,32 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
         if (isMounted && res.data?.success && res.data?.data) {
           const data = res.data.data;
           setOddsData(data);
-          if (typeof data.leftSec === 'number') {
-            setTimeLeft(Math.max(0, data.leftSec));
+
+          const serverSec = Number(data.leftSec ?? 0);
+          const isRoundOver =
+            data.roundStatus === 'RESULT_DECLARED' ||
+            data.status === 'SUSPEND' ||
+            serverSec <= 0;
+
+          if (isRoundOver) {
+            targetEndRef.current = 0;
+            setTimeLeft(0);
+          } else {
+            // New round started or local timer was 0
+            if (data.roundId !== lastRoundIdRef.current || targetEndRef.current === 0) {
+              lastRoundIdRef.current = data.roundId;
+              targetEndRef.current = Date.now() + serverSec * 1000;
+              setTimeLeft(serverSec);
+            } else {
+              // Drift correction if local timer deviates by > 2 seconds
+              const currentRem = Math.max(0, Math.ceil((targetEndRef.current - Date.now()) / 1000));
+              if (Math.abs(currentRem - serverSec) > 2) {
+                targetEndRef.current = Date.now() + serverSec * 1000;
+                setTimeLeft(serverSec);
+              }
+            }
           }
+
           const now = Date.now();
           if (
             (data.roundId && data.roundId !== lastFetchedRoundId) ||
@@ -108,11 +132,14 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
     };
   }, [gameId]);
 
-  // Smooth local countdown ticking every 1 second
+  // High-precision smooth countdown ticking every 200ms based on wall-clock target timestamp
   useEffect(() => {
     const timer = setInterval(() => {
-      setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
-    }, 1000);
+      if (targetEndRef.current > 0) {
+        const remaining = Math.max(0, Math.ceil((targetEndRef.current - Date.now()) / 1000));
+        setTimeLeft(remaining);
+      }
+    }, 200);
     return () => clearInterval(timer);
   }, []);
 
@@ -148,6 +175,17 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
     const gName = String(name || '').toUpperCase();
     const gId = String(id || '');
 
+    if (
+      gName.includes('DTL') ||
+      gId === '99.0041' ||
+      gId === '99.0004'
+    ) {
+      return [
+        ['DRAGON', ['0']],
+        ['TIGER', ['0']],
+        ['LION', ['0']]
+      ];
+    }
     if (
       gName.includes('TEEN PATTI') ||
       gId === '99.0010' ||
@@ -240,18 +278,27 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
   const getWinnerBadge = (winner) => {
     if (!winner) return { label: '?', bg: '#facc15' };
     const w = String(winner).toUpperCase().trim();
-    if (w === 'A' || w === 'PLAYER A' || w === 'DRAGON' || w === 'D' || w === 'H' || w === 'LOW') {
-      return { label: w.startsWith('DRAGON') ? 'D' : w.startsWith('P') ? 'A' : w[0], bg: '#72bbef' };
+    if (w === 'L' || w === 'LION') {
+      return { label: 'L', bg: '#facc15' }; // Lion (Yellow)
     }
-    if (w === 'B' || w === 'PLAYER B' || w === 'TIGER' || w === 'T' || w === 'L' || w === 'HIGH') {
-      return { label: w.startsWith('TIGER') ? 'T' : w.startsWith('P') ? 'B' : w[0], bg: '#f9a9ba' };
+    if (w === 'D' || w === 'DRAGON') {
+      return { label: 'D', bg: '#72bbef' }; // Dragon (Blue)
+    }
+    if (w === 'T' || w === 'TIGER') {
+      return { label: 'T', bg: '#f97316' }; // Tiger (Orange)
+    }
+    if (w === 'A' || w === 'PLAYER A' || w === 'H' || w === 'LOW') {
+      return { label: w.startsWith('P') ? 'A' : w[0], bg: '#72bbef' };
+    }
+    if (w === 'B' || w === 'PLAYER B' || w === 'HIGH') {
+      return { label: w.startsWith('P') ? 'B' : w[0], bg: '#f9a9ba' };
     }
     if (w.includes('PLAYER_') || w.startsWith('PLAYER ')) {
       const num = w.replace(/[^0-9]/g, '');
       return { label: num || 'W', bg: '#c084fc' };
     }
     if (w === 'TIE') {
-      return { label: 'T', bg: '#facc15' };
+      return { label: 'T', bg: '#10b981' };
     }
     return { label: w.slice(0, 2), bg: '#10b981' };
   };
@@ -266,7 +313,18 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
     (oddsData?.roundStatus && oddsData?.roundStatus !== 'PLACE_THE_BET') ||
     timeLeft <= 0;
 
+  const isDTL =
+    gameName?.toUpperCase().includes('DTL') ||
+    gameId === '99.0041' ||
+    gameId === '99.0004';
+
   const marketList = oddsData?.marketArr || [];
+  const displayedMarkets = isDTL
+    ? marketList.filter((m) => {
+        const mName = (m.marketName || '').toUpperCase();
+        return mName === 'WINNER' || mName.includes(dtlTab);
+      })
+    : marketList;
 
   return (
     <div
@@ -599,10 +657,40 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
             </div>
           </div>
 
+          {/* DTL Specific Runner Tabs (Dragon | Tiger | Lion) matching user UI */}
+          {isDTL && (
+            <div style={{ display: 'flex', backgroundColor: '#090d16', borderBottom: '1px solid #1e293b' }}>
+              {['DRAGON', 'TIGER', 'LION'].map((tab) => {
+                const active = dtlTab === tab;
+                return (
+                  <button
+                    key={tab}
+                    onClick={() => setDtlTab(tab)}
+                    style={{
+                      flex: 1,
+                      padding: '10px 0',
+                      backgroundColor: active ? '#1e293b' : 'transparent',
+                      color: active ? '#ffffff' : '#94a3b8',
+                      fontWeight: 800,
+                      fontSize: '13px',
+                      textTransform: 'capitalize',
+                      border: 'none',
+                      borderBottom: active ? '3px solid #eab308' : '3px solid transparent',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s'
+                    }}
+                  >
+                    {tab.charAt(0) + tab.slice(1).toLowerCase()}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           {/* Betting Markets Container */}
           <div style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {marketList.length > 0 ? (
-              marketList.map((m, mIdx) => {
+            {displayedMarkets.length > 0 ? (
+              displayedMarkets.map((m, mIdx) => {
                 const isMarketSuspended =
                   isTableSuspended ||
                   m.status === 'SUSPEND' ||
