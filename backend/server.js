@@ -1214,6 +1214,7 @@ app.all("/api/stream/ltve-fetch-proxy", async (req, res) => {
   if (!targetUrl) return res.status(400).json({ error: "url parameter required" });
 
   try {
+    const parentReferer = targetUrl.replace(/\/(ping|flag|bye).*$/, "");
     const upstreamRes = await axios({
       method: req.method,
       url: targetUrl,
@@ -1221,7 +1222,7 @@ app.all("/api/stream/ltve-fetch-proxy", async (req, res) => {
       headers: {
         "Content-Type": req.headers["content-type"] || "application/json",
         "Origin": "https://nice444.com",
-        "Referer": "https://nice444.com/",
+        "Referer": parentReferer,
         "User-Agent":
           "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
       },
@@ -1267,29 +1268,20 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
 
     let html = pageRes.data;
 
-    // Rewrite #cfg config object if present to point directly to our proxy
+    // Convert relative player script to absolute so we DO NOT need <base href>
+    html = html.replace('src="/player/player.js', 'src="https://tv.ltve.live/player/player.js');
+
+    // Ensure devtoolsGuard is disabled in #cfg
     const cfgMatch = html.match(/<script type="application\/json" id="cfg">([^<]+)<\/script>/);
     if (cfgMatch) {
       try {
         const cfgObj = JSON.parse(cfgMatch[1]);
         cfgObj.devtoolsGuard = false;
-        if (cfgObj.pingUrl && !cfgObj.pingUrl.startsWith("http")) {
-          const fullPing = "https://tv.ltve.live" + cfgObj.pingUrl;
-          cfgObj.pingUrl = "/api/stream/ltve-fetch-proxy?url=" + encodeURIComponent(fullPing);
-        }
-        if (cfgObj.byeUrl && !cfgObj.byeUrl.startsWith("http")) {
-          const fullBye = "https://tv.ltve.live" + cfgObj.byeUrl;
-          cfgObj.byeUrl = "/api/stream/ltve-fetch-proxy?url=" + encodeURIComponent(fullBye);
-        }
-        if (cfgObj.flagUrl && !cfgObj.flagUrl.startsWith("http")) {
-          const fullFlag = "https://tv.ltve.live" + cfgObj.flagUrl;
-          cfgObj.flagUrl = "/api/stream/ltve-fetch-proxy?url=" + encodeURIComponent(fullFlag);
-        }
         html = html.replace(cfgMatch[0], `<script type="application/json" id="cfg">${JSON.stringify(cfgObj)}</script>`);
       } catch (e) {}
     }
 
-    // Interceptor script to catch any remaining fetch or XHR calls
+    // Interceptor script that routes all player fetches through our SAME-ORIGIN proxy
     const interceptorScript = `
       <style>#wm{display:none!important;}</style>
       <script>
@@ -1302,7 +1294,7 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
               if (!full.startsWith('http')) {
                 full = 'https://tv.ltve.live' + (full.startsWith('/') ? '' : '/') + full;
               }
-              const proxy = '/api/stream/ltve-fetch-proxy?url=' + encodeURIComponent(full);
+              const proxy = window.location.origin + '/api/stream/ltve-fetch-proxy?url=' + encodeURIComponent(full);
               return origFetch(proxy, init);
             }
             return origFetch.apply(this, arguments);
@@ -1316,7 +1308,7 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
               if (!full.startsWith('http')) {
                 full = 'https://tv.ltve.live' + (full.startsWith('/') ? '' : '/') + full;
               }
-              arguments[1] = '/api/stream/ltve-fetch-proxy?url=' + encodeURIComponent(full);
+              arguments[1] = window.location.origin + '/api/stream/ltve-fetch-proxy?url=' + encodeURIComponent(full);
             }
             return origOpen.apply(this, arguments);
           };
@@ -1326,7 +1318,7 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
             navigator.sendBeacon = function(url, data) {
               if (url && (url.includes('tv.ltve.live') || url.includes('/flag') || url.includes('/bye'))) {
                 let full = url.startsWith('http') ? url : 'https://tv.ltve.live' + (url.startsWith('/') ? '' : '/') + url;
-                return origBeacon('/api/stream/ltve-fetch-proxy?url=' + encodeURIComponent(full), data);
+                return origBeacon(window.location.origin + '/api/stream/ltve-fetch-proxy?url=' + encodeURIComponent(full), data);
               }
               return origBeacon(url, data);
             };
@@ -1335,7 +1327,8 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
       </script>
     `;
 
-    html = html.replace("<head>", `<head><base href="https://tv.ltve.live/">${interceptorScript}`);
+    // Inject interceptor at the very top of <head> WITHOUT any <base> tag!
+    html = html.replace("<head>", `<head>${interceptorScript}`);
     html = html.replace(/"devtoolsGuard":\s*true/g, '"devtoolsGuard": false');
 
     res.removeHeader("Content-Security-Policy");
