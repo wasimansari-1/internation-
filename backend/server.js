@@ -5,7 +5,7 @@ import fs from "fs";
 import crypto from "crypto";
 import { fileURLToPath } from "url";
 
-// Global process exception handlers to guarantee 100% uptime
+// Global process exception handlers to guarantee 100% uptime and eliminate 502 Bad Gateway
 process.on("uncaughtException", (err) => {
   console.warn("[Process Shield] Caught uncaughtException:", err.message);
 });

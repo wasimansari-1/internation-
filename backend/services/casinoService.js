@@ -7,7 +7,7 @@ try {
   const socketIoModule = await import("socket.io-client");
   ioClient = socketIoModule.io || socketIoModule.default?.io || socketIoModule.default;
 } catch (e) {
-  console.warn("Notice: socket.io-client not installed yet. Running in resilient fallback mode.");
+  console.warn("Notice: socket.io-client not installed yet in node_modules. Running in resilient fallback mode.");
 }
 
 export const activeCasinoSubscribers = new Set();
@@ -391,55 +391,6 @@ export async function getScrapedCasinoLiveOdds(gameId) {
     );
     const resultsData = upstreamRes.data?.data || [];
     const latest = resultsData[0] || {};
-
-    // Scrape real markets & runners from Nice444's actual upstream results
-    const rawResults = latest.results || [];
-    const scrapedMarkets = rawResults.map((m, mIdx) => {
-      const mName = m.marketName || `MARKET ${mIdx + 1}`;
-      let rate = 1.98;
-      const ratioMatch = mName.match(/1\s*:\s*([0-9.]+)/);
-      if (ratioMatch) {
-        rate = parseFloat(ratioMatch[1]);
-      } else if (mName.includes("COLOR") && mName.includes("SUIT")) {
-        rate = 3.8;
-      } else if (mName.includes("LUCKY CARD") && !mName.includes("SUIT")) {
-        rate = 12.0;
-      }
-
-      const runners = (m.runners || []).map((r, rIdx) => {
-        const sId = String(r.selectionId || rIdx);
-        const runnerName = m.runnersName?.[sId] || r.name || `RUNNER ${rIdx + 1}`;
-        let runnerPrice = rate;
-        if (mName === "WINNER") {
-          if (runnerName.toUpperCase().includes("TIE")) runnerPrice = 10.0;
-          else runnerPrice = 1.98;
-        }
-
-        return {
-          selectionId: sId,
-          runnerName,
-          status: "OPEN",
-          price: {
-            back: [
-              {
-                price: runnerPrice,
-                size: 250000,
-              },
-            ],
-          },
-        };
-      });
-
-      return {
-        marketId: m.marketId || `${latest.roundId || Date.now()}_${mIdx}`,
-        marketName: mName,
-        min: 100,
-        max: 500000,
-        runners,
-        runnersName: m.runnersName || {},
-      };
-    });
-
     const seeded = {
       eventId: gId,
       eventName: latest.eventName || `CASINO TABLE ${gId}`,
@@ -450,7 +401,7 @@ export async function getScrapedCasinoLiveOdds(gameId) {
       status: "ONLINE",
       roundStatus: "PLACE_THE_BET",
       cardsArr: latest.cards || getDefaultCardsForTable(gId, latest.eventName),
-      marketArr: scrapedMarkets,
+      marketArr: [],
       winner: latest.winner || null,
       lastUpdated: Date.now(),
     };

@@ -188,7 +188,7 @@ router.get("/watch-link/:gameId", async (req, res) => {
       return res.json({ success: true, url: upstreamRes.data.data.url });
     }
   } catch (err) {
-    // If upstream returns 422 or error, route seamlessly through stream proxy
+    // If upstream returns 422 or network error, return local stream proxy fallback seamlessly
   }
   return res.json({ success: true, url: `/api/casino/stream-proxy/${gameId}` });
 });
