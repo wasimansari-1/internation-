@@ -28,18 +28,18 @@ export const customLookup = (hostname, options, callback) => {
     }
   };
 
-  const ip = KNOWN_HOSTS[hostname];
-  if (ip) {
-    return deliver(ip);
-  }
-
+  // Try real dynamic DNS resolution first (to get the nearest fast IP for cloud environments)
   dns.lookup(hostname, options, (err, address, family) => {
     if (!err && address) {
       return callback(null, address, family);
     }
+    const ip = KNOWN_HOSTS[hostname];
+    if (ip) {
+      return deliver(ip);
+    }
     // Fallback directly to Known IPs on cloud environments where DNS lookup fails
     if (hostname.includes("nice444.com")) {
-      return deliver("13.201.109.114");
+      return deliver("16.4.103.142");
     }
     if (hostname.includes("ltve.live")) {
       return deliver("108.132.161.244");

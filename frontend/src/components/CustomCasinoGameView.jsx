@@ -313,12 +313,100 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
     (oddsData?.roundStatus && oddsData?.roundStatus !== 'PLACE_THE_BET') ||
     timeLeft <= 0;
 
+  const getDefaultMarketsForTable = () => {
+    const name = (gameName || '').toUpperCase();
+    const id = String(gameId || '');
+
+    if (name.includes('DTL') || id === '99.0041' || id === '99.0004') {
+      return [
+        {
+          marketId: 'winner_def',
+          marketName: 'WINNER',
+          min: 100,
+          max: 500000,
+          runners: [
+            { selectionId: '1', runnerName: 'DRAGON', status: 'OPEN', price: { back: [{ price: 2.94, size: 250000 }] } },
+            { selectionId: '2', runnerName: 'TIGER', status: 'OPEN', price: { back: [{ price: 2.94, size: 250000 }] } },
+            { selectionId: '3', runnerName: 'LION', status: 'OPEN', price: { back: [{ price: 2.94, size: 250000 }] } }
+          ]
+        }
+      ];
+    }
+
+    if (name.includes('LUCKY 7') || id === '99.0030' || id === '99.0031' || id === '99.0032') {
+      return [
+        {
+          marketId: 'winner_def',
+          marketName: 'WINNER',
+          min: 100,
+          max: 100000,
+          runners: [
+            { selectionId: '1', runnerName: 'LOW CARD ( A to 6 )', status: 'OPEN', price: { back: [{ price: 2.0, size: 500000 }] } },
+            { selectionId: '2', runnerName: 'HIGH CARD ( 8 to K )', status: 'OPEN', price: { back: [{ price: 2.0, size: 500000 }] } }
+          ]
+        },
+        {
+          marketId: 'oddeven_def',
+          marketName: 'LUCKY ODD/EVEN',
+          min: 100,
+          max: 100000,
+          runners: [
+            { selectionId: '3', runnerName: 'EVEN', status: 'OPEN', price: { back: [{ price: 2.14, size: 300000 }] } },
+            { selectionId: '4', runnerName: 'ODD', status: 'OPEN', price: { back: [{ price: 1.81, size: 300000 }] } }
+          ]
+        },
+        {
+          marketId: 'color_def',
+          marketName: 'LUCKY COLOR',
+          min: 100,
+          max: 100000,
+          runners: [
+            { selectionId: '5', runnerName: 'RED', status: 'OPEN', price: { back: [{ price: 1.95, size: 300000 }] } },
+            { selectionId: '6', runnerName: 'BLACK', status: 'OPEN', price: { back: [{ price: 1.95, size: 300000 }] } }
+          ]
+        }
+      ];
+    }
+
+    if (name.includes('DRAGON') && name.includes('TIGER')) {
+      return [
+        {
+          marketId: 'winner_def',
+          marketName: 'WINNER',
+          min: 100,
+          max: 500000,
+          runners: [
+            { selectionId: '1', runnerName: 'DRAGON', status: 'OPEN', price: { back: [{ price: 1.98, size: 250000 }] } },
+            { selectionId: '2', runnerName: 'TIGER', status: 'OPEN', price: { back: [{ price: 1.98, size: 250000 }] } },
+            { selectionId: '3', runnerName: 'TIE', status: 'OPEN', price: { back: [{ price: 10.0, size: 50000 }] } }
+          ]
+        }
+      ];
+    }
+
+    return [
+      {
+        marketId: 'winner_def',
+        marketName: 'WINNER',
+        min: 100,
+        max: 500000,
+        runners: [
+          { selectionId: '1', runnerName: 'PLAYER A', status: 'OPEN', price: { back: [{ price: 1.98, size: 250000 }] } },
+          { selectionId: '2', runnerName: 'PLAYER B', status: 'OPEN', price: { back: [{ price: 1.98, size: 250000 }] } }
+        ]
+      }
+    ];
+  };
+
   const isDTL =
     gameName?.toUpperCase().includes('DTL') ||
     gameId === '99.0041' ||
     gameId === '99.0004';
 
-  const marketList = oddsData?.marketArr || [];
+  const marketList =
+    oddsData?.marketArr && oddsData.marketArr.length > 0
+      ? oddsData.marketArr
+      : getDefaultMarketsForTable();
   const displayedMarkets = isDTL
     ? marketList.filter((m) => {
         const mName = (m.marketName || '').toUpperCase();
