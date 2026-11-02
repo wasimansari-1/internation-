@@ -1539,6 +1539,60 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
   }
 });
 
+app.get("/api/debug/test-stream-ip", async (req, res) => {
+  try {
+    const ipRes = await axios.get("https://api.ipify.org?format=json");
+    const myIp = ipRes.data?.ip;
+
+    const token = await getDemoToken();
+    const watchRes = await axios.post(
+      "https://nice444.com/api/exchange/streaming/exchEventsWatchLink",
+      { streamId: "36263556", timestamp: Date.now() },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Origin: "https://nice444.com",
+          Referer: "https://nice444.com/",
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+          "X-Forwarded-For": "103.211.53.1",
+          "CF-Connecting-IP": "103.211.53.1",
+        },
+        timeout: 6000,
+      }
+    );
+    const watchUrl = watchRes.data?.data?.url;
+
+    let ltveStatus = null;
+    let ltveSnippet = null;
+    let ltveErr = null;
+    try {
+      const pageRes = await axios.get(watchUrl, {
+        headers: {
+          Origin: "https://nice444.com",
+          Referer: "https://nice444.com/",
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        },
+        timeout: 6000,
+      });
+      ltveStatus = pageRes.status;
+      ltveSnippet = typeof pageRes.data === "string" ? pageRes.data.substring(0, 300) : "not string";
+    } catch (e) {
+      ltveStatus = e.response?.status || e.message;
+      ltveErr = typeof e.response?.data === "string" ? e.response.data.substring(0, 300) : JSON.stringify(e.response?.data || '');
+    }
+
+    return res.json({
+      vercelOutboundIp: myIp,
+      watchUrl,
+      ltveStatus,
+      ltveSnippet,
+      ltveErr,
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message, stack: err.stack });
+  }
+});
+
 app.get("/api/media/news", async (req, res) => {
   const result = await proxyRequest("/api/exchange/news/exchangeNews");
   res.status(result.statusCode).json(result);

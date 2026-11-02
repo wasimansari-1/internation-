@@ -1294,12 +1294,24 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
   const { eventId } = req.params;
   const sportId = req.query.sportId || "4";
   const clientIp = getClientIp(req);
+  const cacheKey = String(eventId);
+
+  // Check if we already have a cached, ready-to-serve HTML payload
+  const existingCached = sportsStreamCache.get(cacheKey);
+  if (existingCached && existingCached.html && Date.now() < existingCached.expiresAt) {
+    res.removeHeader("Content-Security-Policy");
+    res.removeHeader("X-Frame-Options");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    return res.send(existingCached.html);
+  }
+
   try {
     let result;
     try {
       result = await fetchSportsWatchLink(eventId, sportId, clientIp, false);
     } catch (watchErr) {
-      throw new Error(`fetchSportsWatchLink failed: ${watchErr.response?.status || watchErr.message} ${JSON.stringify(watchErr.response?.data || '')}`);
+      throw new Error(`fetchSportsWatchLink failed: ${watchErr.response?.status || watchErr.message}`);
     }
 
     if (!result.url) {
@@ -1332,7 +1344,7 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
         }
         return pageRes.data;
       } catch (getErr) {
-        throw new Error(`fetchStreamPage failed: ${getErr.response?.status || getErr.message} ${JSON.stringify(getErr.response?.data || '')}`);
+        throw new Error(`fetchStreamPage failed: ${getErr.response?.status || getErr.message}`);
       }
     };
 
@@ -1515,6 +1527,18 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
     html = html.replace("<head>", `<head>${interceptorScript}`);
     html = html.replace(/"devtoolsGuard":\s*true/g, '"devtoolsGuard": false');
 
+    // Cache the fully transformed HTML payload in memory for 45s
+    const cacheEntry = {
+      url: result.url,
+      streamId: result.streamId,
+      html,
+      expiresAt: Date.now() + 45000,
+    };
+    sportsStreamCache.set(cacheKey, cacheEntry);
+    if (result.streamId && String(result.streamId) !== cacheKey) {
+      sportsStreamCache.set(String(result.streamId), cacheEntry);
+    }
+
     res.removeHeader("Content-Security-Policy");
     res.removeHeader("X-Frame-Options");
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -1536,6 +1560,60 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
         </script>
       </body></html>
     `);
+  }
+});
+
+app.get("/api/debug/test-stream-ip", async (req, res) => {
+  try {
+    const ipRes = await axios.get("https://api.ipify.org?format=json");
+    const myIp = ipRes.data?.ip;
+
+    const token = await getDemoToken();
+    const watchRes = await axios.post(
+      "https://nice444.com/api/exchange/streaming/exchEventsWatchLink",
+      { streamId: "36263556", timestamp: Date.now() },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Origin: "https://nice444.com",
+          Referer: "https://nice444.com/",
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+          "X-Forwarded-For": "103.211.53.1",
+          "CF-Connecting-IP": "103.211.53.1",
+        },
+        timeout: 6000,
+      }
+    );
+    const watchUrl = watchRes.data?.data?.url;
+
+    let ltveStatus = null;
+    let ltveSnippet = null;
+    let ltveErr = null;
+    try {
+      const pageRes = await axios.get(watchUrl, {
+        headers: {
+          Origin: "https://nice444.com",
+          Referer: "https://nice444.com/",
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        },
+        timeout: 6000,
+      });
+      ltveStatus = pageRes.status;
+      ltveSnippet = typeof pageRes.data === "string" ? pageRes.data.substring(0, 300) : "not string";
+    } catch (e) {
+      ltveStatus = e.response?.status || e.message;
+      ltveErr = typeof e.response?.data === "string" ? e.response.data.substring(0, 300) : JSON.stringify(e.response?.data || '');
+    }
+
+    return res.json({
+      vercelOutboundIp: myIp,
+      watchUrl,
+      ltveStatus,
+      ltveSnippet,
+      ltveErr,
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message, stack: err.stack });
   }
 });
 
