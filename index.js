@@ -1160,19 +1160,21 @@ const resolveBetfairStreamId = async (rawId, sportId = "4") => {
   return strId;
 };
 
+const STABLE_STREAM_IP = "49.36.142.88";
+
 const getClientIp = (req) => {
-  const forwarded = (req.headers["x-forwarded-for"] || "").split(",")[0].trim();
-  const rawIp = forwarded || req.headers["x-real-ip"] || req.socket?.remoteAddress || "";
+  const forwarded = (req?.headers?.["x-forwarded-for"] || "").split(",")[0].trim();
+  const rawIp = forwarded || req?.headers?.["x-real-ip"] || req?.socket?.remoteAddress || "";
   if (rawIp && !rawIp.includes(":") && !rawIp.startsWith("127.") && !rawIp.startsWith("10.") && !rawIp.startsWith("172.") && !rawIp.startsWith("192.")) {
     return rawIp;
   }
-  const octet3 = Math.floor(Math.random() * 200 + 10);
-  const octet4 = Math.floor(Math.random() * 250 + 2);
-  return `49.36.${octet3}.${octet4}`;
+  return STABLE_STREAM_IP;
 };
 
 // Global in-memory cache for sports streams to prevent single-demo account stream invalidations
-const sportsStreamCache = new Map(); // key: streamId -> { url, streamId, expiresAt }
+const sportsStreamCache = new Map(); // key: streamId/eventId -> { html, url, streamId, expiresAt }
+// In-flight promise coalescing map: ensures concurrent requests for the same stream wait for ONE single fetch
+const inFlightStreamFetches = new Map(); // key: cacheKey -> Promise<string>
 
 const fetchSportsWatchLink = async (rawId, sportId = "4", clientIp = "", forceRefresh = false) => {
   const streamId = await resolveBetfairStreamId(rawId, sportId);
@@ -1185,7 +1187,7 @@ const fetchSportsWatchLink = async (rawId, sportId = "4", clientIp = "", forceRe
     }
   }
 
-  const forwardedIp = clientIp || getClientIp({ headers: {} });
+  const forwardedIp = clientIp || STABLE_STREAM_IP;
   let token = await getDemoToken(forceRefresh);
   const makeRequest = async (authToken) => {
     const headers = {
@@ -1222,7 +1224,7 @@ const fetchSportsWatchLink = async (rawId, sportId = "4", clientIp = "", forceRe
   }
 
   const url = upstreamRes.data?.data?.url || "";
-  const entry = { url, streamId, expiresAt: Date.now() + 45000 };
+  const entry = { url, streamId, expiresAt: Date.now() + 60000 };
   if (url) {
     sportsStreamCache.set(cacheKey, entry);
     if (rawId && String(rawId) !== cacheKey) {
@@ -1259,7 +1261,7 @@ app.all("/api/stream/ltve-fetch-proxy", async (req, res) => {
   try {
     const parentReferer = targetUrl.replace(/\/(ping|flag|bye).*$/, "");
     const clientIp = getClientIp(req);
-    const forwardedIp = clientIp && !clientIp.includes(":") && !clientIp.startsWith("127.") ? clientIp : "103.211.53.1";
+    const forwardedIp = clientIp || STABLE_STREAM_IP;
     const headers = {
       "Content-Type": req.headers["content-type"] || "application/json",
       "Origin": "https://nice444.com",
@@ -1295,33 +1297,51 @@ app.all("/api/stream/ltve-fetch-proxy", async (req, res) => {
 app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
   const { eventId } = req.params;
   const sportId = req.query.sportId || "4";
+  const forceFresh = req.query.fresh === "1";
   const clientIp = getClientIp(req);
   const cacheKey = String(eventId);
 
-  // Check if we already have a cached, ready-to-serve HTML payload
+  if (forceFresh) {
+    sportsStreamCache.delete(cacheKey);
+  }
+
+  // 1. Check if we already have a cached, ready-to-serve HTML payload
   const existingCached = sportsStreamCache.get(cacheKey);
-  if (existingCached && existingCached.html && Date.now() < existingCached.expiresAt) {
+  if (!forceFresh && existingCached && existingCached.html && Date.now() < existingCached.expiresAt) {
     res.removeHeader("Content-Security-Policy");
     res.removeHeader("X-Frame-Options");
     res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Cache-Control", "public, max-age=10, s-maxage=30, stale-while-revalidate=15");
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     return res.send(existingCached.html);
   }
 
-  try {
+  // 2. Promise coalescing: if a fetch is already in flight for this match, wait for it
+  if (inFlightStreamFetches.has(cacheKey)) {
+    try {
+      const html = await inFlightStreamFetches.get(cacheKey);
+      res.removeHeader("Content-Security-Policy");
+      res.removeHeader("X-Frame-Options");
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Cache-Control", "public, max-age=10, s-maxage=30, stale-while-revalidate=15");
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      return res.send(html);
+    } catch (err) {
+      // In-flight failed, proceed to fresh fetch below
+    }
+  }
+
+  // 3. Initiate single fetch promise
+  const fetchPromise = (async () => {
     let result;
     try {
-      result = await fetchSportsWatchLink(eventId, sportId, clientIp, false);
+      result = await fetchSportsWatchLink(eventId, sportId, clientIp, forceFresh);
     } catch (watchErr) {
       throw new Error(`fetchSportsWatchLink failed: ${watchErr.response?.status || watchErr.message}`);
     }
 
     if (!result.url) {
-      return res.status(404).send(`
-        <!DOCTYPE html><html><body style="background:#000;color:#94a3b8;font-family:sans-serif;display:grid;place-items:center;height:100vh;margin:0">
-          <div style="text-align:center"><h3>📺 No Live Broadcast</h3><p style="font-size:12px">No live TV feed found for this event.</p></div>
-        </body></html>
-      `);
+      throw new Error("No live broadcast feed found for this event");
     }
 
     const fetchStreamPage = async (streamUrl) => {
@@ -1417,7 +1437,10 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
             const toast = document.getElementById('reconnect-toast');
             if (toast) toast.style.display = 'block';
             setTimeout(() => {
-              window.location.reload();
+              const url = new URL(window.location.href);
+              url.searchParams.set('fresh', '1');
+              url.searchParams.set('t', Date.now());
+              window.location.href = url.toString();
             }, 500);
           }
 
@@ -1532,21 +1555,27 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
     html = html.replace("<head>", `<head>${interceptorScript}`);
     html = html.replace(/"devtoolsGuard":\s*true/g, '"devtoolsGuard": false');
 
-    // Cache the fully transformed HTML payload in memory for 45s
+    // Cache the fully transformed HTML payload in memory for 60s
     const cacheEntry = {
       url: result.url,
       streamId: result.streamId,
       html,
-      expiresAt: Date.now() + 45000,
+      expiresAt: Date.now() + 60000,
     };
     sportsStreamCache.set(cacheKey, cacheEntry);
     if (result.streamId && String(result.streamId) !== cacheKey) {
       sportsStreamCache.set(String(result.streamId), cacheEntry);
     }
+    return html;
+  })();
 
+  inFlightStreamFetches.set(cacheKey, fetchPromise);
+  try {
+    const html = await fetchPromise;
     res.removeHeader("Content-Security-Policy");
     res.removeHeader("X-Frame-Options");
     res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Cache-Control", "public, max-age=10, s-maxage=30, stale-while-revalidate=15");
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     return res.send(html);
   } catch (err) {
@@ -1561,69 +1590,20 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
           <p style="font-size:10px;color:#64748b">Auto-reconnecting...</p>
         </div>
         <script>
-          setTimeout(function() { window.location.reload(); }, 1500);
+          setTimeout(function() {
+            const url = new URL(window.location.href);
+            url.searchParams.set('fresh', '1');
+            url.searchParams.set('t', Date.now());
+            window.location.href = url.toString();
+          }, 1500);
         </script>
       </body></html>
     `);
+  } finally {
+    inFlightStreamFetches.delete(cacheKey);
   }
 });
 
-app.get("/api/debug/test-stream-ip", async (req, res) => {
-  try {
-    const ipRes = await axios.get("https://api.ipify.org?format=json");
-    const myIp = ipRes.data?.ip;
-
-    const token = await getDemoToken();
-    const watchRes = await axios.post(
-      "https://nice444.com/api/exchange/streaming/exchEventsWatchLink",
-      { streamId: "36263556", timestamp: Date.now() },
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Origin: "https://nice444.com",
-          Referer: "https://nice444.com/",
-          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-          "X-Forwarded-For": "103.211.53.1",
-          "CF-Connecting-IP": "103.211.53.1",
-        },
-        timeout: 6000,
-      }
-    );
-    const watchUrl = watchRes.data?.data?.url;
-
-    let ltveStatus = null;
-    let ltveSnippet = null;
-    let ltveErr = null;
-    try {
-      const pageRes = await axios.get(watchUrl, {
-        headers: {
-          Origin: "https://nice444.com",
-          Referer: "https://nice444.com/",
-          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-          "X-Forwarded-For": "103.211.53.1",
-          "CF-Connecting-IP": "103.211.53.1",
-          "X-Real-IP": "103.211.53.1",
-        },
-        timeout: 6000,
-      });
-      ltveStatus = pageRes.status;
-      ltveSnippet = typeof pageRes.data === "string" ? pageRes.data.substring(0, 300) : "not string";
-    } catch (e) {
-      ltveStatus = e.response?.status || e.message;
-      ltveErr = typeof e.response?.data === "string" ? e.response.data.substring(0, 300) : JSON.stringify(e.response?.data || '');
-    }
-
-    return res.json({
-      vercelOutboundIp: myIp,
-      watchUrl,
-      ltveStatus,
-      ltveSnippet,
-      ltveErr,
-    });
-  } catch (err) {
-    return res.status(500).json({ error: err.message, stack: err.stack });
-  }
-});
 
 app.get("/api/media/news", async (req, res) => {
   const result = await proxyRequest("/api/exchange/news/exchangeNews");

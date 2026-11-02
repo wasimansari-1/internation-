@@ -18,6 +18,112 @@ const formatSize = (size) => {
   return `${Math.round(num)}`;
 };
 
+const MemoizedLiveTvPlayer = React.memo(function MemoizedLiveTvPlayer({
+  eventId,
+  sportId,
+  watchUrl,
+}) {
+  const [streamSrc, setStreamSrc] = useState(
+    `/api/stream/sports-tv-proxy/${eventId}?sportId=${sportId}`
+  );
+
+  const handleRefresh = () => {
+    setStreamSrc(
+      `/api/stream/sports-tv-proxy/${eventId}?sportId=${sportId}&fresh=1&t=${Date.now()}`
+    );
+  };
+
+  const handlePopout = () => {
+    const targetUrl = watchUrl || `/api/stream/sports-tv-proxy/${eventId}?sportId=${sportId}`;
+    window.open(
+      targetUrl,
+      'LiveMatchPlayer',
+      'width=720,height=420,menubar=no,toolbar=no,location=no,status=no'
+    );
+  };
+
+  return (
+    <div style={{ width: '100%', height: '220px', background: '#000000', position: 'relative' }}>
+      <iframe
+        id="live-stream-frame"
+        src={streamSrc}
+        style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
+        allow="autoplay; fullscreen; encrypted-media"
+        title="Live Match Stream"
+      />
+      <div
+        style={{
+          position: 'absolute',
+          top: '6px',
+          right: '8px',
+          display: 'flex',
+          gap: '6px',
+          zIndex: 10
+        }}
+      >
+        <button
+          onClick={handlePopout}
+          style={{
+            background: 'rgba(37, 99, 235, 0.88)',
+            color: '#ffffff',
+            border: '1px solid rgba(255,255,255,0.3)',
+            borderRadius: '4px',
+            padding: '3px 8px',
+            fontSize: '10px',
+            fontWeight: 700,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '3px'
+          }}
+          title="Open in HD Floating Window (Zero Lag)"
+        >
+          ⚡ HD Popout
+        </button>
+        <button
+          onClick={handleRefresh}
+          style={{
+            background: 'rgba(0,0,0,0.65)',
+            color: '#e2e8f0',
+            border: '1px solid rgba(255,255,255,0.2)',
+            borderRadius: '4px',
+            padding: '3px 8px',
+            fontSize: '10px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '3px'
+          }}
+          title="Refresh Stream"
+        >
+          🔄 Refresh
+        </button>
+      </div>
+      {watchUrl && (
+        <a
+          href={watchUrl}
+          target="_blank"
+          rel="noreferrer"
+          style={{
+            position: 'absolute',
+            bottom: '6px',
+            right: '8px',
+            background: 'rgba(0,0,0,0.7)',
+            color: '#94a3b8',
+            padding: '2px 8px',
+            borderRadius: '4px',
+            fontSize: '10px',
+            textDecoration: 'none',
+            zIndex: 5
+          }}
+        >
+          Direct Stream ↗
+        </a>
+      )}
+    </div>
+  );
+});
+
 export default function MatchDetailTablesView({ event, onBack }) {
   const [activePill, setActivePill] = useState('All');
   const [loading, setLoading] = useState(true);
@@ -131,56 +237,68 @@ export default function MatchDetailTablesView({ event, onBack }) {
 
     // Check Match Odds updates
     if (data.matchOdds && Array.isArray(data.matchOdds.runners)) {
+      let moChanged = false;
       data.matchOdds.runners.forEach((r) => {
         const prev = prevRatesRef.current[`mo_${r.selectionId}`];
-        if (prev && r.back?.price !== null && prev.backPrice !== r.back?.price) {
-          newFlashBack.add(`mo_b_${r.selectionId}`);
+        if (!prev || prev.backPrice !== r.back?.price || prev.layPrice !== r.lay?.price) {
+          moChanged = true;
+          if (prev && r.back?.price !== null && prev.backPrice !== r.back?.price) {
+            newFlashBack.add(`mo_b_${r.selectionId}`);
+          }
+          if (prev && r.lay?.price !== null && prev.layPrice !== r.lay?.price) {
+            newFlashLay.add(`mo_l_${r.selectionId}`);
+          }
+          prevRatesRef.current[`mo_${r.selectionId}`] = {
+            backPrice: r.back?.price,
+            layPrice: r.lay?.price
+          };
         }
-        if (prev && r.lay?.price !== null && prev.layPrice !== r.lay?.price) {
-          newFlashLay.add(`mo_l_${r.selectionId}`);
-        }
-        prevRatesRef.current[`mo_${r.selectionId}`] = {
-          backPrice: r.back?.price,
-          layPrice: r.lay?.price
-        };
       });
-      setMatchOdds(data.matchOdds);
+      if (moChanged) setMatchOdds(data.matchOdds);
     }
 
     // Check Bookmaker updates
     if (data.bookmaker && Array.isArray(data.bookmaker.runners)) {
+      let bmChanged = false;
       data.bookmaker.runners.forEach((r) => {
         const prev = prevRatesRef.current[`bm_${r.selectionId}`];
-        if (prev && r.back?.price !== null && prev.backPrice !== r.back?.price) {
-          newFlashBack.add(`bm_b_${r.selectionId}`);
+        if (!prev || prev.backPrice !== r.back?.price || prev.layPrice !== r.lay?.price) {
+          bmChanged = true;
+          if (prev && r.back?.price !== null && prev.backPrice !== r.back?.price) {
+            newFlashBack.add(`bm_b_${r.selectionId}`);
+          }
+          if (prev && r.lay?.price !== null && prev.layPrice !== r.lay?.price) {
+            newFlashLay.add(`bm_l_${r.selectionId}`);
+          }
+          prevRatesRef.current[`bm_${r.selectionId}`] = {
+            backPrice: r.back?.price,
+            layPrice: r.lay?.price
+          };
         }
-        if (prev && r.lay?.price !== null && prev.layPrice !== r.lay?.price) {
-          newFlashLay.add(`bm_l_${r.selectionId}`);
-        }
-        prevRatesRef.current[`bm_${r.selectionId}`] = {
-          backPrice: r.back?.price,
-          layPrice: r.lay?.price
-        };
       });
-      setBookmaker(data.bookmaker);
+      if (bmChanged) setBookmaker(data.bookmaker);
     }
 
     // Check Live Fancy updates
     if (Array.isArray(data.fancy) && data.fancy.length > 0) {
+      let fcChanged = false;
       data.fancy.forEach((f) => {
         const prev = prevRatesRef.current[`fc_${f.marketId}`];
-        if (prev && prev.yesPrice !== f.yes?.price) {
-          newFlashBack.add(`fc_y_${f.marketId}`);
+        if (!prev || prev.yesPrice !== f.yes?.price || prev.noPrice !== f.no?.price) {
+          fcChanged = true;
+          if (prev && prev.yesPrice !== f.yes?.price) {
+            newFlashBack.add(`fc_y_${f.marketId}`);
+          }
+          if (prev && prev.noPrice !== f.no?.price) {
+            newFlashLay.add(`fc_n_${f.marketId}`);
+          }
+          prevRatesRef.current[`fc_${f.marketId}`] = {
+            yesPrice: f.yes?.price,
+            noPrice: f.no?.price
+          };
         }
-        if (prev && prev.noPrice !== f.no?.price) {
-          newFlashLay.add(`fc_n_${f.marketId}`);
-        }
-        prevRatesRef.current[`fc_${f.marketId}`] = {
-          yesPrice: f.yes?.price,
-          noPrice: f.no?.price
-        };
       });
-      setFancyMarkets(data.fancy);
+      if (fcChanged) setFancyMarkets(data.fancy);
     }
 
     if (newFlashBack.size > 0 || newFlashLay.size > 0) {
@@ -413,61 +531,11 @@ export default function MatchDetailTablesView({ event, onBack }) {
             />
           </div>
         ) : (
-          <div style={{ width: '100%', height: '220px', background: '#000000', position: 'relative' }}>
-            <iframe
-              id="live-stream-frame"
-              src={`/api/stream/sports-tv-proxy/${event.exEventId || event._id}?sportId=${event.sportId || '4'}`}
-              style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
-              allow="autoplay; fullscreen; encrypted-media"
-              title="Live Match Stream"
-            />
-            <button
-              onClick={() => {
-                const ifr = document.getElementById('live-stream-frame');
-                if (ifr) ifr.src = `/api/stream/sports-tv-proxy/${event.exEventId || event._id}?sportId=${event.sportId || '4'}&t=${Date.now()}`;
-              }}
-              style={{
-                position: 'absolute',
-                top: '6px',
-                right: '8px',
-                background: 'rgba(0,0,0,0.65)',
-                color: '#e2e8f0',
-                border: '1px solid rgba(255,255,255,0.2)',
-                borderRadius: '4px',
-                padding: '3px 8px',
-                fontSize: '10px',
-                cursor: 'pointer',
-                zIndex: 10,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '3px'
-              }}
-              title="Refresh Stream"
-            >
-              🔄 Refresh Stream
-            </button>
-            {watchUrl && (
-              <a
-                href={watchUrl}
-                target="_blank"
-                rel="noreferrer"
-                style={{
-                  position: 'absolute',
-                  bottom: '6px',
-                  right: '8px',
-                  background: 'rgba(0,0,0,0.7)',
-                  color: '#94a3b8',
-                  padding: '2px 8px',
-                  borderRadius: '4px',
-                  fontSize: '10px',
-                  textDecoration: 'none',
-                  zIndex: 5
-                }}
-              >
-                Direct Stream ↗
-              </a>
-            )}
-          </div>
+          <MemoizedLiveTvPlayer
+            eventId={event.exEventId || event._id}
+            sportId={event.sportId || '4'}
+            watchUrl={watchUrl}
+          />
         )}
       </div>
 
