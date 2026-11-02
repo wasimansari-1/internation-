@@ -1163,11 +1163,6 @@ const resolveBetfairStreamId = async (rawId, sportId = "4") => {
 const STABLE_STREAM_IP = "49.36.142.88";
 
 const getClientIp = (req) => {
-  const forwarded = (req?.headers?.["x-forwarded-for"] || "").split(",")[0].trim();
-  const rawIp = forwarded || req?.headers?.["x-real-ip"] || req?.socket?.remoteAddress || "";
-  if (rawIp && !rawIp.includes(":") && !rawIp.startsWith("127.") && !rawIp.startsWith("10.") && !rawIp.startsWith("172.") && !rawIp.startsWith("192.")) {
-    return rawIp;
-  }
   return STABLE_STREAM_IP;
 };
 
@@ -1198,7 +1193,6 @@ const fetchSportsWatchLink = async (rawId, sportId = "4", clientIp = "", forceRe
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
       "X-Forwarded-For": forwardedIp,
       "X-Real-IP": forwardedIp,
-      "CF-Connecting-IP": forwardedIp,
     };
     return await axios.post(
       "https://nice444.com/api/exchange/streaming/exchEventsWatchLink",
@@ -1262,9 +1256,8 @@ app.all("/api/stream/ltve-fetch-proxy", async (req, res) => {
       "Referer": parentReferer,
       "User-Agent":
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-      "X-Forwarded-For": forwardedIp,
-      "X-Real-IP": forwardedIp,
-      "CF-Connecting-IP": forwardedIp,
+      "X-Forwarded-For": STABLE_STREAM_IP,
+      "X-Real-IP": STABLE_STREAM_IP,
     };
     const upstreamRes = await axios({
       method: req.method,
@@ -1383,9 +1376,8 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
             Referer: "https://nice444.com/",
             "User-Agent":
               "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-            "X-Forwarded-For": clientIp,
-            "CF-Connecting-IP": clientIp,
-            "X-Real-IP": clientIp,
+            "X-Forwarded-For": STABLE_STREAM_IP,
+            "X-Real-IP": STABLE_STREAM_IP,
           },
           timeout: 8000,
         });
