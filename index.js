@@ -1126,14 +1126,128 @@ app.get("/api/casino/live-odds/:gameId", async (req, res) => {
   }
 });
 
+// --- REAL-TIME SPORTS LIVE TV STREAM PROXY (100% UNLOCKED & CSP-FREE) ---
+const resolveBetfairStreamId = async (rawId, sportId = "4") => {
+  const strId = String(rawId || "").trim();
+  if (!strId) return "";
+  if (
+    strId.length <= 9 &&
+    !strId.startsWith("200") &&
+    !strId.startsWith("400") &&
+    !strId.startsWith("100")
+  ) {
+    return strId;
+  }
+  try {
+    const marketRes = await proxyRequest(
+      "/api/exchange/markets/getMarketsEventList",
+      {
+        eventId: strId,
+        sportId: String(sportId || "4"),
+      },
+    );
+    const betfairId =
+      marketRes.data?.data?.matchOddsData?.[0]?.eventId ||
+      marketRes.data?.data?.data?.matchOddsData?.[0]?.eventId;
+    if (betfairId) return String(betfairId);
+  } catch (e) {}
+  return strId;
+};
+
+const fetchSportsWatchLink = async (rawId, sportId = "4") => {
+  const streamId = await resolveBetfairStreamId(rawId, sportId);
+  let token = await getDemoToken();
+  const makeRequest = async (authToken) => {
+    return await axios.post(
+      "https://nice444.com/api/exchange/streaming/exchEventsWatchLink",
+      { streamId: String(streamId), timestamp: Date.now() },
+      {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+          Origin: "https://nice444.com",
+          Referer: "https://nice444.com/",
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        },
+        timeout: 6000,
+      },
+    );
+  };
+
+  let upstreamRes;
+  try {
+    upstreamRes = await makeRequest(token);
+  } catch (err) {
+    if (err.response?.status === 401 || err.response?.status === 422) {
+      token = await getDemoToken(true);
+      upstreamRes = await makeRequest(token);
+    } else {
+      throw err;
+    }
+  }
+
+  const url = upstreamRes.data?.data?.url || "";
+  return { url, streamId };
+};
+
 app.post("/api/stream/watch-link", async (req, res) => {
-  const { streamId } = req.body;
-  const timestamp = Date.now();
-  const result = await proxyRequest(
-    "/api/exchange/streaming/exchEventsWatchLink",
-    { streamId, timestamp },
-  );
-  res.status(result.statusCode).json(result);
+  const { streamId, sportId } = req.body;
+  try {
+    const result = await fetchSportsWatchLink(streamId, sportId);
+    if (!result.url) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Stream URL not found", url: "" });
+    }
+    return res.json({ success: true, data: result });
+  } catch (err) {
+    return res.status(err.response?.status || 500).json({
+      success: false,
+      error: err.response?.data?.meta?.message || err.message,
+      url: "",
+    });
+  }
+});
+
+app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
+  const { eventId } = req.params;
+  const sportId = req.query.sportId || "4";
+  try {
+    const result = await fetchSportsWatchLink(eventId, sportId);
+    if (!result.url) {
+      return res.status(404).send(`
+        <!DOCTYPE html><html><body style="background:#000;color:#94a3b8;font-family:sans-serif;display:grid;place-items:center;height:100vh;margin:0">
+          <div style="text-align:center"><h3>📺 No Live Broadcast</h3><p style="font-size:12px">No live TV feed found for this event.</p></div>
+        </body></html>
+      `);
+    }
+
+    const pageRes = await axios.get(result.url, {
+      headers: {
+        Origin: "https://nice444.com",
+        Referer: "https://nice444.com/",
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+      },
+      timeout: 8000,
+    });
+
+    let html = pageRes.data;
+    html = html.replace("<head>", `<head><base href="https://tv.ltve.live/">`);
+    html = html.replace(/"devtoolsGuard":\s*true/, '"devtoolsGuard": false');
+
+    res.removeHeader("Content-Security-Policy");
+    res.removeHeader("X-Frame-Options");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    return res.send(html);
+  } catch (err) {
+    console.error(`Sports TV proxy error for ${eventId}:`, err.message);
+    return res.status(500).send(`
+      <!DOCTYPE html><html><body style="background:#000;color:#ef4444;font-family:sans-serif;display:grid;place-items:center;height:100vh;margin:0">
+        <div style="text-align:center"><h3>⚠️ Live Stream Connecting</h3><p style="font-size:12px">Waiting for live video feed...</p></div>
+      </body></html>
+    `);
+  }
 });
 
 app.get("/api/media/news", async (req, res) => {

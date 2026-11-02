@@ -106,10 +106,12 @@ export default function MatchDetailTablesView({ event, onBack }) {
   };
 
   // 2. Fetch live TV watch link
-  const fetchWatchLink = async () => {
+  const fetchWatchLink = async (explicitStreamId) => {
     try {
+      const targetId = explicitStreamId || event.exEventId || event._id;
       const res = await axios.post('/api/stream/watch-link', {
-        streamId: event.exEventId || event._id
+        streamId: targetId,
+        sportId: String(event.sportId || '4')
       });
       if (res.data?.data?.url) {
         setWatchUrl(res.data.data.url);
@@ -411,30 +413,33 @@ export default function MatchDetailTablesView({ event, onBack }) {
             />
           </div>
         ) : (
-          <div style={{ width: '100%', height: '220px', background: '#000000' }}>
-            {watchUrl ? (
-              <iframe
-                src={watchUrl}
-                style={{ width: '100%', height: '100%', border: 'none' }}
-                allow="autoplay; fullscreen"
-                title="Live Match Stream"
-              />
-            ) : (
-              <div
+          <div style={{ width: '100%', height: '220px', background: '#000000', position: 'relative' }}>
+            <iframe
+              src={`/api/stream/sports-tv-proxy/${event.exEventId || event._id}?sportId=${event.sportId || '4'}`}
+              style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
+              allow="autoplay; fullscreen; encrypted-media"
+              title="Live Match Stream"
+            />
+            {watchUrl && (
+              <a
+                href={watchUrl}
+                target="_blank"
+                rel="noreferrer"
                 style={{
-                  height: '100%',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#94a3b8'
+                  position: 'absolute',
+                  bottom: '6px',
+                  right: '8px',
+                  background: 'rgba(0,0,0,0.7)',
+                  color: '#94a3b8',
+                  padding: '2px 8px',
+                  borderRadius: '4px',
+                  fontSize: '10px',
+                  textDecoration: 'none',
+                  zIndex: 5
                 }}
               >
-                <Tv size={28} style={{ color: '#475569', marginBottom: '8px' }} />
-                <span style={{ fontSize: '13px', fontWeight: 700 }}>
-                  Connecting Live Stream...
-                </span>
-              </div>
+                Direct Stream ↗
+              </a>
             )}
           </div>
         )}
