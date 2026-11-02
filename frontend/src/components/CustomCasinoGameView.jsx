@@ -21,36 +21,10 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
   const [timeLeft, setTimeLeft] = useState(0);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [watchUrl, setWatchUrl] = useState('');
-  const [dealProgress, setDealProgress] = useState(0); // 0 = all face-down, 1 = card 1 open, 2 = card 2 open, 3 = all open
 
   const containerRef = useRef(null);
   const timerRef = useRef(null);
-  const dealIntervalRef = useRef(null);
   const prevRoundIdRef = useRef(null);
-
-  // Progressive Card Deal Sequence when betting closes (timeLeft reaches 0)
-  useEffect(() => {
-    if (dealIntervalRef.current) clearInterval(dealIntervalRef.current);
-
-    if (timeLeft > 0) {
-      // Betting is active: all cards face down
-      setDealProgress(0);
-    } else {
-      // Betting closed: Dealer begins dealing cards sequentially
-      let step = 0;
-      dealIntervalRef.current = setInterval(() => {
-        step += 1;
-        setDealProgress(step);
-        if (step >= 4) {
-          clearInterval(dealIntervalRef.current);
-        }
-      }, 1800);
-    }
-
-    return () => {
-      if (dealIntervalRef.current) clearInterval(dealIntervalRef.current);
-    };
-  }, [timeLeft === 0]);
 
   // 1. Fetch Decrypted Recent Results
   const fetchRecentResults = async () => {
@@ -181,33 +155,23 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
   const cardsArr = oddsData?.cardsArr || {};
   const cardEntries = Object.entries(cardsArr).filter(([k]) => k !== 'eventId' && k !== 'roundId');
 
-  // Extract cards dynamically with progressive reveal:
-  // While betting is open (timeLeft > 0), cards are face down (/card/0.png)
-  // When betting closes (timeLeft === 0), cards open progressively one-by-one!
+  // Extract real cards directly from live scraped API data
+  // When card is "0" or "1" (face down in API), getCardImg renders /card/0.png
+  // When the dealer flips the card, the API updates and our UI card flips synchronously
   const getCardsList = (val) => {
     if (!val) return ['0'];
     let list = [];
     if (Array.isArray(val)) {
       list = val.length > 0 ? val : ['0'];
     } else if (typeof val === 'object') {
-      list = [val.card_1, val.card_2, val.card_3].filter(Boolean);
+      list = [val.card_1, val.card_2, val.card_3, val.card_4, val.card_5, val.card_6].filter(
+        (c) => c !== undefined && c !== null
+      );
     } else if (typeof val === 'string') {
       list = [val];
     }
     if (list.length === 0) list = ['0'];
-
-    // While countdown timer is active, cards are face down
-    if (timeLeft > 0) {
-      return list.map(() => '0');
-    }
-
-    // When timer hits 0 (dealer dealing), reveal cards progressively
-    return list.map((card, idx) => {
-      if (idx < dealProgress) {
-        return card;
-      }
-      return '0';
-    });
+    return list;
   };
 
   const getWinnerBadge = (winner) => {
