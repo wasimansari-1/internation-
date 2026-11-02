@@ -1588,6 +1588,7 @@ if (fs.existsSync(distPath)) {
 app.get("/", (req, res) => {
   const indexPath = path.join(distPath, "index.html");
   if (fs.existsSync(indexPath)) {
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     return res.sendFile(indexPath);
   }
   res.json({
@@ -1600,8 +1601,19 @@ app.get("/", (req, res) => {
 
 app.get("*", (req, res, next) => {
   if (req.path.startsWith("/api/")) return next();
+  if (
+    req.path.startsWith("/assets/") ||
+    req.path.endsWith(".js") ||
+    req.path.endsWith(".css") ||
+    req.path.endsWith(".ico") ||
+    req.path.endsWith(".png") ||
+    req.path.endsWith(".jpg")
+  ) {
+    return res.status(404).send("File Not Found");
+  }
   const indexPath = path.join(distPath, "index.html");
   if (fs.existsSync(indexPath)) {
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     return res.sendFile(indexPath);
   }
   res.status(404).json({ error: "Route not found" });
