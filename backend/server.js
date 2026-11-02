@@ -1166,7 +1166,9 @@ const getClientIp = (req) => {
   if (rawIp && !rawIp.includes(":") && !rawIp.startsWith("127.") && !rawIp.startsWith("10.") && !rawIp.startsWith("172.") && !rawIp.startsWith("192.")) {
     return rawIp;
   }
-  return "103.211.53.1";
+  const octet3 = Math.floor(Math.random() * 200 + 10);
+  const octet4 = Math.floor(Math.random() * 250 + 2);
+  return `49.36.${octet3}.${octet4}`;
 };
 
 // Global in-memory cache for sports streams to prevent single-demo account stream invalidations
@@ -1183,7 +1185,7 @@ const fetchSportsWatchLink = async (rawId, sportId = "4", clientIp = "", forceRe
     }
   }
 
-  const forwardedIp = clientIp && !clientIp.includes(":") && !clientIp.startsWith("127.") ? clientIp : "103.211.53.1";
+  const forwardedIp = clientIp || getClientIp({ headers: {} });
   let token = await getDemoToken(forceRefresh);
   const makeRequest = async (authToken) => {
     const headers = {
@@ -1294,12 +1296,24 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
   const { eventId } = req.params;
   const sportId = req.query.sportId || "4";
   const clientIp = getClientIp(req);
+  const cacheKey = String(eventId);
+
+  // Check if we already have a cached, ready-to-serve HTML payload
+  const existingCached = sportsStreamCache.get(cacheKey);
+  if (existingCached && existingCached.html && Date.now() < existingCached.expiresAt) {
+    res.removeHeader("Content-Security-Policy");
+    res.removeHeader("X-Frame-Options");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    return res.send(existingCached.html);
+  }
+
   try {
     let result;
     try {
       result = await fetchSportsWatchLink(eventId, sportId, clientIp, false);
     } catch (watchErr) {
-      throw new Error(`fetchSportsWatchLink failed: ${watchErr.response?.status || watchErr.message} ${JSON.stringify(watchErr.response?.data || '')}`);
+      throw new Error(`fetchSportsWatchLink failed: ${watchErr.response?.status || watchErr.message}`);
     }
 
     if (!result.url) {
@@ -1318,6 +1332,9 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
             Referer: "https://nice444.com/",
             "User-Agent":
               "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+            "X-Forwarded-For": clientIp,
+            "CF-Connecting-IP": clientIp,
+            "X-Real-IP": clientIp,
           },
           timeout: 8000,
         });
@@ -1332,7 +1349,7 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
         }
         return pageRes.data;
       } catch (getErr) {
-        throw new Error(`fetchStreamPage failed: ${getErr.response?.status || getErr.message} ${JSON.stringify(getErr.response?.data || '')}`);
+        throw new Error(`fetchStreamPage failed: ${getErr.response?.status || getErr.message}`);
       }
     };
 
@@ -1515,6 +1532,18 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
     html = html.replace("<head>", `<head>${interceptorScript}`);
     html = html.replace(/"devtoolsGuard":\s*true/g, '"devtoolsGuard": false');
 
+    // Cache the fully transformed HTML payload in memory for 45s
+    const cacheEntry = {
+      url: result.url,
+      streamId: result.streamId,
+      html,
+      expiresAt: Date.now() + 45000,
+    };
+    sportsStreamCache.set(cacheKey, cacheEntry);
+    if (result.streamId && String(result.streamId) !== cacheKey) {
+      sportsStreamCache.set(String(result.streamId), cacheEntry);
+    }
+
     res.removeHeader("Content-Security-Policy");
     res.removeHeader("X-Frame-Options");
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -1571,6 +1600,9 @@ app.get("/api/debug/test-stream-ip", async (req, res) => {
           Origin: "https://nice444.com",
           Referer: "https://nice444.com/",
           "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+          "X-Forwarded-For": "103.211.53.1",
+          "CF-Connecting-IP": "103.211.53.1",
+          "X-Real-IP": "103.211.53.1",
         },
         timeout: 6000,
       });
