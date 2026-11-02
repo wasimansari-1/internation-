@@ -209,6 +209,16 @@ app.post("/api/sports/fancy-markets", async (req, res) => {
   res.status(result.statusCode).json(result);
 });
 
+// Real-time Fancy / Market settled results from nice444
+app.post("/api/sports/market-results", async (req, res) => {
+  const { eventId } = req.body;
+  const result = await proxyRequest(
+    "/api/exchange/results/getMarketEventResults",
+    { eventId: String(eventId) },
+  );
+  res.status(result.statusCode).json(result);
+});
+
 // --- REAL-TIME SPORTS SCOREBOARD SCRAPER (universe-score Firebase) ---
 async function getLiveScoreData(eventId, sportId = "4") {
   const coll =
@@ -258,18 +268,43 @@ async function getLiveScoreData(eventId, sportId = "4") {
       const stats = {};
       dataArr.forEach((sd) => {
         const sdf = sd.mapValue?.fields;
-        const label = sdf?.displayText?.stringValue || "";
+        const label = (sdf?.displayText?.stringValue || sdf?.iconName?.stringValue || "").trim().toUpperCase();
         const val = sdf?.value?.stringValue || "";
-        if (label) stats[label.toUpperCase()] = val;
+        if (label) stats[label] = val;
       });
+
+      // Sport-specific score normalization
+      let score = "";
+      if (String(sportId) === "1") {
+        // Football / Soccer
+        score = stats["GOAL"] || stats["SCORE"] || "0";
+      } else if (String(sportId) === "2") {
+        // Tennis
+        score = stats["SETS"] || stats["SCORE"] || "0";
+      } else {
+        // Cricket
+        score = stats["SCORE"] || "";
+      }
+
       return {
         name,
-        score: stats["SCORE"] || "",
-        overs: stats["OVS"] || "",
-        rr: stats["RR"] || "",
-        fours: stats["4S"] || "",
-        sixes: stats["6S"] || "",
+        score,
+        overs: stats["OVERS"] || stats["OVS"] || "",
+        rr: stats["RUNRATE"] || stats["RR"] || "",
+        fours: stats["FOURS"] || stats["4S"] || "",
+        sixes: stats["SIXES"] || stats["6S"] || "",
         wides: stats["WIDES"] || "",
+        // Soccer stats
+        htscore: stats["HTSCORE"] || stats["HT"] || "0",
+        corners: stats["CORNERS"] || stats["CORNER"] || "0",
+        yellowCard: stats["YELLOWCARD"] || stats["YELLOW"] || "0",
+        redCard: stats["REDCARD"] || stats["RED"] || "0",
+        // Tennis stats
+        sets: stats["SETS"] || "0",
+        set1: stats["SET1"] || "0",
+        set2: stats["SET2"] || "0",
+        set3: stats["SET3"] || "0",
+        pts: stats["PTS"] || "0",
         stats,
       };
     });
@@ -299,27 +334,34 @@ app.get("/api/sports/score/:eventId", async (req, res) => {
 
 app.get("/api/sports/scoreboard-frame/:eventId", async (req, res) => {
   const { eventId } = req.params;
-  const sportId = req.query.sportId || "4";
+  const sportId = String(req.query.sportId || "4");
   const score = await getLiveScoreData(eventId, sportId);
-  const t1 = score?.teams?.[0] || {
-    name: score?.team1Name || "Team 1",
-    score: "",
-    overs: "",
-    rr: "",
-    fours: "",
-    sixes: "",
-    wides: "",
-  };
-  const t2 = score?.teams?.[1] || {
-    name: score?.team2Name || "Team 2",
-    score: "",
-    overs: "",
-    rr: "",
-    fours: "",
-    sixes: "",
-    wides: "",
-  };
+  const t1 = score?.teams?.[0] || { name: score?.team1Name || "Team 1", score: "-", stats: {} };
+  const t2 = score?.teams?.[1] || { name: score?.team2Name || "Team 2", score: "-", stats: {} };
   const commentary = score?.statusCommentry || "";
+
+  const isSoccer = sportId === "1";
+  const isTennis = sportId === "2";
+  const icon = isSoccer ? "⚽" : isTennis ? "🎾" : "🏏";
+
+  const colHeaders = isSoccer
+    ? ['GOAL', 'HT', 'CRN', 'YEL', 'RED']
+    : isTennis
+      ? ['SETS', 'S1', 'S2', 'S3', 'PTS']
+      : ['SCORE', 'OVS', 'RR', '4S', '6S'];
+
+  const getColVals = (t) => {
+    if (isSoccer) {
+      return [t.score || "0", t.htscore || "0", t.corners || "0", t.yellowCard || "0", t.redCard || "0"];
+    }
+    if (isTennis) {
+      return [t.sets || "0", t.set1 || "0", t.set2 || "0", t.set3 || "0", t.pts || "0"];
+    }
+    return [t.score || "-", t.overs || "-", t.rr || "-", t.fours || "-", t.sixes || "-"];
+  };
+
+  const t1Vals = getColVals(t1);
+  const t2Vals = getColVals(t2);
 
   const html = `<!DOCTYPE html>
 <html>
@@ -351,45 +393,39 @@ app.get("/api/sports/scoreboard-frame/:eventId", async (req, res) => {
     <div class="header">
       <div class="powered"><span>●</span> Powered By Universe Score</div>
       <div class="cols">
-        <div class="col-item">SCORE</div>
-        <div class="col-item">OVS</div>
-        <div class="col-item">RR</div>
-        <div class="col-item">4S</div>
-        <div class="col-item">6S</div>
-        <div class="col-item">WIDES</div>
+        ${colHeaders.map(c => `<div class="col-item">${c}</div>`).join('')}
       </div>
     </div>
     <div class="team-row">
       <div class="team-left">
-        <span class="icon">⚾</span>
+        <span class="icon">${icon}</span>
         <span class="team-name" id="t1Name">${t1.name}</span>
       </div>
-      <div class="stats">
-        <div class="stat-val main" id="t1Score">${t1.score || "-"}</div>
-        <div class="stat-val" id="t1Ovs">${t1.overs || "-"}</div>
-        <div class="stat-val" id="t1Rr">${t1.rr || "-"}</div>
-        <div class="stat-val" id="t1Fours">${t1.fours || "-"}</div>
-        <div class="stat-val" id="t1Sixes">${t1.sixes || "-"}</div>
-        <div class="stat-val" id="t1Wides">${t1.wides || "-"}</div>
+      <div class="stats" id="t1Stats">
+        <div class="stat-val main">${t1Vals[0]}</div>
+        ${t1Vals.slice(1).map(v => `<div class="stat-val">${v}</div>`).join('')}
       </div>
     </div>
     <div class="team-row">
       <div class="team-left">
-        <span class="icon">🏏</span>
+        <span class="icon">${icon}</span>
         <span class="team-name" id="t2Name">${t2.name}</span>
       </div>
-      <div class="stats">
-        <div class="stat-val main" id="t2Score">${t2.score || "-"}</div>
-        <div class="stat-val" id="t2Ovs">${t2.overs || "-"}</div>
-        <div class="stat-val" id="t2Rr">${t2.rr || "-"}</div>
-        <div class="stat-val" id="t2Fours">${t2.fours || "-"}</div>
-        <div class="stat-val" id="t2Sixes">${t2.sixes || "-"}</div>
-        <div class="stat-val" id="t2Wides">${t2.wides || "-"}</div>
+      <div class="stats" id="t2Stats">
+        <div class="stat-val main">${t2Vals[0]}</div>
+        ${t2Vals.slice(1).map(v => `<div class="stat-val">${v}</div>`).join('')}
       </div>
     </div>
-    <div class="footer" id="commentary">${commentary}</div>
+    <div class="footer" id="commentary">${commentary || 'Match Live in Play'}</div>
   </div>
   <script>
+    const isSoccer = ${isSoccer};
+    const isTennis = ${isTennis};
+    function getVals(t) {
+      if (isSoccer) return [t.score || '0', t.htscore || '0', t.corners || '0', t.yellowCard || '0', t.redCard || '0'];
+      if (isTennis) return [t.sets || '0', t.set1 || '0', t.set2 || '0', t.set3 || '0', t.pts || '0'];
+      return [t.score || '-', t.overs || '-', t.rr || '-', t.fours || '-', t.sixes || '-'];
+    }
     setInterval(async () => {
       try {
         const res = await fetch('/api/sports/score/${eventId}?sportId=${sportId}');
@@ -399,25 +435,15 @@ app.get("/api/sports/scoreboard-frame/:eventId", async (req, res) => {
           const t1 = d.teams?.[0] || {};
           const t2 = d.teams?.[1] || {};
           document.getElementById('t1Name').textContent = t1.name || d.team1Name;
-          document.getElementById('t1Score').textContent = t1.score || '-';
-          document.getElementById('t1Ovs').textContent = t1.overs || '-';
-          document.getElementById('t1Rr').textContent = t1.rr || '-';
-          document.getElementById('t1Fours').textContent = t1.fours || '-';
-          document.getElementById('t1Sixes').textContent = t1.sixes || '-';
-          document.getElementById('t1Wides').textContent = t1.wides || '-';
-
           document.getElementById('t2Name').textContent = t2.name || d.team2Name;
-          document.getElementById('t2Score').textContent = t2.score || '-';
-          document.getElementById('t2Ovs').textContent = t2.overs || '-';
-          document.getElementById('t2Rr').textContent = t2.rr || '-';
-          document.getElementById('t2Fours').textContent = t2.fours || '-';
-          document.getElementById('t2Sixes').textContent = t2.sixes || '-';
-          document.getElementById('t2Wides').textContent = t2.wides || '-';
-
-          document.getElementById('commentary').textContent = d.statusCommentry || '';
+          const v1 = getVals(t1);
+          const v2 = getVals(t2);
+          document.getElementById('t1Stats').innerHTML = '<div class="stat-val main">' + v1[0] + '</div>' + v1.slice(1).map(v => '<div class="stat-val">' + v + '</div>').join('');
+          document.getElementById('t2Stats').innerHTML = '<div class="stat-val main">' + v2[0] + '</div>' + v2.slice(1).map(v => '<div class="stat-val">' + v + '</div>').join('');
+          if (d.statusCommentry) document.getElementById('commentary').textContent = d.statusCommentry;
         }
       } catch (e) {}
-    }, 2000);
+    }, 2500);
   </script>
 </body>
 </html>`;

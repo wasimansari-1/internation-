@@ -147,6 +147,9 @@ export default function MatchDetailTablesView({ event, onBack }) {
   const [matchOdds, setMatchOdds] = useState(null);
   const [bookmaker, setBookmaker] = useState(null);
   const [fancyMarkets, setFancyMarkets] = useState([]);
+  const [sportsbook, setSportsbook] = useState([]);
+  const [fancyResults, setFancyResults] = useState([]);
+  const [loadingResults, setLoadingResults] = useState(false);
   const [selectedBet, setSelectedBet] = useState(null);
 
   // Rate change flashes
@@ -164,6 +167,7 @@ export default function MatchDetailTablesView({ event, onBack }) {
       const data = res.data?.data?.data || res.data?.data;
       if (data) {
         if (Array.isArray(data.fancyData)) setFancyMarkets(data.fancyData);
+        if (Array.isArray(data.sportsbookData)) setSportsbook(data.sportsbookData);
         if (data.matchOddsData && data.matchOddsData.length > 0) {
           const mo = data.matchOddsData[0];
           const runners = mo.oddsData?.runners || [];
@@ -219,6 +223,24 @@ export default function MatchDetailTablesView({ event, onBack }) {
       console.error('Error fetching market snapshot:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 1b. Fetch settled fancy results
+  const fetchFancyResults = async () => {
+    setLoadingResults(true);
+    try {
+      const res = await axios.post('/api/sports/market-results', {
+        eventId: event.exEventId || event._id
+      });
+      const results = res.data?.data?.data || res.data?.data || [];
+      if (Array.isArray(results)) {
+        setFancyResults(results);
+      }
+    } catch (e) {
+      console.warn('Failed to load market results:', e);
+    } finally {
+      setLoadingResults(false);
     }
   };
 
@@ -325,6 +347,7 @@ export default function MatchDetailTablesView({ event, onBack }) {
   // 3. Direct REST API live rates: 1s for in-play, 5s for upcoming / non-in-play
   useEffect(() => {
     fetchMarketSnapshot();
+    fetchFancyResults();
 
     const eventId = String(event.exEventId || event._id);
     const sportId = String(event.sportId || '4');
@@ -561,7 +584,7 @@ export default function MatchDetailTablesView({ event, onBack }) {
           scrollbarWidth: 'none'
         }}
       >
-        {['All', 'Match Odds', 'Bookmaker', 'Fancy'].map((pill) => (
+        {['All', 'Match Odds', 'Bookmaker', 'Fancy', 'Sportsbook', 'Results'].map((pill) => (
           <button
             key={pill}
             onClick={() => setActivePill(pill)}
@@ -1077,6 +1100,97 @@ export default function MatchDetailTablesView({ event, onBack }) {
               No Fancy markets active for this event.
             </div>
           ) : null}
+        </div>
+      )}
+
+      {/* Sportsbook Section */}
+      {(activePill === 'All' || activePill === 'Sportsbook') && (
+        <div style={{ padding: '8px 12px' }}>
+          {sportsbook.length > 0 ? (
+            <div style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid #cbd5e1', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+              <div style={{ background: '#090d16', color: '#fff', padding: '8px 12px', fontSize: '12px', fontWeight: 800, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>SPORTSBOOK MARKETS ({sportsbook.length})</span>
+                <span style={{ fontSize: '10px', color: '#10b981', fontWeight: 700 }}>● REAL-TIME</span>
+              </div>
+              {sportsbook.map((sb, sbIdx) => {
+                const runners = sb.oddsData?.runners || [];
+                const names = sb.runnersData || {};
+                return (
+                  <div key={sb.marketId || sbIdx} style={{ borderBottom: '1px solid #e2e8f0', background: '#fff' }}>
+                    <div style={{ padding: '6px 12px', background: '#f1f5f9', fontWeight: 800, fontSize: '11px', color: '#334155', borderBottom: '1px solid #cbd5e1' }}>
+                      {sb.marketName || 'Sportsbook'} <span style={{ fontWeight: 400, color: '#64748b' }}>(Min/Max {sb.min || 100} - {sb.max || 100000})</span>
+                    </div>
+                    {runners.map((r, rIdx) => {
+                      const runnerName = names[String(r.selectionId)] || `Option ${rIdx + 1}`;
+                      const backPrice = r.price?.back?.[0]?.price ?? '-';
+                      const isSusp = r.status === 'SUSPENDED';
+                      return (
+                        <div key={r.selectionId || rIdx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid #f1f5f9' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a' }}>{runnerName}</span>
+                          <button
+                            onClick={() => !isSusp && setSelectedBet({ side: 'BACK', runner: `${sb.marketName} - ${runnerName}`, rate: backPrice, size: r.price?.back?.[0]?.size || 100 })}
+                            disabled={isSusp}
+                            style={{
+                              background: '#72bbef',
+                              border: 'none',
+                              borderRadius: '4px',
+                              width: '64px',
+                              height: '32px',
+                              fontWeight: 900,
+                              fontSize: '13px',
+                              cursor: isSusp ? 'default' : 'pointer',
+                              color: '#000'
+                            }}
+                          >
+                            {isSusp ? '-' : backPrice}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          ) : activePill === 'Sportsbook' ? (
+            <div style={{ padding: '20px', textAlign: 'center', color: '#64748b', fontSize: '12px' }}>
+              No Sportsbook markets active for this event.
+            </div>
+          ) : null}
+        </div>
+      )}
+
+      {/* Fancy / Settled Results Section */}
+      {(activePill === 'All' || activePill === 'Results') && (
+        <div style={{ padding: '8px 12px' }}>
+          <div style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid #cbd5e1', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+            <div style={{ background: '#090d16', color: '#fff', padding: '8px 12px', fontSize: '12px', fontWeight: 800, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>SETTLED FANCY / SESSION RESULTS</span>
+              <button onClick={fetchFancyResults} style={{ background: '#2563eb', border: 'none', color: '#fff', borderRadius: '4px', padding: '2px 8px', fontSize: '10px', fontWeight: 700, cursor: 'pointer' }}>
+                Refresh Results
+              </button>
+            </div>
+            {loadingResults ? (
+              <div style={{ padding: '16px', textAlign: 'center', color: '#64748b', fontSize: '11px' }}>Loading results...</div>
+            ) : fancyResults.length > 0 ? (
+              fancyResults.map((res, rIdx) => (
+                <div key={res.marketId || rIdx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid #f1f5f9', background: rIdx % 2 === 0 ? '#fff' : '#f8fafc' }}>
+                  <div>
+                    <div style={{ fontSize: '12px', fontWeight: 800, color: '#0f172a' }}>{res.marketName || res.sessionName || `Session ${rIdx + 1}`}</div>
+                    <div style={{ fontSize: '10px', color: '#64748b' }}>{res.settledTime || res.createdAt || 'Settled'}</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ background: '#10b981', color: '#fff', padding: '2px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 900, display: 'inline-block' }}>
+                      {res.result || res.declaredRun || res.outcome || 'PASS'}
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div style={{ padding: '16px', textAlign: 'center', color: '#64748b', fontSize: '11px' }}>
+                No settled fancy results for this match yet.
+              </div>
+            )}
+          </div>
         </div>
       )}
 
