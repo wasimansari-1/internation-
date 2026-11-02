@@ -1161,29 +1161,16 @@ const resolveBetfairStreamId = async (rawId, sportId = "4") => {
 };
 
 const getClientIp = (req) => {
-  const forwarded = (req.headers["x-forwarded-for"] || "").split(",")[0].trim();
-  const rawIp = forwarded || req.headers["x-real-ip"] || req.socket?.remoteAddress || "";
-  if (rawIp && !rawIp.includes(":") && !rawIp.startsWith("127.") && !rawIp.startsWith("10.") && !rawIp.startsWith("172.") && !rawIp.startsWith("192.")) {
-    return rawIp;
-  }
-  return "103.211.53.1";
+  return (
+    (req.headers["x-forwarded-for"] || "").split(",")[0].trim() ||
+    req.headers["x-real-ip"] ||
+    req.socket?.remoteAddress ||
+    ""
+  );
 };
 
-// Global in-memory cache for sports streams to prevent single-demo account stream invalidations
-const sportsStreamCache = new Map(); // key: streamId -> { url, streamId, expiresAt }
-
-const fetchSportsWatchLink = async (rawId, sportId = "4", clientIp = "", forceRefresh = false) => {
+const fetchSportsWatchLink = async (rawId, sportId = "4", clientIp = "") => {
   const streamId = await resolveBetfairStreamId(rawId, sportId);
-  const cacheKey = String(streamId || rawId);
-
-  if (!forceRefresh && sportsStreamCache.has(cacheKey)) {
-    const cached = sportsStreamCache.get(cacheKey);
-    if (Date.now() < cached.expiresAt && cached.url) {
-      return { url: cached.url, streamId };
-    }
-  }
-
-  const forwardedIp = clientIp && !clientIp.includes(":") && !clientIp.startsWith("127.") ? clientIp : "103.211.53.1";
   let token = await getDemoToken();
   const makeRequest = async (authToken) => {
     const headers = {
@@ -1192,10 +1179,12 @@ const fetchSportsWatchLink = async (rawId, sportId = "4", clientIp = "", forceRe
       Referer: "https://nice444.com/",
       "User-Agent":
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-      "X-Forwarded-For": forwardedIp,
-      "X-Real-IP": forwardedIp,
-      "CF-Connecting-IP": forwardedIp,
     };
+    if (clientIp) {
+      headers["X-Forwarded-For"] = clientIp;
+      headers["X-Real-IP"] = clientIp;
+      headers["CF-Connecting-IP"] = clientIp;
+    }
     return await axios.post(
       "https://nice444.com/api/exchange/streaming/exchEventsWatchLink",
       { streamId: String(streamId), timestamp: Date.now() },
@@ -1219,14 +1208,7 @@ const fetchSportsWatchLink = async (rawId, sportId = "4", clientIp = "", forceRe
   }
 
   const url = upstreamRes.data?.data?.url || "";
-  const entry = { url, streamId, expiresAt: Date.now() + 45000 };
-  if (url) {
-    sportsStreamCache.set(cacheKey, entry);
-    if (rawId && String(rawId) !== cacheKey) {
-      sportsStreamCache.set(String(rawId), entry);
-    }
-  }
-  return entry;
+  return { url, streamId };
 };
 
 app.post("/api/stream/watch-link", async (req, res) => {
@@ -1256,17 +1238,18 @@ app.all("/api/stream/ltve-fetch-proxy", async (req, res) => {
   try {
     const parentReferer = targetUrl.replace(/\/(ping|flag|bye).*$/, "");
     const clientIp = getClientIp(req);
-    const forwardedIp = clientIp && !clientIp.includes(":") && !clientIp.startsWith("127.") ? clientIp : "103.211.53.1";
     const headers = {
       "Content-Type": req.headers["content-type"] || "application/json",
       "Origin": "https://nice444.com",
       "Referer": parentReferer,
       "User-Agent":
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-      "X-Forwarded-For": forwardedIp,
-      "X-Real-IP": forwardedIp,
-      "CF-Connecting-IP": forwardedIp,
     };
+    if (clientIp) {
+      headers["X-Forwarded-For"] = clientIp;
+      headers["X-Real-IP"] = clientIp;
+      headers["CF-Connecting-IP"] = clientIp;
+    }
     const upstreamRes = await axios({
       method: req.method,
       url: targetUrl,
@@ -1294,7 +1277,7 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
   const sportId = req.query.sportId || "4";
   const clientIp = getClientIp(req);
   try {
-    let result = await fetchSportsWatchLink(eventId, sportId, clientIp, false);
+    const result = await fetchSportsWatchLink(eventId, sportId, clientIp);
     if (!result.url) {
       return res.status(404).send(`
         <!DOCTYPE html><html><body style="background:#000;color:#94a3b8;font-family:sans-serif;display:grid;place-items:center;height:100vh;margin:0">
@@ -1303,39 +1286,17 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
       `);
     }
 
-    const fetchStreamPage = async (streamUrl) => {
-      const pageRes = await axios.get(streamUrl, {
-        headers: {
-          Origin: "https://nice444.com",
-          Referer: "https://nice444.com/",
-          "User-Agent":
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-        },
-        timeout: 8000,
-      });
-      if (
-        typeof pageRes.data === "string" &&
-        (pageRes.data.includes("not valid here") ||
-          pageRes.data.includes("replaced this one") ||
-          pageRes.data.includes("Not allowed") ||
-          pageRes.data.includes("Domain not whitelisted"))
-      ) {
-        throw new Error("Stale watch link received from upstream");
-      }
-      return pageRes.data;
-    };
+    const pageRes = await axios.get(result.url, {
+      headers: {
+        Origin: "https://nice444.com",
+        Referer: "https://nice444.com/",
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+      },
+      timeout: 8000,
+    });
 
-    let html;
-    try {
-      html = await fetchStreamPage(result.url);
-    } catch (fetchErr) {
-      console.warn(`Watch link stale for ${eventId}, auto-recovering fresh link...`);
-      sportsStreamCache.delete(String(eventId));
-      if (result.streamId) sportsStreamCache.delete(String(result.streamId));
-      result = await fetchSportsWatchLink(eventId, sportId, clientIp, true);
-      if (!result.url) throw fetchErr;
-      html = await fetchStreamPage(result.url);
-    }
+    let html = pageRes.data;
 
     // Convert relative player script to absolute so we DO NOT need <base href>
     html = html.replace('src="/player/player.js', 'src="https://tv.ltve.live/player/player.js');
@@ -1407,10 +1368,9 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
     return res.send(html);
   } catch (err) {
     console.error(`Sports TV proxy error for ${eventId}:`, err.message);
-    const cleanError = (err.message || 'Connecting to live broadcast...').replace(/<[^>]*>/g, '').replace(/["']/g, '');
     return res.status(500).send(`
       <!DOCTYPE html><html><body style="background:#000;color:#ef4444;font-family:sans-serif;display:grid;place-items:center;height:100vh;margin:0">
-        <div style="text-align:center"><h3>⚠️ Live Stream Connecting</h3><p style="font-size:12px">${cleanError}</p></div>
+        <div style="text-align:center"><h3>⚠️ Live Stream Connecting</h3><p style="font-size:12px">Waiting for live video feed...</p></div>
       </body></html>
     `);
   }
