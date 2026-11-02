@@ -17,6 +17,13 @@ try {
 } catch (e) {}
 
 // Robust DNS lookup with fallback for cloud serverless environments
+const KNOWN_HOSTS = {
+  "nice444.com": "13.201.109.114",
+  "casino.nice444.com": "13.201.109.114",
+  "tv.ltve.live": "108.132.161.244",
+  "player.ltve.live": "54.154.159.245",
+};
+
 const customLookup = (hostname, options, callback) => {
   if (typeof options === "function") {
     callback = options;
@@ -35,24 +42,23 @@ const customLookup = (hostname, options, callback) => {
     if (!err && address) {
       return callback(null, address, family);
     }
+    for (const [k, v] of Object.entries(KNOWN_HOSTS)) {
+      if (hostname.includes(k)) {
+        return deliver(v);
+      }
+    }
     const resolver = new dns.promises.Resolver();
     resolver.setServers(["8.8.8.8", "1.1.1.1"]);
     resolver.resolve4(hostname)
       .then((addresses) => {
         if (addresses && addresses.length > 0) {
           deliver(addresses[0]);
-        } else if (hostname.includes("nice444.com")) {
-          deliver("15.252.229.243");
         } else {
-          callback(err);
+          deliver("13.201.109.114");
         }
       })
       .catch(() => {
-        if (hostname.includes("nice444.com")) {
-          deliver("15.252.229.243");
-        } else {
-          callback(err);
-        }
+        deliver("13.201.109.114");
       });
   });
 };
