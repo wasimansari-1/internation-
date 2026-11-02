@@ -33,10 +33,21 @@ const MemoizedLiveTvPlayer = React.memo(function MemoizedLiveTvPlayer({
     );
   };
 
-  const handlePopout = () => {
-    const targetUrl = watchUrl || `/api/stream/sports-tv-proxy/${eventId}?sportId=${sportId}`;
+  const handlePopout = async () => {
+    try {
+      const res = await axios.post('/api/stream/watch-link', { streamId: eventId, sportId });
+      const directUrl = res.data?.data?.url;
+      if (directUrl) {
+        window.open(
+          directUrl,
+          'LiveMatchPlayer',
+          'width=720,height=420,menubar=no,toolbar=no,location=no,status=no'
+        );
+        return;
+      }
+    } catch (e) {}
     window.open(
-      targetUrl,
+      watchUrl || `/api/stream/sports-tv-proxy/${eventId}?sportId=${sportId}&fresh=1`,
       'LiveMatchPlayer',
       'width=720,height=420,menubar=no,toolbar=no,location=no,status=no'
     );

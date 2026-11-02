@@ -1225,12 +1225,6 @@ const fetchSportsWatchLink = async (rawId, sportId = "4", clientIp = "", forceRe
 
   const url = upstreamRes.data?.data?.url || "";
   const entry = { url, streamId, expiresAt: Date.now() + 60000 };
-  if (url) {
-    sportsStreamCache.set(cacheKey, entry);
-    if (rawId && String(rawId) !== cacheKey) {
-      sportsStreamCache.set(String(rawId), entry);
-    }
-  }
   return entry;
 };
 
@@ -1400,10 +1394,12 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
           (pageRes.data.includes("not valid here") ||
             pageRes.data.includes("replaced this one") ||
             pageRes.data.includes("Not allowed") ||
+            pageRes.data.includes("Link already used") ||
+            pageRes.data.includes("Link expired") ||
             pageRes.data.includes("Domain not whitelisted"))
         ) {
-          const staleErr = new Error("Stale or unauthorized watch link received from upstream provider");
-          staleErr.status = 403;
+          const staleErr = new Error("Stale watch link received from upstream provider");
+          staleErr.status = 410; // Treat as GONE/STALE token so auto-recovery refreshes it!
           throw staleErr;
         }
         return pageRes.data;
@@ -1637,7 +1633,7 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
     console.warn(`[Sports TV Proxy] Stream unavailable for ${eventId}: status ${statusCode} - ${err.message}`);
 
     const isFirewallRestricted = statusCode === 403;
-    const isNotFound = statusCode === 404;
+    const isNotFound = statusCode === 404 || statusCode === 422 || (err.message && err.message.includes("no_coverage"));
 
     res.removeHeader("Content-Security-Policy");
     res.removeHeader("X-Frame-Options");
@@ -1656,7 +1652,7 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
         <div class="card">
           <div class="icon">${isNotFound ? '📡' : isFirewallRestricted ? '🔒' : '⚠️'}</div>
           <h3>${isNotFound ? 'No Live Broadcast' : isFirewallRestricted ? 'Provider Access Restricted' : 'Stream Temporarily Unavailable'}</h3>
-          <p>${isNotFound ? 'No live broadcast feed found for this event.' : isFirewallRestricted ? 'The live stream provider restricts access from cloud hosting datacenters. Works on residential networks.' : 'Unable to connect to live stream provider right now. Please try again in a few moments.'}</p>
+          <p>${isNotFound ? 'No live broadcast video feed found for this event.' : isFirewallRestricted ? 'The live stream provider restricts access from cloud hosting datacenters. Works on residential networks.' : 'Unable to connect to live stream provider right now. Please try again in a few moments.'}</p>
           <button class="btn" onclick="window.location.href=window.location.pathname+'?sportId=${sportId}&fresh=1&t='+Date.now()">🔄 Retry Stream</button>
         </div>
       </body></html>
