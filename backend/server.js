@@ -1369,7 +1369,8 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
         }
         return pageRes.data;
       } catch (getErr) {
-        throw new Error(`fetchStreamPage failed: ${getErr.response?.status || getErr.message}`);
+        const body = typeof getErr.response?.data === 'string' ? getErr.response.data.slice(0, 150) : '';
+        throw new Error(`fetchStreamPage failed: ${getErr.response?.status || getErr.message} ${body}`);
       }
     };
 
