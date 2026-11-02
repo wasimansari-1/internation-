@@ -1295,7 +1295,13 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
   const sportId = req.query.sportId || "4";
   const clientIp = getClientIp(req);
   try {
-    let result = await fetchSportsWatchLink(eventId, sportId, clientIp, false);
+    let result;
+    try {
+      result = await fetchSportsWatchLink(eventId, sportId, clientIp, false);
+    } catch (watchErr) {
+      throw new Error(`fetchSportsWatchLink failed: ${watchErr.response?.status || watchErr.message} ${JSON.stringify(watchErr.response?.data || '')}`);
+    }
+
     if (!result.url) {
       return res.status(404).send(`
         <!DOCTYPE html><html><body style="background:#000;color:#94a3b8;font-family:sans-serif;display:grid;place-items:center;height:100vh;margin:0">
@@ -1305,25 +1311,29 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
     }
 
     const fetchStreamPage = async (streamUrl) => {
-      const pageRes = await axios.get(streamUrl, {
-        headers: {
-          Origin: "https://nice444.com",
-          Referer: "https://nice444.com/",
-          "User-Agent":
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-        },
-        timeout: 8000,
-      });
-      if (
-        typeof pageRes.data === "string" &&
-        (pageRes.data.includes("not valid here") ||
-          pageRes.data.includes("replaced this one") ||
-          pageRes.data.includes("Not allowed") ||
-          pageRes.data.includes("Domain not whitelisted"))
-      ) {
-        throw new Error("Stale watch link received from upstream");
+      try {
+        const pageRes = await axios.get(streamUrl, {
+          headers: {
+            Origin: "https://nice444.com",
+            Referer: "https://nice444.com/",
+            "User-Agent":
+              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+          },
+          timeout: 8000,
+        });
+        if (
+          typeof pageRes.data === "string" &&
+          (pageRes.data.includes("not valid here") ||
+            pageRes.data.includes("replaced this one") ||
+            pageRes.data.includes("Not allowed") ||
+            pageRes.data.includes("Domain not whitelisted"))
+        ) {
+          throw new Error("Stale watch link received from upstream");
+        }
+        return pageRes.data;
+      } catch (getErr) {
+        throw new Error(`fetchStreamPage failed: ${getErr.response?.status || getErr.message} ${JSON.stringify(getErr.response?.data || '')}`);
       }
-      return pageRes.data;
     };
 
     let html;
