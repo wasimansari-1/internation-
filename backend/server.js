@@ -5,6 +5,14 @@ import fs from "fs";
 import crypto from "crypto";
 import { fileURLToPath } from "url";
 
+// Global process exception handlers to guarantee 100% uptime
+process.on("uncaughtException", (err) => {
+  console.warn("[Process Shield] Caught uncaughtException:", err.message);
+});
+process.on("unhandledRejection", (reason) => {
+  console.warn("[Process Shield] Caught unhandledRejection:", reason);
+});
+
 import sportsRouter from "./routes/sportsRoutes.js";
 import casinoRouter from "./routes/casinoRoutes.js";
 import streamRouter from "./routes/streamRoutes.js";

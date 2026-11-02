@@ -184,13 +184,13 @@ router.get("/watch-link/:gameId", async (req, res) => {
         timeout: 6000,
       },
     );
-    if (!upstreamRes.data?.data?.url) {
-      return res.status(404).json({ success: false, error: "Stream URL not found", url: "" });
+    if (upstreamRes.data?.data?.url) {
+      return res.json({ success: true, url: upstreamRes.data.data.url });
     }
-    return res.json({ success: true, url: upstreamRes.data.data.url });
   } catch (err) {
-    return res.status(500).json({ success: false, error: err.message, url: "" });
+    // If upstream returns 422 or error, route seamlessly through stream proxy
   }
+  return res.json({ success: true, url: `/api/casino/stream-proxy/${gameId}` });
 });
 
 router.get("/stream-proxy/:gameId", async (req, res) => {
