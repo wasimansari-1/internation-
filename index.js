@@ -1034,7 +1034,6 @@ app.get("/api/casino/results/:gameId", async (req, res) => {
 });
 
 const activeCasinoSubscribers = new Set();
-const casinoOddsCache = new Map();
 let casinoSocket = null;
 let casinoSocketConnecting = false;
 
