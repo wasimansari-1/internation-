@@ -415,11 +415,37 @@ export default function MatchDetailTablesView({ event, onBack }) {
         ) : (
           <div style={{ width: '100%', height: '220px', background: '#000000', position: 'relative' }}>
             <iframe
+              id="live-stream-frame"
               src={`/api/stream/sports-tv-proxy/${event.exEventId || event._id}?sportId=${event.sportId || '4'}`}
               style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
               allow="autoplay; fullscreen; encrypted-media"
               title="Live Match Stream"
             />
+            <button
+              onClick={() => {
+                const ifr = document.getElementById('live-stream-frame');
+                if (ifr) ifr.src = `/api/stream/sports-tv-proxy/${event.exEventId || event._id}?sportId=${event.sportId || '4'}&t=${Date.now()}`;
+              }}
+              style={{
+                position: 'absolute',
+                top: '6px',
+                right: '8px',
+                background: 'rgba(0,0,0,0.65)',
+                color: '#e2e8f0',
+                border: '1px solid rgba(255,255,255,0.2)',
+                borderRadius: '4px',
+                padding: '3px 8px',
+                fontSize: '10px',
+                cursor: 'pointer',
+                zIndex: 10,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '3px'
+              }}
+              title="Refresh Stream"
+            >
+              🔄 Refresh Stream
+            </button>
             {watchUrl && (
               <a
                 href={watchUrl}

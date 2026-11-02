@@ -1161,17 +1161,30 @@ const resolveBetfairStreamId = async (rawId, sportId = "4") => {
 };
 
 const getClientIp = (req) => {
-  return (
-    (req.headers["x-forwarded-for"] || "").split(",")[0].trim() ||
-    req.headers["x-real-ip"] ||
-    req.socket?.remoteAddress ||
-    ""
-  );
+  const forwarded = (req.headers["x-forwarded-for"] || "").split(",")[0].trim();
+  const rawIp = forwarded || req.headers["x-real-ip"] || req.socket?.remoteAddress || "";
+  if (rawIp && !rawIp.includes(":") && !rawIp.startsWith("127.") && !rawIp.startsWith("10.") && !rawIp.startsWith("172.") && !rawIp.startsWith("192.")) {
+    return rawIp;
+  }
+  return "103.211.53.1";
 };
 
-const fetchSportsWatchLink = async (rawId, sportId = "4", clientIp = "") => {
+// Global in-memory cache for sports streams to prevent single-demo account stream invalidations
+const sportsStreamCache = new Map(); // key: streamId -> { url, streamId, expiresAt }
+
+const fetchSportsWatchLink = async (rawId, sportId = "4", clientIp = "", forceRefresh = false) => {
   const streamId = await resolveBetfairStreamId(rawId, sportId);
-  let token = await getDemoToken();
+  const cacheKey = String(streamId || rawId);
+
+  if (!forceRefresh && sportsStreamCache.has(cacheKey)) {
+    const cached = sportsStreamCache.get(cacheKey);
+    if (Date.now() < cached.expiresAt && cached.url) {
+      return { url: cached.url, streamId };
+    }
+  }
+
+  const forwardedIp = clientIp && !clientIp.includes(":") && !clientIp.startsWith("127.") ? clientIp : "103.211.53.1";
+  let token = await getDemoToken(forceRefresh);
   const makeRequest = async (authToken) => {
     const headers = {
       Authorization: `Bearer ${authToken}`,
@@ -1179,12 +1192,10 @@ const fetchSportsWatchLink = async (rawId, sportId = "4", clientIp = "") => {
       Referer: "https://nice444.com/",
       "User-Agent":
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+      "X-Forwarded-For": forwardedIp,
+      "X-Real-IP": forwardedIp,
+      "CF-Connecting-IP": forwardedIp,
     };
-    if (clientIp) {
-      headers["X-Forwarded-For"] = clientIp;
-      headers["X-Real-IP"] = clientIp;
-      headers["CF-Connecting-IP"] = clientIp;
-    }
     return await axios.post(
       "https://nice444.com/api/exchange/streaming/exchEventsWatchLink",
       { streamId: String(streamId), timestamp: Date.now() },
@@ -1199,16 +1210,24 @@ const fetchSportsWatchLink = async (rawId, sportId = "4", clientIp = "") => {
   try {
     upstreamRes = await makeRequest(token);
   } catch (err) {
-    if (err.response?.status === 401 || err.response?.status === 422) {
+    console.warn("Nice444 exchEventsWatchLink initial attempt failed:", err.message, "Retrying with fresh token...");
+    try {
       token = await getDemoToken(true);
       upstreamRes = await makeRequest(token);
-    } else {
-      throw err;
+    } catch (retryErr) {
+      throw retryErr;
     }
   }
 
   const url = upstreamRes.data?.data?.url || "";
-  return { url, streamId };
+  const entry = { url, streamId, expiresAt: Date.now() + 45000 };
+  if (url) {
+    sportsStreamCache.set(cacheKey, entry);
+    if (rawId && String(rawId) !== cacheKey) {
+      sportsStreamCache.set(String(rawId), entry);
+    }
+  }
+  return entry;
 };
 
 app.post("/api/stream/watch-link", async (req, res) => {
@@ -1238,18 +1257,17 @@ app.all("/api/stream/ltve-fetch-proxy", async (req, res) => {
   try {
     const parentReferer = targetUrl.replace(/\/(ping|flag|bye).*$/, "");
     const clientIp = getClientIp(req);
+    const forwardedIp = clientIp && !clientIp.includes(":") && !clientIp.startsWith("127.") ? clientIp : "103.211.53.1";
     const headers = {
       "Content-Type": req.headers["content-type"] || "application/json",
       "Origin": "https://nice444.com",
       "Referer": parentReferer,
       "User-Agent":
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+      "X-Forwarded-For": forwardedIp,
+      "X-Real-IP": forwardedIp,
+      "CF-Connecting-IP": forwardedIp,
     };
-    if (clientIp) {
-      headers["X-Forwarded-For"] = clientIp;
-      headers["X-Real-IP"] = clientIp;
-      headers["CF-Connecting-IP"] = clientIp;
-    }
     const upstreamRes = await axios({
       method: req.method,
       url: targetUrl,
@@ -1277,7 +1295,7 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
   const sportId = req.query.sportId || "4";
   const clientIp = getClientIp(req);
   try {
-    const result = await fetchSportsWatchLink(eventId, sportId, clientIp);
+    let result = await fetchSportsWatchLink(eventId, sportId, clientIp, false);
     if (!result.url) {
       return res.status(404).send(`
         <!DOCTYPE html><html><body style="background:#000;color:#94a3b8;font-family:sans-serif;display:grid;place-items:center;height:100vh;margin:0">
@@ -1286,36 +1304,97 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
       `);
     }
 
-    const pageRes = await axios.get(result.url, {
-      headers: {
-        Origin: "https://nice444.com",
-        Referer: "https://nice444.com/",
-        "User-Agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-      },
-      timeout: 8000,
-    });
+    const fetchStreamPage = async (streamUrl) => {
+      const pageRes = await axios.get(streamUrl, {
+        headers: {
+          Origin: "https://nice444.com",
+          Referer: "https://nice444.com/",
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        },
+        timeout: 8000,
+      });
+      if (
+        typeof pageRes.data === "string" &&
+        (pageRes.data.includes("not valid here") ||
+          pageRes.data.includes("replaced this one") ||
+          pageRes.data.includes("Not allowed") ||
+          pageRes.data.includes("Domain not whitelisted"))
+      ) {
+        throw new Error("Stale watch link received from upstream");
+      }
+      return pageRes.data;
+    };
 
-    let html = pageRes.data;
+    let html;
+    try {
+      html = await fetchStreamPage(result.url);
+    } catch (fetchErr) {
+      console.warn(`Watch link stale for ${eventId}, auto-recovering fresh link...`);
+      sportsStreamCache.delete(String(eventId));
+      if (result.streamId) sportsStreamCache.delete(String(result.streamId));
+      result = await fetchSportsWatchLink(eventId, sportId, clientIp, true);
+      if (!result.url) throw fetchErr;
+      html = await fetchStreamPage(result.url);
+    }
 
     // Convert relative player script to absolute so we DO NOT need <base href>
     html = html.replace('src="/player/player.js', 'src="https://tv.ltve.live/player/player.js');
 
-    // Ensure devtoolsGuard is disabled in #cfg
+    // Ensure devtoolsGuard is disabled and tune player for zero lag / high stability
     const cfgMatch = html.match(/<script type="application\/json" id="cfg">([^<]+)<\/script>/);
     if (cfgMatch) {
       try {
         const cfgObj = JSON.parse(cfgMatch[1]);
         cfgObj.devtoolsGuard = false;
+        cfgObj.offlineRetry = 1;
+        cfgObj.pingEvery = 4;
+        cfgObj.webrtcRetries = 15;
+        cfgObj.freezeSeconds = 3;
+        cfgObj.startMode = "webrtc";
         html = html.replace(cfgMatch[0], `<script type="application/json" id="cfg">${JSON.stringify(cfgObj)}</script>`);
       } catch (e) {}
     }
 
-    // Interceptor script that routes all player fetches through our SAME-ORIGIN proxy
+    // Interceptor script that routes all player fetches through our SAME-ORIGIN proxy + auto-reconnects on session end
     const interceptorScript = `
-      <style>#wm{display:none!important;}</style>
+      <style>
+        #wm{display:none!important;}
+        #reconnect-toast {
+          position: fixed;
+          top: 10px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: rgba(16, 185, 129, 0.92);
+          color: #fff;
+          font-family: system-ui, -apple-system, sans-serif;
+          font-size: 11px;
+          font-weight: 700;
+          padding: 5px 12px;
+          border-radius: 99px;
+          z-index: 99999;
+          display: none;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+          pointer-events: none;
+          letter-spacing: 0.3px;
+        }
+      </style>
+      <div id="reconnect-toast">⚡ Auto-Reconnecting Live Feed...</div>
       <script>
         (function() {
+          let isReconnecting = false;
+          function triggerReconnect(reason) {
+            if (isReconnecting) return;
+            isReconnecting = true;
+            console.warn('[Stream] Auto-reconnecting:', reason);
+            const toast = document.getElementById('reconnect-toast');
+            if (toast) toast.style.display = 'block';
+            setTimeout(() => {
+              window.location.reload();
+            }, 500);
+          }
+
+          // 1. Intercept fetch & monitor session ping
           const origFetch = window.fetch;
           window.fetch = function(input, init) {
             let u = typeof input === 'string' ? input : (input && input.url ? input.url : '');
@@ -1325,11 +1404,30 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
                 full = 'https://tv.ltve.live' + (full.startsWith('/') ? '' : '/') + full;
               }
               const proxy = window.location.origin + '/api/stream/ltve-fetch-proxy?url=' + encodeURIComponent(full);
-              return origFetch(proxy, init);
+              return origFetch(proxy, init).then(async (res) => {
+                if (res.status === 403 || res.status === 401) {
+                  triggerReconnect('Ping status ' + res.status);
+                } else if (u.includes('/ping')) {
+                  try {
+                    const clone = res.clone();
+                    const data = await clone.json();
+                    if (data && data.stop === true) {
+                      triggerReconnect('Ping returned stop: true');
+                    }
+                  } catch (e) {}
+                }
+                return res;
+              }).catch(err => {
+                if (u.includes('/ping')) {
+                  triggerReconnect('Ping network error: ' + err.message);
+                }
+                throw err;
+              });
             }
             return origFetch.apply(this, arguments);
           };
 
+          // 2. Intercept XMLHttpRequest
           const origOpen = XMLHttpRequest.prototype.open;
           XMLHttpRequest.prototype.open = function(method, url, ...rest) {
             let u = String(url || '');
@@ -1343,6 +1441,7 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
             return origOpen.apply(this, arguments);
           };
 
+          // 3. Intercept sendBeacon
           if (navigator.sendBeacon) {
             const origBeacon = navigator.sendBeacon.bind(navigator);
             navigator.sendBeacon = function(url, data) {
@@ -1352,6 +1451,51 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
               }
               return origBeacon(url, data);
             };
+          }
+
+          // 4. MutationObserver for Session Ended or stream invalidation
+          const sessionEndPhrases = ['This session has ended', 'Could not start', 'This stream link is not valid', 'Not allowed'];
+          const checkStatus = () => {
+            const text = document.body ? document.body.innerText || '' : '';
+            for (const phrase of sessionEndPhrases) {
+              if (text.includes(phrase)) {
+                triggerReconnect('Found in DOM: ' + phrase);
+                return;
+              }
+            }
+          };
+
+          const observer = new MutationObserver(checkStatus);
+          const startObserving = () => {
+            if (document.body) {
+              observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+            }
+            const v = document.getElementById('video');
+            if (v) {
+              v.addEventListener('ended', () => triggerReconnect('Video ended'));
+              v.addEventListener('error', () => triggerReconnect('Video error'));
+              let lastTime = 0;
+              let stallCount = 0;
+              setInterval(() => {
+                if (v && !v.paused && !v.ended) {
+                  if (v.currentTime > 0 && v.currentTime === lastTime) {
+                    stallCount++;
+                    if (stallCount >= 5) {
+                      triggerReconnect('Video frozen for 5s');
+                    }
+                  } else {
+                    stallCount = 0;
+                    lastTime = v.currentTime;
+                  }
+                }
+              }, 1000);
+            }
+          };
+
+          if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', startObserving);
+          } else {
+            startObserving();
           }
         })();
       </script>
@@ -1368,9 +1512,18 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
     return res.send(html);
   } catch (err) {
     console.error(`Sports TV proxy error for ${eventId}:`, err.message);
+    const cleanError = (err.message || 'Connecting to live broadcast...').replace(/<[^>]*>/g, '').replace(/["']/g, '');
     return res.status(500).send(`
       <!DOCTYPE html><html><body style="background:#000;color:#ef4444;font-family:sans-serif;display:grid;place-items:center;height:100vh;margin:0">
-        <div style="text-align:center"><h3>⚠️ Live Stream Connecting</h3><p style="font-size:12px">Waiting for live video feed...</p></div>
+        <div style="text-align:center">
+          <div style="font-size:28px">⚡</div>
+          <h3 style="margin:8px 0 4px">Connecting Live Stream</h3>
+          <p style="font-size:12px;color:#94a3b8">${cleanError}</p>
+          <p style="font-size:10px;color:#64748b">Auto-reconnecting...</p>
+        </div>
+        <script>
+          setTimeout(function() { window.location.reload(); }, 1500);
+        </script>
       </body></html>
     `);
   }
