@@ -1595,6 +1595,9 @@ app.get("/api/debug/test-stream-ip", async (req, res) => {
           Origin: "https://nice444.com",
           Referer: "https://nice444.com/",
           "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+          "X-Forwarded-For": "103.211.53.1",
+          "CF-Connecting-IP": "103.211.53.1",
+          "X-Real-IP": "103.211.53.1",
         },
         timeout: 6000,
       });
