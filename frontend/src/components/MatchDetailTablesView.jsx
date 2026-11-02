@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Tv, ArrowLeft, RefreshCw, Volume2 } from 'lucide-react';
+import { Tv, ArrowLeft, RefreshCw, Volume2, Info, ExternalLink } from 'lucide-react';
 import axios from 'axios';
 
 // Format size: 10000000 -> 10M, 2500000 -> 2.5M, 22800 -> 22.8K
@@ -75,7 +75,7 @@ const MemoizedLiveTvPlayer = React.memo(function MemoizedLiveTvPlayer({
         <button
           onClick={handlePopout}
           style={{
-            background: 'rgba(37, 99, 235, 0.88)',
+            background: 'rgba(37, 99, 235, 0.9)',
             color: '#ffffff',
             border: '1px solid rgba(255,255,255,0.3)',
             borderRadius: '4px',
@@ -87,7 +87,7 @@ const MemoizedLiveTvPlayer = React.memo(function MemoizedLiveTvPlayer({
             alignItems: 'center',
             gap: '3px'
           }}
-          title="Open in HD Floating Window (Zero Lag)"
+          title="Open in HD Floating Window"
         >
           ⚡ HD Popout
         </button>
@@ -136,16 +136,22 @@ const MemoizedLiveTvPlayer = React.memo(function MemoizedLiveTvPlayer({
 });
 
 export default function MatchDetailTablesView({ event, onBack }) {
-  const [activePill, setActivePill] = useState('All');
   const [loading, setLoading] = useState(true);
   const [showTv, setShowTv] = useState(false);
   const [mediaTab, setMediaTab] = useState('score'); // 'score' | 'live'
   const [watchUrl, setWatchUrl] = useState(null);
   const [news, setNews] = useState('');
 
+  // Parent Navigation Tab: 'fancy' | 'sportsbook' | 'results'
+  const [mainTab, setMainTab] = useState('fancy');
+
+  // Sub-tabs
+  const [fancySubTab, setFancySubTab] = useState('ALL'); // 'ALL' | 'Fancy' | 'Line Market' | 'Ball by Ball' | 'Meter' | 'Khado'
+  const [sportsbookSubTab, setSportsbookSubTab] = useState('All'); // 'All' | 'Match' | 'Odds/Evens' | 'Batsman' | 'Bowler' | 'Extra'
+
   // Real Scraped Data State
-  const [matchOdds, setMatchOdds] = useState(null);
-  const [bookmaker, setBookmaker] = useState(null);
+  const [matchOddsList, setMatchOddsList] = useState([]);
+  const [bookmakerList, setBookmakerList] = useState([]);
   const [fancyMarkets, setFancyMarkets] = useState([]);
   const [sportsbook, setSportsbook] = useState([]);
   const [fancyResults, setFancyResults] = useState([]);
@@ -168,55 +174,63 @@ export default function MatchDetailTablesView({ event, onBack }) {
       if (data) {
         if (Array.isArray(data.fancyData)) setFancyMarkets(data.fancyData);
         if (Array.isArray(data.sportsbookData)) setSportsbook(data.sportsbookData);
-        if (data.matchOddsData && data.matchOddsData.length > 0) {
-          const mo = data.matchOddsData[0];
-          const runners = mo.oddsData?.runners || [];
-          const names = mo.runnersData || {};
-          setMatchOdds({
-            marketName: mo.marketName || 'Match Odds',
-            min: mo.min || 100,
-            max: mo.max || 1000,
-            totalMatched: mo.oddsData?.totalMatched || '0',
-            status: mo.oddsData?.status || 'OPEN',
-            runners: runners.map((r) => {
-              const b0 = r.price?.back?.[0] || {};
-              const l0 = r.price?.lay?.[0] || {};
-              const isSusp = r.status === 'SUSPENDED' || r.status === 'SUSPEND';
-              return {
-                selectionId: String(r.selectionId),
-                name: names[String(r.selectionId)] || `Runner ${r.selectionId}`,
-                status: r.status || 'ONLINE',
-                isSuspended: isSusp,
-                back: { price: isSusp ? null : b0.price, size: b0.size || 0 },
-                lay: { price: isSusp ? null : l0.price, size: l0.size || 0 }
-              };
-            })
+
+        if (Array.isArray(data.matchOddsData) && data.matchOddsData.length > 0) {
+          const parsedMo = data.matchOddsData.map((mo) => {
+            const runners = mo.oddsData?.runners || [];
+            const names = mo.runnersData || {};
+            return {
+              marketId: String(mo.marketId || mo.exMarketId || ''),
+              marketName: mo.marketName || 'Match Odds',
+              min: mo.min || 100,
+              max: mo.max || 1000,
+              totalMatched: mo.oddsData?.totalMatched || '0',
+              status: mo.oddsData?.status || 'OPEN',
+              runners: runners.map((r) => {
+                const b0 = r.price?.back?.[0] || {};
+                const l0 = r.price?.lay?.[0] || {};
+                const isSusp = r.status === 'SUSPENDED' || r.status === 'SUSPEND';
+                return {
+                  selectionId: String(r.selectionId),
+                  name: names[String(r.selectionId)] || `Runner ${r.selectionId}`,
+                  status: r.status || 'ONLINE',
+                  isSuspended: isSusp,
+                  back: { price: isSusp ? null : b0.price, size: b0.size || 0 },
+                  lay: { price: isSusp ? null : l0.price, size: l0.size || 0 }
+                };
+              })
+            };
           });
+          setMatchOddsList(parsedMo);
         }
-        if (data.bookmakersData && data.bookmakersData.length > 0) {
-          const bm = data.bookmakersData[0];
-          const runners = bm.oddsData?.runners || [];
-          const names = bm.runnersData || {};
-          setBookmaker({
-            marketName: bm.marketName || 'Bookmaker Cup Bhav',
-            min: bm.min || 100,
-            max: bm.max || 25000,
-            totalMatched: bm.oddsData?.totalMatched || '0',
-            status: bm.oddsData?.status || 'OPEN',
-            runners: runners.map((r) => {
-              const b0 = r.price?.back?.[0] || {};
-              const l0 = r.price?.lay?.[0] || {};
-              const isSusp = r.status === 'SUSPENDED' || r.status === 'SUSPEND';
-              return {
-                selectionId: String(r.selectionId),
-                name: names[String(r.selectionId)] || `Runner ${r.selectionId}`,
-                status: r.status || 'ONLINE',
-                isSuspended: isSusp,
-                back: { price: isSusp ? null : b0.price, size: b0.size || 0 },
-                lay: { price: isSusp ? null : l0.price, size: l0.size || 0 }
-              };
-            })
+
+        if (Array.isArray(data.bookmakersData) && data.bookmakersData.length > 0) {
+          const parsedBm = data.bookmakersData.map((bm) => {
+            const runners = bm.oddsData?.runners || [];
+            const names = bm.runnersData || {};
+            return {
+              marketId: String(bm.marketId || bm.exMarketId || ''),
+              marketName: bm.marketName || 'Bookmaker Bhav',
+              min: bm.min || 100,
+              max: bm.max || 25000,
+              totalMatched: bm.oddsData?.totalMatched || '0',
+              status: bm.oddsData?.status || 'OPEN',
+              runners: runners.map((r) => {
+                const b0 = r.price?.back?.[0] || {};
+                const l0 = r.price?.lay?.[0] || {};
+                const isSusp = r.status === 'SUSPENDED' || r.status === 'SUSPEND';
+                return {
+                  selectionId: String(r.selectionId),
+                  name: names[String(r.selectionId)] || `Runner ${r.selectionId}`,
+                  status: r.status || 'ONLINE',
+                  isSuspended: isSusp,
+                  back: { price: isSusp ? null : b0.price, size: b0.size || 0 },
+                  lay: { price: isSusp ? null : l0.price, size: l0.size || 0 }
+                };
+              })
+            };
           });
+          setBookmakerList(parsedBm);
         }
       }
     } catch (err) {
@@ -269,47 +283,53 @@ export default function MatchDetailTablesView({ event, onBack }) {
     }
 
     // Check Match Odds updates
-    if (data.matchOdds && Array.isArray(data.matchOdds.runners)) {
+    const moSource = data.matchOddsList || (data.matchOdds ? [data.matchOdds] : []);
+    if (moSource.length > 0) {
       let moChanged = false;
-      data.matchOdds.runners.forEach((r) => {
-        const prev = prevRatesRef.current[`mo_${r.selectionId}`];
-        if (!prev || prev.backPrice !== r.back?.price || prev.layPrice !== r.lay?.price) {
-          moChanged = true;
-          if (prev && r.back?.price !== null && prev.backPrice !== r.back?.price) {
-            newFlashBack.add(`mo_b_${r.selectionId}`);
+      moSource.forEach((m) => {
+        (m.runners || []).forEach((r) => {
+          const prev = prevRatesRef.current[`mo_${r.selectionId}`];
+          if (!prev || prev.backPrice !== r.back?.price || prev.layPrice !== r.lay?.price) {
+            moChanged = true;
+            if (prev && r.back?.price !== null && prev.backPrice !== r.back?.price) {
+              newFlashBack.add(`mo_b_${r.selectionId}`);
+            }
+            if (prev && r.lay?.price !== null && prev.layPrice !== r.lay?.price) {
+              newFlashLay.add(`mo_l_${r.selectionId}`);
+            }
+            prevRatesRef.current[`mo_${r.selectionId}`] = {
+              backPrice: r.back?.price,
+              layPrice: r.lay?.price
+            };
           }
-          if (prev && r.lay?.price !== null && prev.layPrice !== r.lay?.price) {
-            newFlashLay.add(`mo_l_${r.selectionId}`);
-          }
-          prevRatesRef.current[`mo_${r.selectionId}`] = {
-            backPrice: r.back?.price,
-            layPrice: r.lay?.price
-          };
-        }
+        });
       });
-      if (moChanged) setMatchOdds(data.matchOdds);
+      if (moChanged) setMatchOddsList(moSource);
     }
 
     // Check Bookmaker updates
-    if (data.bookmaker && Array.isArray(data.bookmaker.runners)) {
+    const bmSource = data.bookmakerList || (data.bookmaker ? [data.bookmaker] : []);
+    if (bmSource.length > 0) {
       let bmChanged = false;
-      data.bookmaker.runners.forEach((r) => {
-        const prev = prevRatesRef.current[`bm_${r.selectionId}`];
-        if (!prev || prev.backPrice !== r.back?.price || prev.layPrice !== r.lay?.price) {
-          bmChanged = true;
-          if (prev && r.back?.price !== null && prev.backPrice !== r.back?.price) {
-            newFlashBack.add(`bm_b_${r.selectionId}`);
+      bmSource.forEach((m) => {
+        (m.runners || []).forEach((r) => {
+          const prev = prevRatesRef.current[`bm_${r.selectionId}`];
+          if (!prev || prev.backPrice !== r.back?.price || prev.layPrice !== r.lay?.price) {
+            bmChanged = true;
+            if (prev && r.back?.price !== null && prev.backPrice !== r.back?.price) {
+              newFlashBack.add(`bm_b_${r.selectionId}`);
+            }
+            if (prev && r.lay?.price !== null && prev.layPrice !== r.lay?.price) {
+              newFlashLay.add(`bm_l_${r.selectionId}`);
+            }
+            prevRatesRef.current[`bm_${r.selectionId}`] = {
+              backPrice: r.back?.price,
+              layPrice: r.lay?.price
+            };
           }
-          if (prev && r.lay?.price !== null && prev.layPrice !== r.lay?.price) {
-            newFlashLay.add(`bm_l_${r.selectionId}`);
-          }
-          prevRatesRef.current[`bm_${r.selectionId}`] = {
-            backPrice: r.back?.price,
-            layPrice: r.lay?.price
-          };
-        }
+        });
       });
-      if (bmChanged) setBookmaker(data.bookmaker);
+      if (bmChanged) setBookmakerList(bmSource);
     }
 
     // Check Live Fancy updates
@@ -340,11 +360,11 @@ export default function MatchDetailTablesView({ event, onBack }) {
       setTimeout(() => {
         setFlashBackSet(new Set());
         setFlashLaySet(new Set());
-      }, 220); // Quick 200ms visual flash
+      }, 220);
     }
   };
 
-  // 3. Direct REST API live rates: 1s for in-play, 5s for upcoming / non-in-play
+  // Direct REST API live rates: 1s for in-play, 5s for upcoming
   useEffect(() => {
     fetchMarketSnapshot();
     fetchFancyResults();
@@ -379,18 +399,62 @@ export default function MatchDetailTablesView({ event, onBack }) {
     };
   }, [event]);
 
+  // Fancy filter logic matching Screenshot 1 sub-tabs
+  const filteredFancy = fancyMarkets.filter((f) => {
+    if (fancySubTab === 'ALL') return true;
+    const name = (f.marketName || f.sessionName || '').toLowerCase();
+    if (fancySubTab === 'Ball by Ball') {
+      return name.includes('ball') || name.includes('0.') || name.includes('1.') || name.includes('2.');
+    }
+    if (fancySubTab === 'Line Market') {
+      return name.includes('line') || name.includes('over runs') || name.includes('over run');
+    }
+    if (fancySubTab === 'Meter') {
+      return name.includes('meter') || name.includes('wicket') || name.includes('fall');
+    }
+    if (fancySubTab === 'Khado') {
+      return name.includes('khado') || name.includes('boundary') || name.includes('four') || name.includes('six');
+    }
+    if (fancySubTab === 'Fancy') {
+      return !name.includes('ball') && !name.includes('meter') && !name.includes('khado');
+    }
+    return true;
+  });
+
+  // Sportsbook filter logic matching Screenshot 2 sub-tabs
+  const filteredSportsbook = sportsbook.filter((sb) => {
+    if (sportsbookSubTab === 'All') return true;
+    const name = (sb.marketName || '').toLowerCase();
+    if (sportsbookSubTab === 'Match') {
+      return name.includes('match') || name.includes('toss') || name.includes('dismissal') || name.includes('winner');
+    }
+    if (sportsbookSubTab === 'Odds/Evens') {
+      return name.includes('digit') || name.includes('odd') || name.includes('even');
+    }
+    if (sportsbookSubTab === 'Batsman') {
+      return name.includes('batsman') || name.includes('player') || name.includes('runs') || name.includes('fifty');
+    }
+    if (sportsbookSubTab === 'Bowler') {
+      return name.includes('bowler') || name.includes('wicket') || name.includes('maidens');
+    }
+    if (sportsbookSubTab === 'Extra') {
+      return !name.includes('match') && !name.includes('toss') && !name.includes('digit') && !name.includes('batsman') && !name.includes('bowler');
+    }
+    return true;
+  });
+
   return (
     <div
       style={{
         maxWidth: '520px',
         margin: '0 auto',
-        background: '#ffffff',
+        background: '#f8fafc',
         color: '#000000',
         minHeight: '100vh',
         display: 'flex',
         flexDirection: 'column',
         paddingBottom: '80px',
-        fontFamily: 'Tahoma, Helvetica, sans-serif'
+        fontFamily: 'Tahoma, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
       }}
     >
       {/* Top Banner */}
@@ -471,22 +535,51 @@ export default function MatchDetailTablesView({ event, onBack }) {
           </span>
 
           <span style={{ fontSize: '11px', color: '#fef08a', fontWeight: 600 }}>
-            {event.eventTime ? new Date(event.eventTime).toLocaleDateString([], { month: 'numeric', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'In-Play'}
+            {event.eventTime
+              ? new Date(event.eventTime).toLocaleDateString([], {
+                  month: 'numeric',
+                  day: 'numeric',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })
+              : 'In-Play'}
           </span>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', fontSize: '11px', color: '#4ade80' }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginTop: '6px',
+            fontSize: '11px',
+            color: '#4ade80'
+          }}
+        >
           <span>● Live Socket Connected (Real Scraping)</span>
           <button
-            onClick={() => fetchMarketSnapshot()}
-            style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px', fontSize: '11px' }}
+            onClick={() => {
+              fetchMarketSnapshot();
+              fetchFancyResults();
+            }}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#94a3b8',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '2px',
+              fontSize: '11px'
+            }}
           >
             <RefreshCw size={11} /> Refresh
           </button>
         </div>
       </div>
 
-      {/* News Ticker Bar (if news exists in scraper) */}
+      {/* News Ticker Bar */}
       {news && (
         <div
           style={{
@@ -508,7 +601,7 @@ export default function MatchDetailTablesView({ event, onBack }) {
         </div>
       )}
 
-      {/* Live Score & Watch Live Media Player Bar (Exact Match to User Screenshot) */}
+      {/* Live Score & Watch Live Media Player Bar */}
       <div style={{ backgroundColor: '#000000', borderBottom: '1px solid #222222' }}>
         <div style={{ display: 'flex', borderBottom: '1px solid #2a2a2a' }}>
           <button
@@ -572,431 +665,483 @@ export default function MatchDetailTablesView({ event, onBack }) {
         )}
       </div>
 
-      {/* Navigation Filter Pills matching screenshot */}
-      <div
-        style={{
-          display: 'flex',
-          gap: '8px',
-          padding: '10px 12px',
-          background: '#090d16',
-          borderBottom: '1px solid #1e293b',
-          overflowX: 'auto',
-          scrollbarWidth: 'none'
-        }}
-      >
-        {['All', 'Match Odds', 'Bookmaker', 'Fancy', 'Sportsbook', 'Results'].map((pill) => (
-          <button
-            key={pill}
-            onClick={() => setActivePill(pill)}
-            style={{
-              padding: '6px 14px',
-              borderRadius: '20px',
-              border: 'none',
-              background: activePill === pill ? '#f59e0b' : '#1e293b',
-              color: activePill === pill ? '#000' : '#cbd5e1',
-              fontWeight: 800,
-              fontSize: '12px',
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-              transition: 'all 0.15s ease'
-            }}
-          >
-            {pill}
-          </button>
-        ))}
-      </div>
-
       {/* Loading state */}
-      {loading && !matchOdds && !bookmaker && (
-        <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
+      {loading && matchOddsList.length === 0 && bookmakerList.length === 0 && (
+        <div style={{ padding: '30px', textAlign: 'center', color: '#64748b' }}>
           <RefreshCw size={24} className="live-indicator" style={{ margin: '0 auto 8px', color: '#0284c7' }} />
           <div>Connecting to Real Exchange Feed...</div>
         </div>
       )}
 
-      {/* 1. MATCH ODDS TABLE (Real Scraped Data) */}
-      {(activePill === 'All' || activePill === 'Match Odds') && (
-        <div style={{ borderBottom: '2px solid #cbd5e1' }}>
-          {matchOdds && matchOdds.runners?.length > 0 ? (
-            <div>
-              {/* Header */}
-              <div
-                style={{
-                  background: '#243a48',
-                  color: '#fff',
-                  padding: '8px 12px',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  fontSize: '13px',
-                  fontWeight: 700
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span>{matchOdds.marketName}</span>
-                  <span style={{ fontSize: '12px', color: '#94a3b8' }}>ⓘ</span>
-                </div>
+      {/* ========================================================================= */}
+      {/* 1. MATCH ODDS & SPECIAL HEAD-TO-HEAD MARKETS (Screenshot 3)              */}
+      {/* ========================================================================= */}
+      {matchOddsList.map((mo, moIdx) => {
+        const is2Way = mo.runners && mo.runners.length === 2 && (mo.marketName.toLowerCase().includes('win') || mo.marketName.toLowerCase().includes('toss'));
+        return (
+          <div key={mo.marketId || moIdx} style={{ marginBottom: '8px', background: '#fff', borderBottom: '1px solid #cbd5e1' }}>
+            {/* Header */}
+            <div
+              style={{
+                background: '#243a48',
+                color: '#fff',
+                padding: '8px 12px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                fontSize: '13px',
+                fontWeight: 700
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span>{mo.marketName}</span>
+                <span style={{ fontSize: '12px', color: '#94a3b8' }}>ⓘ</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '11px' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#fef08a' }}>
+                  <span style={{ width: '7px', height: '7px', background: '#f59e0b', borderRadius: '50%', display: 'inline-block' }}></span>
+                  Cash Out
+                </span>
+                <span style={{ color: '#ffffff' }}>
+                  Matched <span style={{ fontWeight: 800 }}>€{formatSize(mo.totalMatched) || '0'}</span>
+                </span>
+              </div>
+            </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '11px' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#fef08a' }}>
-                    <span style={{ width: '8px', height: '8px', background: '#f59e0b', borderRadius: '50%', display: 'inline-block' }}></span>
-                    Cash Out
-                  </span>
-                  <span style={{ color: '#ffffff' }}>
-                    Matched <span style={{ fontWeight: 800 }}>€{matchOdds.totalMatched || '0'}</span>
-                  </span>
+            {/* 2-Way Side-by-Side View (e.g. To Win The Match, Which Team Will Win The Toss) */}
+            {is2Way ? (
+              <div style={{ padding: '8px 12px', background: '#e6f4ea' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  {mo.runners.map((r, rIdx) => {
+                    const price = r.back?.price ?? '-';
+                    const size = formatSize(r.back?.size) || '500K';
+                    const isSuspended = r.isSuspended || r.status === 'SUSPENDED';
+                    return (
+                      <div key={r.selectionId || rIdx} style={{ textAlign: 'center' }}>
+                        <div style={{ fontWeight: 800, fontSize: '12px', color: '#0f172a', marginBottom: '4px' }}>
+                          {r.name}
+                        </div>
+                        <button
+                          onClick={() => !isSuspended && setSelectedBet({ side: 'BACK', runner: `${mo.marketName} - ${r.name}`, rate: price, size: r.back?.size })}
+                          disabled={isSuspended}
+                          style={{
+                            width: '100%',
+                            background: '#6ee7b7',
+                            border: '1px solid #34d399',
+                            borderRadius: '4px',
+                            padding: '6px 0',
+                            cursor: isSuspended ? 'default' : 'pointer',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                          }}
+                        >
+                          <span style={{ fontSize: '13px', fontWeight: 900, color: '#000' }}>
+                            {isSuspended ? '0' : price}
+                          </span>
+                          <span style={{ fontSize: '9px', fontWeight: 600, color: '#064e3b' }}>
+                            {size}
+                          </span>
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
-
-              {/* Min/Max + Back/Lay columns */}
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 64px 64px',
-                  background: '#e0f2fe',
-                  borderBottom: '1px solid #cbd5e1',
-                  alignItems: 'center',
-                  fontWeight: 700,
-                  fontSize: '11px'
-                }}
-              >
-                <div style={{ padding: '6px 12px', color: '#0369a1' }}>
-                  Min/Max {matchOdds.min} - {matchOdds.max}
-                </div>
-                <div style={{ background: '#72bbef', color: '#000', textAlign: 'center', padding: '6px 0', borderRight: '1px solid #fff' }}>
-                  Back
-                </div>
-                <div style={{ background: '#faa9ba', color: '#000', textAlign: 'center', padding: '6px 0' }}>
-                  Lay
-                </div>
-              </div>
-
-              {/* Runners */}
-              {matchOdds.runners.map((r, idx) => {
-                const isFlashBack = flashBackSet.has(`mo_b_${r.selectionId}`);
-                const isFlashLay = flashLaySet.has(`mo_l_${r.selectionId}`);
-                const isSuspended = r.isSuspended || r.status === 'SUSPENDED' || r.status === 'SUSPEND';
-
-                return (
-                  <div
-                    key={idx}
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '1fr 64px 64px',
-                      borderBottom: '1px solid #e2e8f0',
-                      alignItems: 'center',
-                      background: idx % 2 === 0 ? '#ffffff' : '#f8fafc'
-                    }}
-                  >
-                    <div style={{ padding: '8px 12px', fontWeight: 700, fontSize: '13px', color: '#000' }}>
-                      {r.name}
-                    </div>
-
-                    {/* Back Button */}
-                    <button
-                      onClick={() => !isSuspended && setSelectedBet({ side: 'BACK', runner: r.name, rate: r.back?.price, size: r.back?.size })}
-                      className={isFlashBack ? 'flash-back' : ''}
-                      disabled={isSuspended}
-                      style={{
-                        background: '#72bbef',
-                        border: 'none',
-                        borderRight: '1px solid #ffffff',
-                        padding: '4px 0',
-                        textAlign: 'center',
-                        cursor: isSuspended ? 'default' : 'pointer',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        height: '42px',
-                        position: 'relative'
-                      }}
-                    >
-                      {isSuspended ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                          <span style={{ fontSize: '11px', fontWeight: 800, color: '#334155' }}>Suspended</span>
-                          <span style={{ fontSize: '9px', color: '#64748b' }}>{formatSize(r.back?.size)}</span>
-                        </div>
-                      ) : (
-                        <>
-                          <span style={{ fontSize: '13px', fontWeight: 800, color: '#000' }}>
-                            {r.back?.price !== null && r.back?.price !== undefined ? r.back.price : '-'}
-                          </span>
-                          <span style={{ fontSize: '9px', color: '#334155' }}>
-                            {formatSize(r.back?.size)}
-                          </span>
-                        </>
-                      )}
-                    </button>
-
-                    {/* Lay Button */}
-                    <button
-                      onClick={() => !isSuspended && setSelectedBet({ side: 'LAY', runner: r.name, rate: r.lay?.price, size: r.lay?.size })}
-                      className={isFlashLay ? 'flash-lay' : ''}
-                      disabled={isSuspended}
-                      style={{
-                        background: '#faa9ba',
-                        border: 'none',
-                        padding: '4px 0',
-                        textAlign: 'center',
-                        cursor: isSuspended ? 'default' : 'pointer',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        height: '42px',
-                        position: 'relative'
-                      }}
-                    >
-                      {isSuspended ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                          <span style={{ fontSize: '11px', fontWeight: 800, color: '#334155' }}>0</span>
-                          <span style={{ fontSize: '9px', color: '#64748b' }}>{formatSize(r.lay?.size)}</span>
-                        </div>
-                      ) : (
-                        <>
-                          <span style={{ fontSize: '13px', fontWeight: 800, color: '#000' }}>
-                            {r.lay?.price !== null && r.lay?.price !== undefined ? r.lay.price : '-'}
-                          </span>
-                          <span style={{ fontSize: '9px', color: '#334155' }}>
-                            {formatSize(r.lay?.size)}
-                          </span>
-                        </>
-                      )}
-                    </button>
+            ) : (
+              /* Standard Back/Lay Table (e.g. Match Odds) */
+              <div>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 64px 64px',
+                    background: '#e0f2fe',
+                    borderBottom: '1px solid #cbd5e1',
+                    alignItems: 'center',
+                    fontWeight: 700,
+                    fontSize: '11px'
+                  }}
+                >
+                  <div style={{ padding: '6px 12px', color: '#0369a1' }}>
+                    Min/Max {mo.min} - {mo.max}
                   </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div style={{ padding: '20px', textAlign: 'center', color: '#64748b', fontSize: '12px' }}>
-              No Match Odds data currently open on exchange for this match.
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* 2. BOOKMAKER BHAV TABLE (Real Live Scraped Data - Zero NaN) */}
-      {(activePill === 'All' || activePill === 'Bookmaker') && (
-        <div style={{ marginTop: '10px' }}>
-          {bookmaker && bookmaker.runners?.length > 0 ? (
-            <div style={{ borderBottom: '2px solid #cbd5e1' }}>
-              <div
-                style={{
-                  background: '#243a48',
-                  color: '#fff',
-                  padding: '8px 12px',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  fontSize: '13px',
-                  fontWeight: 700
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span>{bookmaker.marketName}</span>
-                  <span style={{ fontSize: '12px', color: '#94a3b8' }}>ⓘ</span>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '11px' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#fef08a' }}>
-                    <span style={{ width: '8px', height: '8px', background: '#f59e0b', borderRadius: '50%', display: 'inline-block' }}></span>
-                    Cash Out
-                  </span>
-                  {bookmaker.totalMatched && (
-                    <span style={{ color: '#ffffff' }}>
-                      Matched <span style={{ fontWeight: 800 }}>€{formatSize(bookmaker.totalMatched)}</span>
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 64px 64px',
-                  background: '#e0f2fe',
-                  borderBottom: '1px solid #cbd5e1',
-                  alignItems: 'center',
-                  fontWeight: 700,
-                  fontSize: '11px'
-                }}
-              >
-                <div style={{ padding: '6px 12px', color: '#0369a1' }}>
-                  Min/Max {bookmaker.min} - {bookmaker.max}
-                </div>
-                <div style={{ background: '#72bbef', color: '#000', textAlign: 'center', padding: '6px 0', borderRight: '1px solid #fff' }}>
-                  Back
-                </div>
-                <div style={{ background: '#faa9ba', color: '#000', textAlign: 'center', padding: '6px 0' }}>
-                  Lay
-                </div>
-              </div>
-
-              {bookmaker.runners.map((r, idx) => {
-                const isFlashBack = flashBackSet.has(`bm_b_${r.selectionId}`);
-                const isFlashLay = flashLaySet.has(`bm_l_${r.selectionId}`);
-                const isSuspended =
-                  r.isSuspended ||
-                  r.status === 'SUSPENDED' ||
-                  r.status === 'SUSPEND' ||
-                  r.back?.price === null ||
-                  isNaN(Number(r.back?.price)) ||
-                  String(r.back?.price).includes('NaN');
-
-                return (
-                  <div
-                    key={idx}
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '1fr 64px 64px',
-                      borderBottom: '1px solid #e2e8f0',
-                      alignItems: 'center',
-                      background: idx % 2 === 0 ? '#ffffff' : '#f8fafc'
-                    }}
-                  >
-                    <div style={{ padding: '8px 12px', fontWeight: 700, fontSize: '13px', color: '#000' }}>
-                      {r.name}
-                    </div>
-
-                    {/* Bookmaker Back Button */}
-                    <button
-                      onClick={() => !isSuspended && setSelectedBet({ side: 'BACK', runner: r.name, rate: r.back?.price, size: r.back?.size })}
-                      className={isFlashBack ? 'flash-back' : ''}
-                      disabled={isSuspended}
-                      style={{
-                        background: '#72bbef',
-                        border: 'none',
-                        borderRight: '1px solid #ffffff',
-                        padding: '4px 0',
-                        textAlign: 'center',
-                        cursor: isSuspended ? 'default' : 'pointer',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        height: '42px',
-                        position: 'relative'
-                      }}
-                    >
-                      {isSuspended ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                          <span style={{ fontSize: '11px', fontWeight: 800, color: '#334155' }}>Suspended</span>
-                          <span style={{ fontSize: '9px', color: '#64748b' }}>{formatSize(r.back?.size)}</span>
-                        </div>
-                      ) : (
-                        <>
-                          <span style={{ fontSize: '13px', fontWeight: 800, color: '#000' }}>
-                            {r.back?.price !== null && r.back?.price !== undefined ? r.back.price : '0'}
-                          </span>
-                          <span style={{ fontSize: '9px', color: '#334155' }}>
-                            {formatSize(r.back?.size)}
-                          </span>
-                        </>
-                      )}
-                    </button>
-
-                    {/* Bookmaker Lay Button */}
-                    <button
-                      onClick={() => !isSuspended && setSelectedBet({ side: 'LAY', runner: r.name, rate: r.lay?.price, size: r.lay?.size })}
-                      className={isFlashLay ? 'flash-lay' : ''}
-                      disabled={isSuspended}
-                      style={{
-                        background: '#faa9ba',
-                        border: 'none',
-                        padding: '4px 0',
-                        textAlign: 'center',
-                        cursor: isSuspended ? 'default' : 'pointer',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        height: '42px',
-                        position: 'relative'
-                      }}
-                    >
-                      {isSuspended ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                          <span style={{ fontSize: '11px', fontWeight: 800, color: '#334155' }}>0</span>
-                          <span style={{ fontSize: '9px', color: '#64748b' }}>{formatSize(r.lay?.size)}</span>
-                        </div>
-                      ) : (
-                        <>
-                          <span style={{ fontSize: '13px', fontWeight: 800, color: '#000' }}>
-                            {r.lay?.price !== null && r.lay?.price !== undefined ? r.lay.price : '0'}
-                          </span>
-                          <span style={{ fontSize: '9px', color: '#334155' }}>
-                            {formatSize(r.lay?.size)}
-                          </span>
-                        </>
-                      )}
-                    </button>
+                  <div style={{ background: '#72bbef', color: '#000', textAlign: 'center', padding: '6px 0', borderRight: '1px solid #fff' }}>
+                    Back
                   </div>
-                );
-              })}
-            </div>
-          ) : activePill === 'Bookmaker' ? (
-            <div style={{ padding: '20px', textAlign: 'center', color: '#64748b', fontSize: '12px' }}>
-              No Bookmaker Bhav open for this match.
-            </div>
-          ) : null}
-        </div>
-      )}
-
-      {/* 3. FANCY / SESSION MARKETS (Live Streaming) */}
-      {(activePill === 'All' || activePill === 'Fancy') && (
-        <div style={{ marginTop: '10px' }}>
-          {fancyMarkets.length > 0 ? (
-            <div>
-              {/* Header */}
-              <div
-                style={{
-                  background: '#243a48',
-                  color: '#fff',
-                  padding: '8px 12px',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  fontSize: '13px',
-                  fontWeight: 700
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span>Fancy / Session Markets ({fancyMarkets.length})</span>
-                  <span style={{ fontSize: '12px', color: '#94a3b8' }}>ⓘ</span>
+                  <div style={{ background: '#faa9ba', color: '#000', textAlign: 'center', padding: '6px 0' }}>
+                    Lay
+                  </div>
                 </div>
-              </div>
 
-              {/* Column labels */}
+                {mo.runners.map((r, rIdx) => {
+                  const isFlashBack = flashBackSet.has(`mo_b_${r.selectionId}`);
+                  const isFlashLay = flashLaySet.has(`mo_l_${r.selectionId}`);
+                  const isSuspended = r.isSuspended || r.status === 'SUSPENDED';
+                  return (
+                    <div
+                      key={r.selectionId || rIdx}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 64px 64px',
+                        borderBottom: '1px solid #e2e8f0',
+                        alignItems: 'center',
+                        background: rIdx % 2 === 0 ? '#ffffff' : '#f8fafc'
+                      }}
+                    >
+                      <div style={{ padding: '8px 12px', fontWeight: 700, fontSize: '13px', color: '#000' }}>
+                        {r.name}
+                      </div>
+
+                      {/* Back */}
+                      <button
+                        onClick={() => !isSuspended && setSelectedBet({ side: 'BACK', runner: r.name, rate: r.back?.price, size: r.back?.size })}
+                        className={isFlashBack ? 'flash-back' : ''}
+                        disabled={isSuspended}
+                        style={{
+                          background: '#72bbef',
+                          border: 'none',
+                          borderRight: '1px solid #ffffff',
+                          padding: '4px 0',
+                          textAlign: 'center',
+                          cursor: isSuspended ? 'default' : 'pointer',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          height: '42px'
+                        }}
+                      >
+                        <span style={{ fontSize: '13px', fontWeight: 800, color: '#000' }}>
+                          {isSuspended || r.back?.price === null ? '-' : r.back?.price}
+                        </span>
+                        <span style={{ fontSize: '9px', color: '#334155' }}>
+                          {formatSize(r.back?.size)}
+                        </span>
+                      </button>
+
+                      {/* Lay */}
+                      <button
+                        onClick={() => !isSuspended && setSelectedBet({ side: 'LAY', runner: r.name, rate: r.lay?.price, size: r.lay?.size })}
+                        className={isFlashLay ? 'flash-lay' : ''}
+                        disabled={isSuspended}
+                        style={{
+                          background: '#faa9ba',
+                          border: 'none',
+                          padding: '4px 0',
+                          textAlign: 'center',
+                          cursor: isSuspended ? 'default' : 'pointer',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          height: '42px'
+                        }}
+                      >
+                        <span style={{ fontSize: '13px', fontWeight: 800, color: '#000' }}>
+                          {isSuspended || r.lay?.price === null ? '-' : r.lay?.price}
+                        </span>
+                        <span style={{ fontSize: '9px', color: '#334155' }}>
+                          {formatSize(r.lay?.size)}
+                        </span>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* ========================================================================= */}
+      {/* 2. BOOKMAKER & SPECIAL MARKETS (Screenshot 3)                            */}
+      {/* ========================================================================= */}
+      {bookmakerList.map((bm, bmIdx) => (
+        <div key={bm.marketId || bmIdx} style={{ marginBottom: '8px', background: '#fff', borderBottom: '1px solid #cbd5e1' }}>
+          {/* Header */}
+          <div
+            style={{
+              background: '#243a48',
+              color: '#fff',
+              padding: '8px 12px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              fontSize: '13px',
+              fontWeight: 700
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span>{bm.marketName}</span>
+              <span style={{ fontSize: '12px', color: '#94a3b8' }}>ⓘ</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '11px' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#fef08a' }}>
+                <span style={{ width: '7px', height: '7px', background: '#f59e0b', borderRadius: '50%', display: 'inline-block' }}></span>
+                Cash Out
+              </span>
+              {bm.totalMatched && (
+                <span style={{ color: '#ffffff' }}>
+                  Matched <span style={{ fontWeight: 800 }}>€{formatSize(bm.totalMatched)}</span>
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Subheader */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 64px 64px',
+              background: '#e0f2fe',
+              borderBottom: '1px solid #cbd5e1',
+              alignItems: 'center',
+              fontWeight: 700,
+              fontSize: '11px'
+            }}
+          >
+            <div style={{ padding: '6px 12px', color: '#0369a1' }}>
+              Min/Max {bm.min} - {bm.max}
+            </div>
+            <div style={{ background: '#72bbef', color: '#000', textAlign: 'center', padding: '6px 0', borderRight: '1px solid #fff' }}>
+              Back
+            </div>
+            <div style={{ background: '#faa9ba', color: '#000', textAlign: 'center', padding: '6px 0' }}>
+              Lay
+            </div>
+          </div>
+
+          {/* Runners */}
+          {bm.runners.map((r, rIdx) => {
+            const isFlashBack = flashBackSet.has(`bm_b_${r.selectionId}`);
+            const isFlashLay = flashLaySet.has(`bm_l_${r.selectionId}`);
+            const isSuspended =
+              r.isSuspended ||
+              r.status === 'SUSPENDED' ||
+              r.back?.price === null ||
+              isNaN(Number(r.back?.price));
+
+            return (
               <div
+                key={r.selectionId || rIdx}
                 style={{
                   display: 'grid',
                   gridTemplateColumns: '1fr 64px 64px',
-                  background: '#e0f2fe',
-                  borderBottom: '1px solid #cbd5e1',
+                  borderBottom: '1px solid #e2e8f0',
                   alignItems: 'center',
-                  fontWeight: 700,
-                  fontSize: '11px'
+                  background: rIdx % 2 === 0 ? '#ffffff' : '#f8fafc'
                 }}
               >
-                <div style={{ padding: '6px 12px', color: '#0369a1' }}>Session / Over Line</div>
-                <div style={{ background: '#faa9ba', color: '#000', textAlign: 'center', padding: '6px 0', borderRight: '1px solid #fff' }}>
-                  No
+                <div style={{ padding: '8px 12px', fontWeight: 700, fontSize: '13px', color: '#000' }}>
+                  {r.name}
                 </div>
-                <div style={{ background: '#72bbef', color: '#000', textAlign: 'center', padding: '6px 0' }}>
-                  Yes
-                </div>
-              </div>
 
-              {/* Rows */}
-              {fancyMarkets.map((f, idx) => {
+                {/* Back */}
+                <button
+                  onClick={() => !isSuspended && setSelectedBet({ side: 'BACK', runner: r.name, rate: r.back?.price, size: r.back?.size })}
+                  className={isFlashBack ? 'flash-back' : ''}
+                  disabled={isSuspended}
+                  style={{
+                    background: '#72bbef',
+                    border: 'none',
+                    borderRight: '1px solid #ffffff',
+                    padding: '4px 0',
+                    textAlign: 'center',
+                    cursor: isSuspended ? 'default' : 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    height: '42px'
+                  }}
+                >
+                  <span style={{ fontSize: '13px', fontWeight: 800, color: '#000' }}>
+                    {isSuspended || r.back?.price === null ? '0' : r.back?.price}
+                  </span>
+                  <span style={{ fontSize: '9px', color: '#334155' }}>
+                    {formatSize(r.back?.size)}
+                  </span>
+                </button>
+
+                {/* Lay */}
+                <button
+                  onClick={() => !isSuspended && setSelectedBet({ side: 'LAY', runner: r.name, rate: r.lay?.price, size: r.lay?.size })}
+                  className={isFlashLay ? 'flash-lay' : ''}
+                  disabled={isSuspended}
+                  style={{
+                    background: '#faa9ba',
+                    border: 'none',
+                    padding: '4px 0',
+                    textAlign: 'center',
+                    cursor: isSuspended ? 'default' : 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    height: '42px'
+                  }}
+                >
+                  <span style={{ fontSize: '13px', fontWeight: 800, color: '#000' }}>
+                    {isSuspended || r.lay?.price === null ? '0' : r.lay?.price}
+                  </span>
+                  <span style={{ fontSize: '9px', color: '#334155' }}>
+                    {formatSize(r.lay?.size)}
+                  </span>
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+
+      {/* ========================================================================= */}
+      {/* 3. DUAL PARENT TABS: [FANCY BET ⓘ] & [SPORTSBOOK ⓘ] & [RESULTS ⓘ]         */}
+      {/* Matches Screenshot 1 & 2 exactly                                          */}
+      {/* ========================================================================= */}
+      <div style={{ marginTop: '6px' }}>
+        <div style={{ display: 'flex', width: '100%' }}>
+          {/* Fancy Bet Tab */}
+          <button
+            onClick={() => setMainTab('fancy')}
+            style={{
+              flex: 1,
+              padding: '10px 8px',
+              backgroundColor: mainTab === 'fancy' ? '#20a3b8' : '#334155',
+              color: '#ffffff',
+              border: 'none',
+              fontWeight: 800,
+              fontSize: '14px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              transition: 'background 0.15s ease'
+            }}
+          >
+            <span>Fancy Bet</span>
+            <span style={{ fontSize: '13px' }}>ⓘ</span>
+          </button>
+
+          {/* Sportsbook Tab */}
+          <button
+            onClick={() => setMainTab('sportsbook')}
+            style={{
+              flex: 1,
+              padding: '10px 8px',
+              backgroundColor: mainTab === 'sportsbook' ? '#ea580c' : '#334155',
+              color: '#ffffff',
+              border: 'none',
+              fontWeight: 800,
+              fontSize: '14px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              transition: 'background 0.15s ease'
+            }}
+          >
+            <span>Sportsbook</span>
+            <span style={{ fontSize: '13px' }}>ⓘ</span>
+          </button>
+
+          {/* Results Tab */}
+          <button
+            onClick={() => setMainTab('results')}
+            style={{
+              flex: 0.9,
+              padding: '10px 8px',
+              backgroundColor: mainTab === 'results' ? '#0f766e' : '#1e293b',
+              color: '#ffffff',
+              border: 'none',
+              fontWeight: 800,
+              fontSize: '14px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              transition: 'background 0.15s ease'
+            }}
+          >
+            <span>Results</span>
+            <span style={{ fontSize: '13px' }}>ⓘ</span>
+          </button>
+        </div>
+
+        {/* ----------------------------------------------------------------------- */}
+        {/* TAB 1: FANCY BET (Screenshot 1)                                        */}
+        {/* Sub-tabs: ALL | Fancy | Line Market | Ball by Ball | Meter | Khado     */}
+        {/* ----------------------------------------------------------------------- */}
+        {mainTab === 'fancy' && (
+          <div>
+            {/* Sub-tabs Navigation Bar */}
+            <div
+              style={{
+                backgroundColor: '#38bdf8',
+                padding: '6px 10px',
+                display: 'flex',
+                gap: '6px',
+                overflowX: 'auto',
+                scrollbarWidth: 'none'
+              }}
+            >
+              {['ALL', 'Fancy', 'Line Market', 'Ball by Ball', 'Meter', 'Khado'].map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setFancySubTab(tab)}
+                  style={{
+                    padding: '4px 12px',
+                    borderRadius: '16px',
+                    border: 'none',
+                    backgroundColor: fancySubTab === tab ? '#ffffff' : 'transparent',
+                    color: fancySubTab === tab ? '#000000' : '#ffffff',
+                    fontWeight: 800,
+                    fontSize: '11px',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+
+            {/* Column Header */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 64px 64px',
+                background: '#ffffff',
+                borderBottom: '1px solid #cbd5e1',
+                alignItems: 'center',
+                fontWeight: 800,
+                fontSize: '12px'
+              }}
+            >
+              <div style={{ padding: '6px 12px', color: '#334155' }}>
+                Session / Over Line ({filteredFancy.length})
+              </div>
+              <div style={{ background: '#faa9ba', color: '#000', textAlign: 'center', padding: '6px 0', borderRight: '1px solid #fff' }}>
+                No
+              </div>
+              <div style={{ background: '#72bbef', color: '#000', textAlign: 'center', padding: '6px 0' }}>
+                Yes
+              </div>
+            </div>
+
+            {/* Fancy Rows */}
+            {filteredFancy.length > 0 ? (
+              filteredFancy.map((f, idx) => {
                 const marketId = f.marketId || idx;
-                const marketName = f.marketName || `Session Market ${idx + 1}`;
+                const marketName = f.marketName || f.sessionName || `Session Market ${idx + 1}`;
                 const isFlashNo = flashLaySet.has(`fc_n_${marketId}`);
                 const isFlashYes = flashBackSet.has(`fc_y_${marketId}`);
                 const isSuspended = f.isSuspended || f.status === 'SUSPENDED';
 
-                // Prices
                 const noPrice = f.no?.price ?? f.oddsData?.runners?.[0]?.price?.lay?.[0]?.price ?? '-';
                 const noSize = f.no?.size ?? f.oddsData?.runners?.[0]?.price?.lay?.[0]?.size ?? '100';
                 const yesPrice = f.yes?.price ?? f.oddsData?.runners?.[0]?.price?.back?.[0]?.price ?? '-';
@@ -1010,11 +1155,10 @@ export default function MatchDetailTablesView({ event, onBack }) {
                       gridTemplateColumns: '1fr 64px 64px',
                       borderBottom: '1px solid #e2e8f0',
                       alignItems: 'center',
-                      background: idx % 2 === 0 ? '#ffffff' : '#f8fafc',
-                      position: 'relative'
+                      background: idx % 2 === 0 ? '#ffffff' : '#f8fafc'
                     }}
                   >
-                    <div style={{ padding: '8px 12px' }}>
+                    <div style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <div style={{ fontWeight: 700, fontSize: '13px', color: '#000', display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <span>{marketName}</span>
                         {f.news && (
@@ -1032,9 +1176,7 @@ export default function MatchDetailTablesView({ event, onBack }) {
                           </span>
                         )}
                       </div>
-                      <div style={{ fontSize: '10px', color: '#64748b' }}>
-                        Min/Max {f.min || 100} - {f.max || 50000}
-                      </div>
+                      <span style={{ fontSize: '12px', color: '#94a3b8', cursor: 'pointer', marginLeft: '6px' }}>ⓘ</span>
                     </div>
 
                     {/* NO (Pink) */}
@@ -1093,106 +1235,245 @@ export default function MatchDetailTablesView({ event, onBack }) {
                     </button>
                   </div>
                 );
-              })}
-            </div>
-          ) : activePill === 'Fancy' ? (
-            <div style={{ padding: '20px', textAlign: 'center', color: '#64748b', fontSize: '12px' }}>
-              No Fancy markets active for this event.
-            </div>
-          ) : null}
-        </div>
-      )}
-
-      {/* Sportsbook Section */}
-      {(activePill === 'All' || activePill === 'Sportsbook') && (
-        <div style={{ padding: '8px 12px' }}>
-          {sportsbook.length > 0 ? (
-            <div style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid #cbd5e1', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-              <div style={{ background: '#090d16', color: '#fff', padding: '8px 12px', fontSize: '12px', fontWeight: 800, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>SPORTSBOOK MARKETS ({sportsbook.length})</span>
-                <span style={{ fontSize: '10px', color: '#10b981', fontWeight: 700 }}>● REAL-TIME</span>
+              })
+            ) : (
+              <div style={{ padding: '24px', textAlign: 'center', color: '#64748b', fontSize: '12px' }}>
+                No markets found under <strong>{fancySubTab}</strong> category.
               </div>
-              {sportsbook.map((sb, sbIdx) => {
+            )}
+          </div>
+        )}
+
+        {/* ----------------------------------------------------------------------- */}
+        {/* TAB 2: SPORTSBOOK (Screenshot 2)                                       */}
+        {/* Sub-tabs: All | Match | Odds/Evens | Batsman | Bowler | Extra           */}
+        {/* ----------------------------------------------------------------------- */}
+        {mainTab === 'sportsbook' && (
+          <div>
+            {/* Sub-tabs Navigation Bar */}
+            <div
+              style={{
+                backgroundColor: '#ea580c',
+                padding: '6px 10px',
+                display: 'flex',
+                gap: '6px',
+                overflowX: 'auto',
+                scrollbarWidth: 'none'
+              }}
+            >
+              {['All', 'Match', 'Odds/Evens', 'Batsman', 'Bowler', 'Extra'].map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setSportsbookSubTab(tab)}
+                  style={{
+                    padding: '4px 12px',
+                    borderRadius: '16px',
+                    border: 'none',
+                    backgroundColor: sportsbookSubTab === tab ? '#ffffff' : 'transparent',
+                    color: sportsbookSubTab === tab ? '#000000' : '#ffffff',
+                    fontWeight: 800,
+                    fontSize: '11px',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+
+            {/* Sportsbook Markets List */}
+            {filteredSportsbook.length > 0 ? (
+              filteredSportsbook.map((sb, sbIdx) => {
                 const runners = sb.oddsData?.runners || [];
                 const names = sb.runnersData || {};
                 return (
-                  <div key={sb.marketId || sbIdx} style={{ borderBottom: '1px solid #e2e8f0', background: '#fff' }}>
-                    <div style={{ padding: '6px 12px', background: '#f1f5f9', fontWeight: 800, fontSize: '11px', color: '#334155', borderBottom: '1px solid #cbd5e1' }}>
-                      {sb.marketName || 'Sportsbook'} <span style={{ fontWeight: 400, color: '#64748b' }}>(Min/Max {sb.min || 100} - {sb.max || 100000})</span>
+                  <div key={sb.marketId || sbIdx} style={{ marginBottom: '8px', background: '#fff' }}>
+                    {/* Orange Header Bar */}
+                    <div
+                      style={{
+                        background: '#ea580c',
+                        color: '#ffffff',
+                        padding: '7px 12px',
+                        fontWeight: 800,
+                        fontSize: '12px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}
+                    >
+                      <span>{sb.marketName || 'Sportsbook Market'}</span>
+                      <span style={{ fontSize: '13px' }}>ⓘ</span>
                     </div>
+
+                    {/* Runners List */}
                     {runners.map((r, rIdx) => {
                       const runnerName = names[String(r.selectionId)] || `Option ${rIdx + 1}`;
                       const backPrice = r.price?.back?.[0]?.price ?? '-';
+                      const volume = formatSize(r.price?.back?.[0]?.size) || '100K';
                       const isSusp = r.status === 'SUSPENDED';
+
                       return (
-                        <div key={r.selectionId || rIdx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid #f1f5f9' }}>
-                          <span style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a' }}>{runnerName}</span>
+                        <div
+                          key={r.selectionId || rIdx}
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '8px 12px',
+                            borderBottom: '1px solid #f1f5f9',
+                            background: rIdx % 2 === 0 ? '#ffffff' : '#fafafa'
+                          }}
+                        >
+                          <span style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a' }}>
+                            {runnerName}
+                          </span>
+
+                          {/* Green Box Button */}
                           <button
-                            onClick={() => !isSusp && setSelectedBet({ side: 'BACK', runner: `${sb.marketName} - ${runnerName}`, rate: backPrice, size: r.price?.back?.[0]?.size || 100 })}
+                            onClick={() =>
+                              !isSusp &&
+                              setSelectedBet({
+                                side: 'BACK',
+                                runner: `${sb.marketName} - ${runnerName}`,
+                                rate: backPrice,
+                                size: r.price?.back?.[0]?.size || 100
+                              })
+                            }
                             disabled={isSusp}
                             style={{
-                              background: '#72bbef',
-                              border: 'none',
+                              background: '#6ee7b7',
+                              border: '1px solid #34d399',
                               borderRadius: '4px',
-                              width: '64px',
-                              height: '32px',
-                              fontWeight: 900,
-                              fontSize: '13px',
+                              width: '110px',
+                              height: '38px',
                               cursor: isSusp ? 'default' : 'pointer',
-                              color: '#000'
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              justifyContent: 'center'
                             }}
                           >
-                            {isSusp ? '-' : backPrice}
+                            <span style={{ fontSize: '13px', fontWeight: 900, color: '#000000' }}>
+                              {isSusp ? '-' : backPrice}
+                            </span>
+                            <span style={{ fontSize: '9px', fontWeight: 600, color: '#064e3b' }}>
+                              {volume}
+                            </span>
                           </button>
                         </div>
                       );
                     })}
                   </div>
                 );
-              })}
-            </div>
-          ) : activePill === 'Sportsbook' ? (
-            <div style={{ padding: '20px', textAlign: 'center', color: '#64748b', fontSize: '12px' }}>
-              No Sportsbook markets active for this event.
-            </div>
-          ) : null}
-        </div>
-      )}
-
-      {/* Fancy / Settled Results Section */}
-      {(activePill === 'All' || activePill === 'Results') && (
-        <div style={{ padding: '8px 12px' }}>
-          <div style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid #cbd5e1', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <div style={{ background: '#090d16', color: '#fff', padding: '8px 12px', fontSize: '12px', fontWeight: 800, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span>SETTLED FANCY / SESSION RESULTS</span>
-              <button onClick={fetchFancyResults} style={{ background: '#2563eb', border: 'none', color: '#fff', borderRadius: '4px', padding: '2px 8px', fontSize: '10px', fontWeight: 700, cursor: 'pointer' }}>
-                Refresh Results
-              </button>
-            </div>
-            {loadingResults ? (
-              <div style={{ padding: '16px', textAlign: 'center', color: '#64748b', fontSize: '11px' }}>Loading results...</div>
-            ) : fancyResults.length > 0 ? (
-              fancyResults.map((res, rIdx) => (
-                <div key={res.marketId || rIdx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid #f1f5f9', background: rIdx % 2 === 0 ? '#fff' : '#f8fafc' }}>
-                  <div>
-                    <div style={{ fontSize: '12px', fontWeight: 800, color: '#0f172a' }}>{res.marketName || res.sessionName || `Session ${rIdx + 1}`}</div>
-                    <div style={{ fontSize: '10px', color: '#64748b' }}>{res.settledTime || res.createdAt || 'Settled'}</div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ background: '#10b981', color: '#fff', padding: '2px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 900, display: 'inline-block' }}>
-                      {res.result || res.declaredRun || res.outcome || 'PASS'}
-                    </div>
-                  </div>
-                </div>
-              ))
+              })
             ) : (
-              <div style={{ padding: '16px', textAlign: 'center', color: '#64748b', fontSize: '11px' }}>
-                No settled fancy results for this match yet.
+              <div style={{ padding: '24px', textAlign: 'center', color: '#64748b', fontSize: '12px' }}>
+                No sportsbook markets found under <strong>{sportsbookSubTab}</strong> category.
               </div>
             )}
           </div>
-        </div>
-      )}
+        )}
+
+        {/* ----------------------------------------------------------------------- */}
+        {/* TAB 3: SETTLED RESULTS (User Requirements 1, 2, 4)                     */}
+        {/* ----------------------------------------------------------------------- */}
+        {mainTab === 'results' && (
+          <div style={{ padding: '10px 12px' }}>
+            <div
+              style={{
+                borderRadius: '8px',
+                overflow: 'hidden',
+                border: '1px solid #cbd5e1',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                background: '#ffffff'
+              }}
+            >
+              <div
+                style={{
+                  background: '#0f766e',
+                  color: '#fff',
+                  padding: '9px 12px',
+                  fontSize: '12px',
+                  fontWeight: 800,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }}
+              >
+                <span>SETTLED FANCY / SESSION RESULTS</span>
+                <button
+                  onClick={fetchFancyResults}
+                  style={{
+                    background: '#042f2e',
+                    border: '1px solid rgba(255,255,255,0.2)',
+                    color: '#fff',
+                    borderRadius: '4px',
+                    padding: '3px 8px',
+                    fontSize: '10px',
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  🔄 Refresh
+                </button>
+              </div>
+
+              {loadingResults ? (
+                <div style={{ padding: '24px', textAlign: 'center', color: '#64748b', fontSize: '12px' }}>
+                  Loading real-time settled results...
+                </div>
+              ) : fancyResults.length > 0 ? (
+                fancyResults.map((res, rIdx) => {
+                  const declared = res.result || res.declaredRun || res.outcome || res.score || 'PASS';
+                  const title = res.marketName || res.sessionName || res.name || `Session ${rIdx + 1}`;
+                  const time = res.settledTime || res.createdAt || 'Settled';
+                  return (
+                    <div
+                      key={res.marketId || rIdx}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '10px 12px',
+                        borderBottom: '1px solid #f1f5f9',
+                        background: rIdx % 2 === 0 ? '#ffffff' : '#f8fafc'
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a' }}>{title}</div>
+                        <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
+                          Status: <strong style={{ color: '#059669' }}>SETTLED</strong> • {time}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div
+                          style={{
+                            background: '#10b981',
+                            color: '#ffffff',
+                            padding: '3px 10px',
+                            borderRadius: '4px',
+                            fontSize: '13px',
+                            fontWeight: 900,
+                            display: 'inline-block'
+                          }}
+                        >
+                          {declared}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div style={{ padding: '24px', textAlign: 'center', color: '#64748b', fontSize: '12px' }}>
+                  <div style={{ fontWeight: 700, marginBottom: '4px' }}>No Settled Results Yet</div>
+                  <div>Session outcomes will appear here in real time as overs complete and results are declared.</div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Selected Bet Popover */}
       {selectedBet && (
@@ -1225,7 +1506,13 @@ export default function MatchDetailTablesView({ event, onBack }) {
             </div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: '15px', fontWeight: 900, color: selectedBet.side === 'BACK' || selectedBet.side === 'YES' ? '#38bdf8' : '#f472b6' }}>
+            <div
+              style={{
+                fontSize: '15px',
+                fontWeight: 900,
+                color: selectedBet.side === 'BACK' || selectedBet.side === 'YES' ? '#38bdf8' : '#f472b6'
+              }}
+            >
               @ {selectedBet.rate || '1.0'}
             </div>
             <div style={{ fontSize: '10px', color: '#64748b' }}>
@@ -1234,7 +1521,16 @@ export default function MatchDetailTablesView({ event, onBack }) {
           </div>
           <button
             onClick={() => setSelectedBet(null)}
-            style={{ background: '#334155', border: 'none', borderRadius: '4px', color: '#fff', padding: '6px 10px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+            style={{
+              background: '#334155',
+              border: 'none',
+              borderRadius: '4px',
+              color: '#fff',
+              padding: '6px 10px',
+              fontSize: '11px',
+              fontWeight: 700,
+              cursor: 'pointer'
+            }}
           >
             Close
           </button>

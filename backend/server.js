@@ -1788,6 +1788,42 @@ const queryFirestoreForEvent = async (eventId, sportId = "4") => {
     });
   };
 
+  const matchOddsList = betfairDocs
+    .filter((d) => d.document)
+    .map((d) => {
+      const bDoc = d.document.fields;
+      return {
+        marketId: bDoc.exMarketId?.stringValue || d.document.name.split("/").pop(),
+        marketName: bDoc.marketName?.stringValue || "Match Odds",
+        min: parseNumber(bDoc.min) || 100,
+        max: parseNumber(bDoc.max) || 1000,
+        totalMatched:
+          bDoc.oddsData?.mapValue?.fields?.totalMatched?.integerValue ||
+          bDoc.oddsData?.mapValue?.fields?.totalMatched?.stringValue ||
+          "0",
+        status: bDoc.oddsData?.mapValue?.fields?.status?.stringValue || "OPEN",
+        runners: parseRunners(bDoc),
+      };
+    });
+
+  const bookmakerList = bookmakerDocs
+    .filter((d) => d.document)
+    .map((d) => {
+      const bmDoc = d.document.fields;
+      return {
+        marketId: bmDoc.exMarketId?.stringValue || d.document.name.split("/").pop(),
+        marketName: bmDoc.marketName?.stringValue || "Bookmaker Bhav",
+        min: parseNumber(bmDoc.min) || 100,
+        max: parseNumber(bmDoc.max) || 25000,
+        totalMatched:
+          bmDoc.oddsData?.mapValue?.fields?.totalMatched?.integerValue ||
+          bmDoc.oddsData?.mapValue?.fields?.totalMatched?.stringValue ||
+          "0",
+        status: bmDoc.oddsData?.mapValue?.fields?.status?.stringValue || "OPEN",
+        runners: parseRunners(bmDoc),
+      };
+    });
+
   const bDoc = betfairDocs[0]?.document?.fields;
   const bmDoc = bookmakerDocs[0]?.document?.fields;
 
@@ -1837,30 +1873,10 @@ const queryFirestoreForEvent = async (eventId, sportId = "4") => {
   return {
     eventId,
     news: newsTicker,
-    matchOdds: bDoc
-      ? {
-          marketName: bDoc.marketName?.stringValue || "Match Odds",
-          min: 100,
-          max: 1000,
-          totalMatched:
-            bDoc.oddsData?.mapValue?.fields?.totalMatched?.integerValue || "0",
-          status:
-            bDoc.oddsData?.mapValue?.fields?.status?.stringValue || "OPEN",
-          runners: parseRunners(bDoc),
-        }
-      : null,
-    bookmaker: bmDoc
-      ? {
-          marketName: bmDoc.marketName?.stringValue || "Bookmaker Cup Bhav",
-          min: 100,
-          max: 25000,
-          totalMatched:
-            bmDoc.oddsData?.mapValue?.fields?.totalMatched?.integerValue || "0",
-          status:
-            bmDoc.oddsData?.mapValue?.fields?.status?.stringValue || "OPEN",
-          runners: parseRunners(bmDoc),
-        }
-      : null,
+    matchOdds: matchOddsList[0] || null,
+    matchOddsList,
+    bookmaker: bookmakerList[0] || null,
+    bookmakerList,
     fancy: validFancy,
   };
 };
