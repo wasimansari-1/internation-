@@ -1161,16 +1161,17 @@ const resolveBetfairStreamId = async (rawId, sportId = "4") => {
 };
 
 const getClientIp = (req) => {
-  return (
-    (req.headers["x-forwarded-for"] || "").split(",")[0].trim() ||
-    req.headers["x-real-ip"] ||
-    req.socket?.remoteAddress ||
-    ""
-  );
+  const forwarded = (req.headers["x-forwarded-for"] || "").split(",")[0].trim();
+  const rawIp = forwarded || req.headers["x-real-ip"] || req.socket?.remoteAddress || "";
+  if (rawIp && !rawIp.includes(":") && !rawIp.startsWith("127.") && !rawIp.startsWith("10.") && !rawIp.startsWith("172.") && !rawIp.startsWith("192.")) {
+    return rawIp;
+  }
+  return "103.211.53.1";
 };
 
 const fetchSportsWatchLink = async (rawId, sportId = "4", clientIp = "") => {
   const streamId = await resolveBetfairStreamId(rawId, sportId);
+  const forwardedIp = clientIp && !clientIp.includes(":") && !clientIp.startsWith("127.") ? clientIp : "103.211.53.1";
   let token = await getDemoToken();
   const makeRequest = async (authToken) => {
     const headers = {
@@ -1179,12 +1180,10 @@ const fetchSportsWatchLink = async (rawId, sportId = "4", clientIp = "") => {
       Referer: "https://nice444.com/",
       "User-Agent":
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+      "X-Forwarded-For": forwardedIp,
+      "X-Real-IP": forwardedIp,
+      "CF-Connecting-IP": forwardedIp,
     };
-    if (clientIp) {
-      headers["X-Forwarded-For"] = clientIp;
-      headers["X-Real-IP"] = clientIp;
-      headers["CF-Connecting-IP"] = clientIp;
-    }
     return await axios.post(
       "https://nice444.com/api/exchange/streaming/exchEventsWatchLink",
       { streamId: String(streamId), timestamp: Date.now() },
@@ -1238,18 +1237,17 @@ app.all("/api/stream/ltve-fetch-proxy", async (req, res) => {
   try {
     const parentReferer = targetUrl.replace(/\/(ping|flag|bye).*$/, "");
     const clientIp = getClientIp(req);
+    const forwardedIp = clientIp && !clientIp.includes(":") && !clientIp.startsWith("127.") ? clientIp : "103.211.53.1";
     const headers = {
       "Content-Type": req.headers["content-type"] || "application/json",
       "Origin": "https://nice444.com",
       "Referer": parentReferer,
       "User-Agent":
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+      "X-Forwarded-For": forwardedIp,
+      "X-Real-IP": forwardedIp,
+      "CF-Connecting-IP": forwardedIp,
     };
-    if (clientIp) {
-      headers["X-Forwarded-For"] = clientIp;
-      headers["X-Real-IP"] = clientIp;
-      headers["CF-Connecting-IP"] = clientIp;
-    }
     const upstreamRes = await axios({
       method: req.method,
       url: targetUrl,
