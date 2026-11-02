@@ -81,12 +81,6 @@ export async function ensureNiceCasinoSocket() {
             currentMarketArr = data.marketArr;
           }
 
-          const currentCards = {
-            ...(existing.cardsArr || {}),
-            ...(payload?.cardsArr || payload?.cards || {}),
-            ...(data.cardsArr || data.cards || {}),
-          };
-
           const leftSec =
             payload?.leftSec !== undefined
               ? payload.leftSec
@@ -100,34 +94,75 @@ export async function ensureNiceCasinoSocket() {
           const eventName =
             payload?.eventName || data.eventName || existing.eventName;
 
-          // Apply dotted updates (e.g. cardsArr.PLAYER_A.card_1 or marketArr.0.runners.0.price.back.0.size)
+          // Check if round transitioned or a new betting phase started
+          const isNewRound =
+            roundId && existing.roundId && String(roundId) !== String(existing.roundId);
+          const isBettingPhase =
+            roundStatus === "PLACE_THE_BET" ||
+            (typeof leftSec === "number" && leftSec > 0);
+
+          let currentCards;
+          if (isNewRound || isBettingPhase) {
+            // New round or open betting: DO NOT carry over open cards from previous round!
+            // Start fresh with whatever cardsArr the new round provided (usually all "0")
+            const freshCards = payload?.cardsArr || payload?.cards || data.cardsArr || data.cards || {};
+            currentCards = JSON.parse(JSON.stringify(freshCards));
+          } else {
+            // Cards dealing phase: preserve and accumulate revealed cards
+            currentCards = JSON.parse(JSON.stringify(existing.cardsArr || {}));
+            const incomingCards = payload?.cardsArr || payload?.cards || data.cardsArr || data.cards;
+            if (incomingCards && typeof incomingCards === "object") {
+              for (const [k, v] of Object.entries(incomingCards)) {
+                if (typeof v === "object" && v !== null && !Array.isArray(v)) {
+                  if (!currentCards[k] || typeof currentCards[k] !== "object") currentCards[k] = {};
+                  Object.assign(currentCards[k], v);
+                } else {
+                  currentCards[k] = v;
+                }
+              }
+            }
+          }
+
+          // Apply dotted updates (cardsArr, runner status, market status, odds sizes)
           if (payload && typeof payload === "object" && !Array.isArray(payload)) {
             for (const [key, val] of Object.entries(payload)) {
               if (key.startsWith("cardsArr.") || key.startsWith("cards.")) {
                 const parts = key.split(".");
                 if (parts.length === 3) {
-                  if (!currentCards[parts[1]]) currentCards[parts[1]] = {};
+                  if (!currentCards[parts[1]] || typeof currentCards[parts[1]] !== "object") {
+                    currentCards[parts[1]] = {};
+                  }
                   currentCards[parts[1]][parts[2]] = val;
+                } else if (parts.length === 2) {
+                  currentCards[parts[1]] = val;
                 }
               } else if (key.startsWith("marketArr.") && currentMarketArr.length > 0) {
                 const parts = key.split(".");
                 const mIdx = parseInt(parts[1], 10);
                 if (currentMarketArr[mIdx]) {
-                  const rIdx = parseInt(parts[3], 10);
-                  const prop = parts[parts.length - 1];
-                  const backIdx = parseInt(parts[6] || 0, 10);
-                  if (
-                    currentMarketArr[mIdx].runners &&
-                    currentMarketArr[mIdx].runners[rIdx]
-                  ) {
-                    const runner = currentMarketArr[mIdx].runners[rIdx];
-                    if (!runner.price)
-                      runner.price = { back: [{ price: 0, size: 0 }] };
-                    if (!runner.price.back)
-                      runner.price.back = [{ price: 0, size: 0 }];
-                    if (!runner.price.back[backIdx])
-                      runner.price.back[backIdx] = { price: 0, size: 0 };
-                    runner.price.back[backIdx][prop] = val;
+                  if (parts.length === 3 && parts[2] === "status") {
+                    currentMarketArr[mIdx].status = val;
+                  } else if (parts[2] === "runners") {
+                    const rIdx = parseInt(parts[3], 10);
+                    if (
+                      currentMarketArr[mIdx].runners &&
+                      currentMarketArr[mIdx].runners[rIdx]
+                    ) {
+                      const runner = currentMarketArr[mIdx].runners[rIdx];
+                      if (parts.length === 5 && parts[4] === "status") {
+                        runner.status = val;
+                      } else if (parts[4] === "price") {
+                        const backIdx = parseInt(parts[6] || 0, 10);
+                        const prop = parts[parts.length - 1];
+                        if (!runner.price)
+                          runner.price = { back: [{ price: 0, size: 0 }] };
+                        if (!runner.price.back)
+                          runner.price.back = [{ price: 0, size: 0 }];
+                        if (!runner.price.back[backIdx])
+                          runner.price.back[backIdx] = { price: 0, size: 0 };
+                        runner.price.back[backIdx][prop] = val;
+                      }
+                    }
                   }
                 }
               }
@@ -294,3 +329,4 @@ export async function getCasinoTableList(id = 110) {
   ];
   return { success: true, statusCode: 200, data: fallbackList };
 }
+

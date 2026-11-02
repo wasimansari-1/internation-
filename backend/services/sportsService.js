@@ -294,3 +294,4 @@ export const queryFirestoreForEvent = async (eventId, sportId = "4") => {
     fancy: validFancy,
   };
 };
+

@@ -2,13 +2,16 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, Maximize2, Minimize2, RefreshCw, Trophy, GlassWater, ShieldAlert, AlertCircle, Info } from 'lucide-react';
 import axios from 'axios';
 
-// Helper to resolve card image path
+// Helper to resolve card image path strictly according to API values
 const getCardImg = (val) => {
-  if (!val || val === '0' || val === '1') {
+  if (!val || val === '0' || val === '1' || val === 'null' || val === '-' || val === 'undefined') {
     return '/card/0.png';
   }
-  // If card is like "HA_" or "H8_" or "10"
-  const clean = String(val).trim();
+  let clean = String(val).trim();
+  // Ensure suit + rank has trailing underscore matching static assets if required
+  if (!clean.endsWith('_') && /^[CDHS][0-9AKQJ]+$/i.test(clean)) {
+    clean += '_';
+  }
   return `/card/${clean}.png`;
 };
 
@@ -65,7 +68,7 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
     }
   };
 
-  // 4. Poll Real-Time Odds & Results via REST API (1000ms)
+  // 4. Poll Real-Time Odds & Results via REST API (1000ms exact socket sync)
   useEffect(() => {
     fetchRecentResults();
     fetchWatchUrl();
@@ -81,7 +84,7 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
           const data = res.data.data;
           setOddsData(data);
           if (typeof data.leftSec === 'number') {
-            setTimeLeft(data.leftSec);
+            setTimeLeft(Math.max(0, data.leftSec));
           }
           const now = Date.now();
           if (
@@ -104,25 +107,6 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
       clearInterval(interval);
     };
   }, [gameId]);
-
-  // 4. Smooth Local Timer countdown between server tick updates
-  useEffect(() => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    if (timeLeft > 0) {
-      timerRef.current = setInterval(() => {
-        setTimeLeft((prev) => {
-          if (prev <= 1) {
-            clearInterval(timerRef.current);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [timeLeft]);
 
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
@@ -156,8 +140,8 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
   const cardEntries = Object.entries(cardsArr).filter(([k]) => k !== 'eventId' && k !== 'roundId');
 
   // Extract real cards directly from live scraped API data
-  // When card is "0" or "1" (face down in API), getCardImg renders /card/0.png
-  // When the dealer flips the card, the API updates and our UI card flips synchronously
+  // During open betting (timeLeft > 0), all cards remain CLOSED face-down ('0')
+  // When betting ends (timeLeft <= 0), dealer deals cards and only cards with real values flip open
   const getCardsList = (val) => {
     if (!val) return ['0'];
     let list = [];
@@ -171,6 +155,12 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
       list = [val];
     }
     if (list.length === 0) list = ['0'];
+
+    // If round betting is active, keep cards closed face-down
+    if (timeLeft > 0) {
+      return list.map(() => '0');
+    }
+
     return list;
   };
 
@@ -193,11 +183,15 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
     return { label: w.slice(0, 2), bg: '#10b981' };
   };
 
-  // Global suspension condition
+  // Live API-driven suspension condition
   const isTableSuspended =
     oddsData?.status === 'SUSPEND' ||
+    oddsData?.status === 'SUSPENDED' ||
+    oddsData?.roundStatus === 'SUSPEND' ||
     oddsData?.roundStatus === 'SUSPENDED' ||
-    timeLeft <= 2;
+    oddsData?.roundStatus === 'RESULT_DECLARED' ||
+    (oddsData?.roundStatus && oddsData?.roundStatus !== 'PLACE_THE_BET') ||
+    timeLeft <= 0;
 
   const marketList = oddsData?.marketArr || [];
 
@@ -538,7 +532,9 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
               marketList.map((m, mIdx) => {
                 const isMarketSuspended =
                   isTableSuspended ||
-                  m.runners?.every((r) => r.status === 'SUSPEND');
+                  m.status === 'SUSPEND' ||
+                  m.status === 'SUSPENDED' ||
+                  m.runners?.every((r) => r.status === 'SUSPEND' || r.status === 'SUSPENDED');
 
                 return (
                   <div
@@ -607,6 +603,11 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
                       )}
 
                       {m.runners?.map((r, rIdx) => {
+                        const isRunnerSuspended =
+                          isMarketSuspended ||
+                          r.status === 'SUSPEND' ||
+                          r.status === 'SUSPENDED';
+
                         const backPrice = r.price?.back?.[0]?.price ?? 1.98;
                         const backSize = r.price?.back?.[0]?.size ?? 100000;
                         const runnerName =
@@ -619,21 +620,22 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
                           <div
                             key={r.selectionId || rIdx}
                             style={{
-                              backgroundColor: '#72bbef',
+                              backgroundColor: isRunnerSuspended ? '#334155' : '#72bbef',
                               borderRadius: '4px',
                               padding: '8px 4px',
                               textAlign: 'center',
-                              cursor: 'pointer',
+                              cursor: isRunnerSuspended ? 'not-allowed' : 'pointer',
                               display: 'flex',
                               flexDirection: 'column',
                               justifyContent: 'center',
                               boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-                              transition: 'transform 0.1s'
+                              transition: 'transform 0.1s',
+                              opacity: isRunnerSuspended ? 0.75 : 1
                             }}
                           >
                             <span
                               style={{
-                                color: '#0f172a',
+                                color: isRunnerSuspended ? '#94a3b8' : '#0f172a',
                                 fontWeight: 800,
                                 fontSize: '11px',
                                 textTransform: 'uppercase',
@@ -644,22 +646,22 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
                             </span>
                             <span
                               style={{
-                                color: '#020617',
+                                color: isRunnerSuspended ? '#cbd5e1' : '#020617',
                                 fontWeight: 900,
                                 fontSize: '16px',
                                 lineHeight: '1.1'
                               }}
                             >
-                              {backPrice}
+                              {isRunnerSuspended ? 'SUSP' : backPrice}
                             </span>
                             <span
                               style={{
-                                color: '#1e293b',
+                                color: isRunnerSuspended ? '#64748b' : '#1e293b',
                                 fontSize: '10px',
                                 fontWeight: 700
                               }}
                             >
-                              {Number(backSize).toLocaleString()}
+                              {isRunnerSuspended ? '-' : Number(backSize).toLocaleString()}
                             </span>
                           </div>
                         );
