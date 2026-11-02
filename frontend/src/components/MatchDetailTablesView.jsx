@@ -314,7 +314,6 @@ export default function MatchDetailTablesView({ event, onBack }) {
   // 3. Direct REST API live rates: 1s for in-play, 5s for upcoming / non-in-play
   useEffect(() => {
     fetchMarketSnapshot();
-    fetchWatchLink();
 
     const eventId = String(event.exEventId || event._id);
     const sportId = String(event.sportId || '4');
