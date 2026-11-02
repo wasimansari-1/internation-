@@ -1294,6 +1294,9 @@ app.all("/api/stream/ltve-fetch-proxy", async (req, res) => {
   }
 });
 
+// Upstream circuit breaker to prevent hammering provider on 403 access denial
+const upstreamStreamBreaker = new Map(); // key: cacheKey -> blockedUntilTimestamp
+
 app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
   const { eventId } = req.params;
   const sportId = req.query.sportId || "4";
@@ -1301,11 +1304,39 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
   const clientIp = getClientIp(req);
   const cacheKey = String(eventId);
 
-  if (forceFresh) {
-    sportsStreamCache.delete(cacheKey);
+  // 1. Circuit breaker: if upstream recently returned 403 (e.g. cloud IP restriction), return clean diagnostic without spamming
+  const blockedUntil = upstreamStreamBreaker.get(cacheKey) || 0;
+  if (!forceFresh && Date.now() < blockedUntil) {
+    res.removeHeader("Content-Security-Policy");
+    res.removeHeader("X-Frame-Options");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    return res.status(403).send(`
+      <!DOCTYPE html><html><head><meta charset="utf-8"><style>
+        body{background:#0b0f19;color:#94a3b8;font-family:system-ui,-apple-system,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;text-align:center;padding:20px;box-sizing:border-box}
+        .card{background:#111827;border:1px solid #1f2937;border-radius:12px;padding:24px;max-width:380px;width:100%;box-shadow:0 10px 25px rgba(0,0,0,0.5)}
+        .icon{font-size:32px;margin-bottom:8px}
+        h3{margin:0 0 8px;color:#f3f4f6;font-size:16px;font-weight:600}
+        p{font-size:12px;line-height:1.5;margin:0 0 16px;color:#6b7280}
+        .btn{background:#2563eb;color:#fff;border:none;border-radius:6px;padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;text-decoration:none}
+        .btn:hover{background:#1d4ed8}
+      </style></head><body>
+        <div class="card">
+          <div class="icon">📺</div>
+          <h3>Live Broadcast Stream</h3>
+          <p>This stream feed is protected by provider IP firewall restrictions. Available on supported residential networks.</p>
+          <button class="btn" onclick="window.location.href=window.location.pathname+'?sportId=${sportId}&fresh=1&t='+Date.now()">🔄 Retry Stream</button>
+        </div>
+      </body></html>
+    `);
   }
 
-  // 1. Check if we already have a cached, ready-to-serve HTML payload
+  if (forceFresh) {
+    sportsStreamCache.delete(cacheKey);
+    upstreamStreamBreaker.delete(cacheKey);
+  }
+
+  // 2. Check if we already have a cached, ready-to-serve HTML payload
   const existingCached = sportsStreamCache.get(cacheKey);
   if (!forceFresh && existingCached && existingCached.html && Date.now() < existingCached.expiresAt) {
     res.removeHeader("Content-Security-Policy");
@@ -1316,7 +1347,7 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
     return res.send(existingCached.html);
   }
 
-  // 2. Promise coalescing: if a fetch is already in flight for this match, wait for it
+  // 3. Promise coalescing: if a fetch is already in flight for this match, wait for it
   if (inFlightStreamFetches.has(cacheKey)) {
     try {
       const html = await inFlightStreamFetches.get(cacheKey);
@@ -1331,17 +1362,23 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
     }
   }
 
-  // 3. Initiate single fetch promise
+  // 4. Initiate single fetch promise
   const fetchPromise = (async () => {
     let result;
     try {
       result = await fetchSportsWatchLink(eventId, sportId, clientIp, forceFresh);
     } catch (watchErr) {
-      throw new Error(`fetchSportsWatchLink failed: ${watchErr.response?.status || watchErr.message}`);
+      const status = watchErr.response?.status || 500;
+      const msg = watchErr.response?.data?.meta?.message || watchErr.message;
+      const customErr = new Error(`fetchSportsWatchLink failed: ${status} - ${msg}`);
+      customErr.status = status;
+      throw customErr;
     }
 
-    if (!result.url) {
-      throw new Error("No live broadcast feed found for this event");
+    if (!result || !result.url) {
+      const notFoundErr = new Error("No live broadcast URL returned for this event");
+      notFoundErr.status = 404;
+      throw notFoundErr;
     }
 
     const fetchStreamPage = async (streamUrl) => {
@@ -1365,12 +1402,17 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
             pageRes.data.includes("Not allowed") ||
             pageRes.data.includes("Domain not whitelisted"))
         ) {
-          throw new Error("Stale watch link received from upstream");
+          const staleErr = new Error("Stale or unauthorized watch link received from upstream provider");
+          staleErr.status = 403;
+          throw staleErr;
         }
         return pageRes.data;
       } catch (getErr) {
-        const body = typeof getErr.response?.data === 'string' ? getErr.response.data.slice(0, 150) : '';
-        throw new Error(`fetchStreamPage failed: ${getErr.response?.status || getErr.message} ${body}`);
+        const status = getErr.response?.status || getErr.status || 500;
+        const bodySnippet = typeof getErr.response?.data === 'string' ? getErr.response.data.slice(0, 120) : '';
+        const pageErr = new Error(`fetchStreamPage failed with status ${status}: ${bodySnippet || getErr.message}`);
+        pageErr.status = status;
+        throw pageErr;
       }
     };
 
@@ -1378,6 +1420,11 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
     try {
       html = await fetchStreamPage(result.url);
     } catch (fetchErr) {
+      if (fetchErr.status === 403) {
+        // Upstream firewall denied access (e.g. datacenter IP) - set circuit breaker
+        upstreamStreamBreaker.set(cacheKey, Date.now() + 45000);
+        throw fetchErr;
+      }
       console.warn(`Watch link stale for ${eventId}, auto-recovering fresh link...`);
       sportsStreamCache.delete(String(eventId));
       if (result.streamId) sportsStreamCache.delete(String(result.streamId));
@@ -1431,8 +1478,14 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
       <script>
         (function() {
           let isReconnecting = false;
+          let reconnectCount = 0;
           function triggerReconnect(reason) {
             if (isReconnecting) return;
+            reconnectCount++;
+            if (reconnectCount > 3) {
+              console.warn('[Stream] Maximum re-connections reached, stopping loop:', reason);
+              return;
+            }
             isReconnecting = true;
             console.warn('[Stream] Auto-reconnecting:', reason);
             const toast = document.getElementById('reconnect-toast');
@@ -1442,7 +1495,7 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
               url.searchParams.set('fresh', '1');
               url.searchParams.set('t', Date.now());
               window.location.href = url.toString();
-            }, 500);
+            }, 800);
           }
 
           // 1. Intercept fetch & monitor session ping
@@ -1580,24 +1633,32 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     return res.send(html);
   } catch (err) {
-    console.error(`Sports TV proxy error for ${eventId}:`, err.message);
-    const cleanError = (err.message || 'Connecting to live broadcast...').replace(/<[^>]*>/g, '').replace(/["']/g, '');
-    return res.status(500).send(`
-      <!DOCTYPE html><html><body style="background:#000;color:#ef4444;font-family:sans-serif;display:grid;place-items:center;height:100vh;margin:0">
-        <div style="text-align:center">
-          <div style="font-size:28px">⚡</div>
-          <h3 style="margin:8px 0 4px">Connecting Live Stream</h3>
-          <p style="font-size:12px;color:#94a3b8">${cleanError}</p>
-          <p style="font-size:10px;color:#64748b">Auto-reconnecting...</p>
+    const statusCode = err.status && Number.isInteger(err.status) ? err.status : 502;
+    console.warn(`[Sports TV Proxy] Stream unavailable for ${eventId}: status ${statusCode} - ${err.message}`);
+
+    const isFirewallRestricted = statusCode === 403;
+    const isNotFound = statusCode === 404;
+
+    res.removeHeader("Content-Security-Policy");
+    res.removeHeader("X-Frame-Options");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    return res.status(statusCode).send(`
+      <!DOCTYPE html><html><head><meta charset="utf-8"><style>
+        body{background:#0b0f19;color:#94a3b8;font-family:system-ui,-apple-system,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;text-align:center;padding:20px;box-sizing:border-box}
+        .card{background:#111827;border:1px solid #1f2937;border-radius:12px;padding:24px;max-width:380px;width:100%;box-shadow:0 10px 25px rgba(0,0,0,0.5)}
+        .icon{font-size:32px;margin-bottom:8px}
+        h3{margin:0 0 8px;color:#f3f4f6;font-size:16px;font-weight:600}
+        p{font-size:12px;line-height:1.5;margin:0 0 16px;color:#6b7280}
+        .btn{background:#2563eb;color:#fff;border:none;border-radius:6px;padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;text-decoration:none}
+        .btn:hover{background:#1d4ed8}
+      </style></head><body>
+        <div class="card">
+          <div class="icon">${isNotFound ? '📡' : isFirewallRestricted ? '🔒' : '⚠️'}</div>
+          <h3>${isNotFound ? 'No Live Broadcast' : isFirewallRestricted ? 'Provider Access Restricted' : 'Stream Temporarily Unavailable'}</h3>
+          <p>${isNotFound ? 'No live broadcast feed found for this event.' : isFirewallRestricted ? 'The live stream provider restricts access from cloud hosting datacenters. Works on residential networks.' : 'Unable to connect to live stream provider right now. Please try again in a few moments.'}</p>
+          <button class="btn" onclick="window.location.href=window.location.pathname+'?sportId=${sportId}&fresh=1&t='+Date.now()">🔄 Retry Stream</button>
         </div>
-        <script>
-          setTimeout(function() {
-            const url = new URL(window.location.href);
-            url.searchParams.set('fresh', '1');
-            url.searchParams.set('t', Date.now());
-            window.location.href = url.toString();
-          }, 1500);
-        </script>
       </body></html>
     `);
   } finally {
