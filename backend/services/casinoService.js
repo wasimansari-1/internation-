@@ -1,7 +1,14 @@
 import axios from "axios";
-import { io as ioClient } from "socket.io-client";
 import { httpsAgent } from "../config/hosts.js";
 import { getDemoToken, proxyRequest } from "./authService.js";
+
+let ioClient = null;
+try {
+  const socketIoModule = await import("socket.io-client");
+  ioClient = socketIoModule.io || socketIoModule.default?.io || socketIoModule.default;
+} catch (e) {
+  console.warn("Notice: socket.io-client not installed yet. Running in resilient fallback mode.");
+}
 
 export const activeCasinoSubscribers = new Set();
 export const casinoOddsCache = new Map();
@@ -114,7 +121,17 @@ export async function ensureNiceCasinoSocket() {
       return null;
     }
 
-    if (!casinoSocket) {
+    if (!ioClient) {
+      try {
+        const socketIoModule = await import("socket.io-client");
+        ioClient = socketIoModule.io || socketIoModule.default?.io || socketIoModule.default;
+      } catch (e) {
+        casinoSocketConnecting = false;
+        return null;
+      }
+    }
+
+    if (!casinoSocket && ioClient) {
       casinoSocket = ioClient("https://casino.nice444.com", {
         path: "/universecasino",
         transports: ["websocket"],
