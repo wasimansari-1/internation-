@@ -1160,21 +1160,36 @@ const resolveBetfairStreamId = async (rawId, sportId = "4") => {
   return strId;
 };
 
-const fetchSportsWatchLink = async (rawId, sportId = "4") => {
+const getClientIp = (req) => {
+  return (
+    (req.headers["x-forwarded-for"] || "").split(",")[0].trim() ||
+    req.headers["x-real-ip"] ||
+    req.socket?.remoteAddress ||
+    ""
+  );
+};
+
+const fetchSportsWatchLink = async (rawId, sportId = "4", clientIp = "") => {
   const streamId = await resolveBetfairStreamId(rawId, sportId);
   let token = await getDemoToken();
   const makeRequest = async (authToken) => {
+    const headers = {
+      Authorization: `Bearer ${authToken}`,
+      Origin: "https://nice444.com",
+      Referer: "https://nice444.com/",
+      "User-Agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+    };
+    if (clientIp) {
+      headers["X-Forwarded-For"] = clientIp;
+      headers["X-Real-IP"] = clientIp;
+      headers["CF-Connecting-IP"] = clientIp;
+    }
     return await axios.post(
       "https://nice444.com/api/exchange/streaming/exchEventsWatchLink",
       { streamId: String(streamId), timestamp: Date.now() },
       {
-        headers: {
-          Authorization: `Bearer ${authToken}`,
-          Origin: "https://nice444.com",
-          Referer: "https://nice444.com/",
-          "User-Agent":
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-        },
+        headers,
         timeout: 6000,
       },
     );
@@ -1198,8 +1213,9 @@ const fetchSportsWatchLink = async (rawId, sportId = "4") => {
 
 app.post("/api/stream/watch-link", async (req, res) => {
   const { streamId, sportId } = req.body;
+  const clientIp = getClientIp(req);
   try {
-    const result = await fetchSportsWatchLink(streamId, sportId);
+    const result = await fetchSportsWatchLink(streamId, sportId, clientIp);
     if (!result.url) {
       return res
         .status(404)
@@ -1221,17 +1237,24 @@ app.all("/api/stream/ltve-fetch-proxy", async (req, res) => {
 
   try {
     const parentReferer = targetUrl.replace(/\/(ping|flag|bye).*$/, "");
+    const clientIp = getClientIp(req);
+    const headers = {
+      "Content-Type": req.headers["content-type"] || "application/json",
+      "Origin": "https://nice444.com",
+      "Referer": parentReferer,
+      "User-Agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+    };
+    if (clientIp) {
+      headers["X-Forwarded-For"] = clientIp;
+      headers["X-Real-IP"] = clientIp;
+      headers["CF-Connecting-IP"] = clientIp;
+    }
     const upstreamRes = await axios({
       method: req.method,
       url: targetUrl,
       data: req.body,
-      headers: {
-        "Content-Type": req.headers["content-type"] || "application/json",
-        "Origin": "https://nice444.com",
-        "Referer": parentReferer,
-        "User-Agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-      },
+      headers,
       timeout: 10000,
     });
 
@@ -1252,8 +1275,9 @@ app.all("/api/stream/ltve-fetch-proxy", async (req, res) => {
 app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
   const { eventId } = req.params;
   const sportId = req.query.sportId || "4";
+  const clientIp = getClientIp(req);
   try {
-    const result = await fetchSportsWatchLink(eventId, sportId);
+    const result = await fetchSportsWatchLink(eventId, sportId, clientIp);
     if (!result.url) {
       return res.status(404).send(`
         <!DOCTYPE html><html><body style="background:#000;color:#94a3b8;font-family:sans-serif;display:grid;place-items:center;height:100vh;margin:0">
