@@ -1599,6 +1599,36 @@ app.get("/", (req, res) => {
   });
 });
 
+app.get("/assets/:file", (req, res) => {
+  const filePath = path.join(distPath, "assets", req.params.file);
+  if (fs.existsSync(filePath)) {
+    return res.sendFile(filePath);
+  }
+  const assetsDir = path.join(distPath, "assets");
+  if (fs.existsSync(assetsDir)) {
+    const files = fs.readdirSync(assetsDir);
+    if (req.params.file.endsWith(".js")) {
+      const fallbackJs = files.find(
+        (f) => f.startsWith("index-") && f.endsWith(".js"),
+      );
+      if (fallbackJs) {
+        res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+        return res.sendFile(path.join(assetsDir, fallbackJs));
+      }
+    }
+    if (req.params.file.endsWith(".css")) {
+      const fallbackCss = files.find(
+        (f) => f.startsWith("index-") && f.endsWith(".css"),
+      );
+      if (fallbackCss) {
+        res.setHeader("Content-Type", "text/css; charset=utf-8");
+        return res.sendFile(path.join(assetsDir, fallbackCss));
+      }
+    }
+  }
+  return res.status(404).send("File Not Found");
+});
+
 app.get("*", (req, res, next) => {
   if (req.path.startsWith("/api/")) return next();
   if (

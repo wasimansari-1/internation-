@@ -10,7 +10,7 @@
     "dev:backend": "node backend/server.js",
     "dev:frontend": "cd frontend && vite",
     "build:frontend": "cd frontend && vite build",
-    "build": "cd frontend && vite build",
+    "build": "cd frontend && vite build && (cp dist/assets/index-*.js dist/assets/index-Rzr75dmV.js 2>/dev/null || true)",
     "dev": "cd frontend && vite"
   },
   "dependencies": {
