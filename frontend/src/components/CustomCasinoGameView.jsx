@@ -21,9 +21,36 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
   const [timeLeft, setTimeLeft] = useState(0);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [watchUrl, setWatchUrl] = useState('');
+  const [dealProgress, setDealProgress] = useState(0); // 0 = all face-down, 1 = card 1 open, 2 = card 2 open, 3 = all open
 
   const containerRef = useRef(null);
   const timerRef = useRef(null);
+  const dealIntervalRef = useRef(null);
+  const prevRoundIdRef = useRef(null);
+
+  // Progressive Card Deal Sequence when betting closes (timeLeft reaches 0)
+  useEffect(() => {
+    if (dealIntervalRef.current) clearInterval(dealIntervalRef.current);
+
+    if (timeLeft > 0) {
+      // Betting is active: all cards face down
+      setDealProgress(0);
+    } else {
+      // Betting closed: Dealer begins dealing cards sequentially
+      let step = 0;
+      dealIntervalRef.current = setInterval(() => {
+        step += 1;
+        setDealProgress(step);
+        if (step >= 4) {
+          clearInterval(dealIntervalRef.current);
+        }
+      }, 1800);
+    }
+
+    return () => {
+      if (dealIntervalRef.current) clearInterval(dealIntervalRef.current);
+    };
+  }, [timeLeft === 0]);
 
   // 1. Fetch Decrypted Recent Results
   const fetchRecentResults = async () => {
@@ -154,19 +181,52 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
   const cardsArr = oddsData?.cardsArr || {};
   const cardEntries = Object.entries(cardsArr).filter(([k]) => k !== 'eventId' && k !== 'roundId');
 
+  // Extract cards dynamically with progressive reveal:
+  // While betting is open (timeLeft > 0), cards are face down (/card/0.png)
+  // When betting closes (timeLeft === 0), cards open progressively one-by-one!
   const getCardsList = (val) => {
     if (!val) return ['0'];
+    let list = [];
     if (Array.isArray(val)) {
-      return val.length > 0 ? val : ['0'];
+      list = val.length > 0 ? val : ['0'];
+    } else if (typeof val === 'object') {
+      list = [val.card_1, val.card_2, val.card_3].filter(Boolean);
+    } else if (typeof val === 'string') {
+      list = [val];
     }
-    if (typeof val === 'object') {
-      const cards = [val.card_1, val.card_2, val.card_3].filter(Boolean);
-      return cards.length > 0 ? cards : ['0'];
+    if (list.length === 0) list = ['0'];
+
+    // While countdown timer is active, cards are face down
+    if (timeLeft > 0) {
+      return list.map(() => '0');
     }
-    if (typeof val === 'string') {
-      return [val];
+
+    // When timer hits 0 (dealer dealing), reveal cards progressively
+    return list.map((card, idx) => {
+      if (idx < dealProgress) {
+        return card;
+      }
+      return '0';
+    });
+  };
+
+  const getWinnerBadge = (winner) => {
+    if (!winner) return { label: '?', bg: '#facc15' };
+    const w = String(winner).toUpperCase().trim();
+    if (w === 'A' || w === 'PLAYER A' || w === 'DRAGON' || w === 'D' || w === 'H' || w === 'LOW') {
+      return { label: w.startsWith('DRAGON') ? 'D' : w.startsWith('P') ? 'A' : w[0], bg: '#72bbef' };
     }
-    return ['0'];
+    if (w === 'B' || w === 'PLAYER B' || w === 'TIGER' || w === 'T' || w === 'L' || w === 'HIGH') {
+      return { label: w.startsWith('TIGER') ? 'T' : w.startsWith('P') ? 'B' : w[0], bg: '#f9a9ba' };
+    }
+    if (w.includes('PLAYER_') || w.startsWith('PLAYER ')) {
+      const num = w.replace(/[^0-9]/g, '');
+      return { label: num || 'W', bg: '#c084fc' };
+    }
+    if (w === 'TIE') {
+      return { label: 'T', bg: '#facc15' };
+    }
+    return { label: w.slice(0, 2), bg: '#10b981' };
   };
 
   // Global suspension condition
@@ -704,9 +764,7 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
             }}
           >
             {results.map((r, i) => {
-              const isWinnerA = r.winner === 'A';
-              const isWinnerB = r.winner === 'B';
-              const bg = isWinnerA ? '#72bbef' : isWinnerB ? '#f9a9ba' : '#facc15';
+              const badge = getWinnerBadge(r.winner);
 
               return (
                 <button
@@ -719,10 +777,10 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
                     width: '28px',
                     height: '28px',
                     borderRadius: '50%',
-                    backgroundColor: bg,
+                    backgroundColor: badge.bg,
                     color: '#000000',
                     fontWeight: 900,
-                    fontSize: '12px',
+                    fontSize: '11px',
                     border: 'none',
                     display: 'flex',
                     alignItems: 'center',
@@ -734,7 +792,7 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
                   }}
                   title={`Round ${r.roundId}: Winner ${r.winner}`}
                 >
-                  {r.winner || '?'}
+                  {badge.label}
                 </button>
               );
             })}
@@ -742,7 +800,7 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
         </div>
       </div>
 
-      {/* Round Result Detailed Modal (Exact match to user screenshot) */}
+      {/* Round Result Detailed Modal (Supports 100% of Casino Games) */}
       {showResultModal && selectedResult && (
         <div
           style={{
@@ -761,8 +819,9 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
               backgroundColor: '#ffffff',
               borderRadius: '8px',
               width: '100%',
-              maxWidth: '380px',
-              overflow: 'hidden',
+              maxWidth: '420px',
+              maxHeight: '90vh',
+              overflowY: 'auto',
               boxShadow: '0 20px 25px -5px rgba(0,0,0,0.5)',
               color: '#0f172a'
             }}
@@ -779,7 +838,7 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
               }}
             >
               <h3 style={{ margin: 0, fontSize: '13px', fontWeight: 800 }}>
-                {gameName || '20-20 TEEN PATTI'}
+                {selectedResult.eventName || gameName || 'CASINO TABLE'}
               </h3>
               <button
                 onClick={() => setShowResultModal(false)}
@@ -807,66 +866,61 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
               Round Id: {selectedResult.roundId}
             </div>
 
-            {/* Cards Showcase & Winner Badge */}
+            {/* Cards Showcase & Winner Badge (Dynamic for all games) */}
             <div
               style={{
                 padding: '12px 14px',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
-                gap: '8px'
+                gap: '10px'
               }}
             >
-              {/* Player A Dealt Cards */}
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '12px', fontWeight: 800, marginBottom: '4px' }}>Player A</div>
-                <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
-                  {['card_1', 'card_2', 'card_3'].map((ck) => {
-                    const cardVal = selectedResult.cards?.PLAYER_A?.[ck];
-                    return (
-                      <img
-                        key={ck}
-                        src={getCardImg(cardVal)}
-                        alt={`A-${ck}`}
-                        style={{ width: '42px', height: '60px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
-                      />
-                    );
-                  })}
-                </div>
-              </div>
-
               {/* Winner Green Pill */}
               <div
                 style={{
                   backgroundColor: '#16a34a',
                   color: '#ffffff',
-                  padding: '4px 18px',
-                  borderRadius: '4px',
+                  padding: '5px 20px',
+                  borderRadius: '20px',
                   fontWeight: 900,
                   fontSize: '12px',
-                  margin: '4px 0',
+                  textTransform: 'uppercase',
                   boxShadow: '0 2px 4px rgba(22, 163, 74, 0.4)'
                 }}
               >
-                Winner: Player {selectedResult.winner}
+                Winner: {selectedResult.winner || 'N/A'}
               </div>
 
-              {/* Player B Dealt Cards */}
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '12px', fontWeight: 800, marginBottom: '4px' }}>Player B</div>
-                <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
-                  {['card_1', 'card_2', 'card_3'].map((ck) => {
-                    const cardVal = selectedResult.cards?.PLAYER_B?.[ck];
+              {/* Dynamic Game Cards */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '14px', justifyContent: 'center', width: '100%' }}>
+                {Object.entries(selectedResult.cards || {})
+                  .filter(([k]) => k !== 'eventId' && k !== 'roundId')
+                  .map(([role, val]) => {
+                    const label = role.replace(/_/g, ' ');
+                    let cards = [];
+                    if (Array.isArray(val)) cards = val;
+                    else if (typeof val === 'object') cards = [val.card_1, val.card_2, val.card_3].filter(Boolean);
+                    else if (typeof val === 'string') cards = [val];
+
                     return (
-                      <img
-                        key={ck}
-                        src={getCardImg(cardVal)}
-                        alt={`B-${ck}`}
-                        style={{ width: '42px', height: '60px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
-                      />
+                      <div key={role} style={{ textAlign: 'center', minWidth: '70px' }}>
+                        <div style={{ fontSize: '11px', fontWeight: 800, color: '#334155', marginBottom: '4px', textTransform: 'uppercase' }}>
+                          {label}
+                        </div>
+                        <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                          {cards.map((c, i) => (
+                            <img
+                              key={i}
+                              src={getCardImg(c)}
+                              alt={`${role}-${i}`}
+                              style={{ width: '38px', height: '56px', borderRadius: '4px', border: '1px solid #cbd5e1', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}
+                            />
+                          ))}
+                        </div>
+                      </div>
                     );
                   })}
-                </div>
               </div>
             </div>
 
@@ -881,13 +935,15 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
                     textAlign: 'center'
                   }}
                 >
-                  <div style={{ fontWeight: 800, fontSize: '11px', color: '#0f172a', marginBottom: '2px' }}>
+                  <div style={{ fontWeight: 800, fontSize: '11px', color: '#0f172a', marginBottom: '4px' }}>
                     {resItem.marketName}
                   </div>
                   <div
                     style={{
                       display: 'flex',
-                      justifyContent: 'space-around',
+                      flexWrap: 'wrap',
+                      justifyContent: 'center',
+                      gap: '8px 16px',
                       fontSize: '11px',
                       color: '#475569',
                       fontWeight: 600
@@ -895,8 +951,10 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
                   >
                     {resItem.runners?.map((run, rIdx) => {
                       const rName =
-                        resItem.runnersName?.[run.selectionId] ||
-                        (rIdx === 0 ? 'PLAYER A' : 'PLAYER B');
+                        resItem.runnersName?.[String(run.selectionId)] ||
+                        run.runnerName ||
+                        run.name ||
+                        (rIdx === 0 ? 'OPTION 1' : 'OPTION 2');
                       const isWin = run.result === 'WINNER';
 
                       return (
@@ -906,7 +964,7 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
                           {isWin ? (
                             <span style={{ color: '#16a34a', fontWeight: 800 }}>🏆 WIN</span>
                           ) : (
-                            <span style={{ color: '#ef4444', fontWeight: 800 }}>🍸 LOSS</span>
+                            <span style={{ color: '#ef4444', fontWeight: 800 }}>❌ LOSS</span>
                           )}
                         </div>
                       );

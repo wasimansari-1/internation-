@@ -3,6 +3,44 @@ import { RefreshCw, Play, Shield, Search, X, Maximize2 } from 'lucide-react';
 import axios from 'axios';
 import CustomCasinoGameView from './CustomCasinoGameView';
 
+const PREFERRED_ORDER = [
+  '99.0010', // 20-20 TEENPATTI
+  '99.0030', // LUCKY 7 - A
+  '99.0013', // 1DAY TEEN PATTI
+  '99.0016', // JOKER TEEN PATTI
+  '99.0018', // DRAGON TIGER
+  '99.0001', // BACCARAT
+  '99.0002', // BACCARAT - A
+  '99.0025', // ANDAR BAHAR - A
+  '99.0022', // 32 CARDS - A
+  '99.0007', // 20-20 POKER - A
+  '99.0041', // DTL - A
+  '99.0021', // 1 DAY DRAGON TIGER
+  '99.0014', // MUFLIS TEEN PATTI
+  '99.0046', // 20-20 CARD RACE
+  '99.0005', // AMAR AKBAR ANTHONY
+  '99.0019', // 20-20 DRAGON TIGER
+  '99.0031', // LUCKY 7 - B
+  '99.0032', // FAST LUCKY - 7
+  '99.0020', // FAST DRAGON TIGER
+  '99.0023', // 32 CARDS - B
+  '99.0034', // ANDAR BAHAR - C
+  '99.0008', // 20-20 POKER - B
+  '99.0015', // POINT TEEN PATTI
+  '99.0004', // DTL TEENPATTI
+  '99.0040', // 3 CARD JUDGEMENT - A
+  '99.0027', // CASINO WAR
+  '99.0009', // INSTANT WORLI
+  '99.0050', // BOLLYWOOD CASINO
+  '99.0006', // INA MINA DIKA
+  '99.0058', // LOTTERY
+  '99.0051', // 1 CARD METER
+  '99.0057', // 1 CARD 20-20
+  '99.0060', // TRIO
+  '99.0059', // KBC
+  '99.0055', // CASINO METER
+];
+
 export default function UniverseGamesView() {
   const [tables, setTables] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -25,6 +63,17 @@ export default function UniverseGamesView() {
             !(t.eventName || '').toUpperCase().includes('VIMAAN') &&
             !(t.eventName || '').toUpperCase().includes('AVIATOR')
         );
+
+        // Sort matching user screenshots
+        filtered.sort((a, b) => {
+          const idxA = PREFERRED_ORDER.indexOf(a.eventId);
+          const idxB = PREFERRED_ORDER.indexOf(b.eventId);
+          if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+          if (idxA !== -1) return -1;
+          if (idxB !== -1) return 1;
+          return 0;
+        });
+
         setTables(filtered);
       }
     } catch (err) {

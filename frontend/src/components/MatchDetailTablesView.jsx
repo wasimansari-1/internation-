@@ -22,6 +22,7 @@ export default function MatchDetailTablesView({ event, onBack }) {
   const [activePill, setActivePill] = useState('All');
   const [loading, setLoading] = useState(true);
   const [showTv, setShowTv] = useState(false);
+  const [mediaTab, setMediaTab] = useState('score'); // 'score' | 'live'
   const [watchUrl, setWatchUrl] = useState(null);
   const [news, setNews] = useState('');
 
@@ -354,12 +355,90 @@ export default function MatchDetailTablesView({ event, onBack }) {
         </div>
       )}
 
-      {/* Optional TV Player Stream */}
-      {showTv && watchUrl && (
-        <div style={{ width: '100%', height: '220px', background: '#000' }}>
-          <iframe src={watchUrl} style={{ width: '100%', height: '100%', border: 'none' }} allow="autoplay; fullscreen" title="Live Match Stream" />
+      {/* Live Score & Watch Live Media Player Bar (Exact Match to User Screenshot) */}
+      <div style={{ backgroundColor: '#000000', borderBottom: '1px solid #222222' }}>
+        <div style={{ display: 'flex', borderBottom: '1px solid #2a2a2a' }}>
+          <button
+            onClick={() => setMediaTab('score')}
+            style={{
+              flex: 1,
+              padding: '9px 12px',
+              backgroundColor: mediaTab === 'score' ? '#111827' : '#000000',
+              color: mediaTab === 'score' ? '#ffffff' : '#94a3b8',
+              border: 'none',
+              borderBottom: mediaTab === 'score' ? '2px solid #38bdf8' : 'none',
+              fontWeight: 800,
+              fontSize: '13px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <span>Live Score</span>
+          </button>
+          <button
+            onClick={() => setMediaTab('live')}
+            style={{
+              flex: 1,
+              padding: '9px 12px',
+              backgroundColor: mediaTab === 'live' ? '#111827' : '#000000',
+              color: mediaTab === 'live' ? '#ffffff' : '#94a3b8',
+              border: 'none',
+              borderBottom: mediaTab === 'live' ? '2px solid #ef4444' : 'none',
+              fontWeight: 800,
+              fontSize: '13px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <Tv size={14} /> <span>Watch Live</span>
+          </button>
         </div>
-      )}
+
+        {mediaTab === 'score' ? (
+          <div style={{ width: '100%', background: '#000000' }}>
+            <iframe
+              src={`/api/sports/scoreboard-frame/${event.exEventId || event._id}?sportId=${event.sportId || '4'}`}
+              style={{ width: '100%', height: '115px', border: 'none', display: 'block' }}
+              title="Universe Live Scoreboard"
+            />
+          </div>
+        ) : (
+          <div style={{ width: '100%', height: '220px', background: '#000000' }}>
+            {watchUrl ? (
+              <iframe
+                src={watchUrl}
+                style={{ width: '100%', height: '100%', border: 'none' }}
+                allow="autoplay; fullscreen"
+                title="Live Match Stream"
+              />
+            ) : (
+              <div
+                style={{
+                  height: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#94a3b8'
+                }}
+              >
+                <Tv size={28} style={{ color: '#475569', marginBottom: '8px' }} />
+                <span style={{ fontSize: '13px', fontWeight: 700 }}>
+                  Connecting Live Stream...
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Navigation Filter Pills matching screenshot */}
       <div

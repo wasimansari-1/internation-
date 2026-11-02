@@ -203,6 +203,222 @@ app.post("/api/sports/fancy-markets", async (req, res) => {
   res.status(result.statusCode).json(result);
 });
 
+// --- REAL-TIME SPORTS SCOREBOARD SCRAPER (universe-score Firebase) ---
+async function getLiveScoreData(eventId, sportId = "4") {
+  const coll =
+    String(sportId) === "1"
+      ? "soccerScore"
+      : String(sportId) === "2"
+        ? "tennisScore"
+        : "cricketScore";
+  const url =
+    "https://firestore.googleapis.com/v1/projects/universe-score/databases/(default)/documents:runQuery";
+  const query = {
+    structuredQuery: {
+      from: [{ collectionId: coll }],
+      where: {
+        fieldFilter: {
+          field: { fieldPath: "eventId" },
+          op: "EQUAL",
+          value: { stringValue: String(eventId) },
+        },
+      },
+      limit: 1,
+    },
+  };
+  try {
+    const res = await axios.post(url, query, { timeout: 4000 });
+    const doc = res.data?.[0]?.document?.fields;
+    if (!doc) return null;
+
+    const slider0 =
+      doc.slider?.arrayValue?.values?.[0]?.mapValue?.fields?.score?.mapValue
+        ?.fields;
+    const teamInfo = slider0?.teamInfo?.mapValue?.fields;
+    const scoreItems = slider0?.scoreItems?.arrayValue?.values || [];
+    const statusCommentry =
+      slider0?.statusCommentry?.stringValue ||
+      doc.commentary?.stringValue ||
+      "";
+
+    const team1Name = teamInfo?.team1Name?.stringValue || "Team 1";
+    const team2Name = teamInfo?.team2Name?.stringValue || "Team 2";
+
+    const teams = scoreItems.map((si, idx) => {
+      const f = si.mapValue?.fields;
+      const name =
+        f?.teamName?.stringValue || (idx === 0 ? team1Name : team2Name);
+      const dataArr = f?.scoreData?.arrayValue?.values || [];
+      const stats = {};
+      dataArr.forEach((sd) => {
+        const sdf = sd.mapValue?.fields;
+        const label = sdf?.displayText?.stringValue || "";
+        const val = sdf?.value?.stringValue || "";
+        if (label) stats[label.toUpperCase()] = val;
+      });
+      return {
+        name,
+        score: stats["SCORE"] || "",
+        overs: stats["OVS"] || "",
+        rr: stats["RR"] || "",
+        fours: stats["4S"] || "",
+        sixes: stats["6S"] || "",
+        wides: stats["WIDES"] || "",
+        stats,
+      };
+    });
+
+    return {
+      eventId: String(eventId),
+      sportId: String(sportId),
+      team1Name,
+      team2Name,
+      statusCommentry,
+      teams,
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
+app.get("/api/sports/score/:eventId", async (req, res) => {
+  const { eventId } = req.params;
+  const sportId = req.query.sportId || "4";
+  const data = await getLiveScoreData(eventId, sportId);
+  if (!data) {
+    return res.json({ success: false, hasScore: false, data: null });
+  }
+  return res.json({ success: true, hasScore: true, data });
+});
+
+app.get("/api/sports/scoreboard-frame/:eventId", async (req, res) => {
+  const { eventId } = req.params;
+  const sportId = req.query.sportId || "4";
+  const score = await getLiveScoreData(eventId, sportId);
+  const t1 = score?.teams?.[0] || {
+    name: score?.team1Name || "Team 1",
+    score: "",
+    overs: "",
+    rr: "",
+    fours: "",
+    sixes: "",
+    wides: "",
+  };
+  const t2 = score?.teams?.[1] || {
+    name: score?.team2Name || "Team 2",
+    score: "",
+    overs: "",
+    rr: "",
+    fours: "",
+    sixes: "",
+    wides: "",
+  };
+  const commentary = score?.statusCommentry || "";
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Universe Scoreboard</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background-color: #000000; color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 12px; overflow: hidden; }
+    .scoreboard { padding: 8px 12px; background: #000000; border-bottom: 1px solid #222; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+    .powered { font-size: 10px; font-weight: 700; color: #94a3b8; display: flex; align-items: center; gap: 4px; }
+    .powered span { color: #10b981; }
+    .cols { display: flex; gap: 14px; font-size: 10px; font-weight: 800; color: #cbd5e1; }
+    .col-item { width: 34px; text-align: right; }
+    .team-row { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; }
+    .team-left { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+    .icon { font-size: 12px; width: 14px; text-align: center; }
+    .team-name { font-weight: 800; font-size: 12px; color: #ffffff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-transform: uppercase; }
+    .stats { display: flex; gap: 14px; }
+    .stat-val { width: 34px; text-align: right; font-weight: 700; font-size: 11px; color: #e2e8f0; }
+    .stat-val.main { font-weight: 900; font-size: 12px; color: #ffffff; }
+    .footer { margin-top: 6px; padding-top: 4px; border-top: 1px solid #1a1a1a; font-size: 11px; color: #94a3b8; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  </style>
+</head>
+<body>
+  <div class="scoreboard" id="sb">
+    <div class="header">
+      <div class="powered"><span>●</span> Powered By Universe Score</div>
+      <div class="cols">
+        <div class="col-item">SCORE</div>
+        <div class="col-item">OVS</div>
+        <div class="col-item">RR</div>
+        <div class="col-item">4S</div>
+        <div class="col-item">6S</div>
+        <div class="col-item">WIDES</div>
+      </div>
+    </div>
+    <div class="team-row">
+      <div class="team-left">
+        <span class="icon">⚾</span>
+        <span class="team-name" id="t1Name">${t1.name}</span>
+      </div>
+      <div class="stats">
+        <div class="stat-val main" id="t1Score">${t1.score || "-"}</div>
+        <div class="stat-val" id="t1Ovs">${t1.overs || "-"}</div>
+        <div class="stat-val" id="t1Rr">${t1.rr || "-"}</div>
+        <div class="stat-val" id="t1Fours">${t1.fours || "-"}</div>
+        <div class="stat-val" id="t1Sixes">${t1.sixes || "-"}</div>
+        <div class="stat-val" id="t1Wides">${t1.wides || "-"}</div>
+      </div>
+    </div>
+    <div class="team-row">
+      <div class="team-left">
+        <span class="icon">🏏</span>
+        <span class="team-name" id="t2Name">${t2.name}</span>
+      </div>
+      <div class="stats">
+        <div class="stat-val main" id="t2Score">${t2.score || "-"}</div>
+        <div class="stat-val" id="t2Ovs">${t2.overs || "-"}</div>
+        <div class="stat-val" id="t2Rr">${t2.rr || "-"}</div>
+        <div class="stat-val" id="t2Fours">${t2.fours || "-"}</div>
+        <div class="stat-val" id="t2Sixes">${t2.sixes || "-"}</div>
+        <div class="stat-val" id="t2Wides">${t2.wides || "-"}</div>
+      </div>
+    </div>
+    <div class="footer" id="commentary">${commentary}</div>
+  </div>
+  <script>
+    setInterval(async () => {
+      try {
+        const res = await fetch('/api/sports/score/${eventId}?sportId=${sportId}');
+        const json = await res.json();
+        if (json.success && json.data) {
+          const d = json.data;
+          const t1 = d.teams?.[0] || {};
+          const t2 = d.teams?.[1] || {};
+          document.getElementById('t1Name').textContent = t1.name || d.team1Name;
+          document.getElementById('t1Score').textContent = t1.score || '-';
+          document.getElementById('t1Ovs').textContent = t1.overs || '-';
+          document.getElementById('t1Rr').textContent = t1.rr || '-';
+          document.getElementById('t1Fours').textContent = t1.fours || '-';
+          document.getElementById('t1Sixes').textContent = t1.sixes || '-';
+          document.getElementById('t1Wides').textContent = t1.wides || '-';
+
+          document.getElementById('t2Name').textContent = t2.name || d.team2Name;
+          document.getElementById('t2Score').textContent = t2.score || '-';
+          document.getElementById('t2Ovs').textContent = t2.overs || '-';
+          document.getElementById('t2Rr').textContent = t2.rr || '-';
+          document.getElementById('t2Fours').textContent = t2.fours || '-';
+          document.getElementById('t2Sixes').textContent = t2.sixes || '-';
+          document.getElementById('t2Wides').textContent = t2.wides || '-';
+
+          document.getElementById('commentary').textContent = d.statusCommentry || '';
+        }
+      } catch (e) {}
+    }, 2000);
+  </script>
+</body>
+</html>`;
+  res.setHeader("Content-Type", "text/html");
+  res.send(html);
+});
+
 app.get("/api/casino/providers", async (req, res) => {
   const result = await proxyRequest(
     "/api/exchange/navigations/casino/casinoMainList",
