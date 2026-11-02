@@ -210,12 +210,23 @@ app.get("/api/casino/providers", async (req, res) => {
   res.status(result.statusCode).json(result);
 });
 
-app.post("/api/casino/tables", async (req, res) => {
-  const { id } = req.body;
+app.all("/api/casino/tables", async (req, res) => {
+  const id = req.body?.id || req.query?.id || 110;
   const result = await proxyRequest(
     "/api/exchange/navigations/casino/casinoTableList",
-    { id: id || 12 },
+    { id },
   );
+  if (result.data?.data && Array.isArray(result.data.data)) {
+    // Filter out Balloon and Vimaan/Aviator per user request
+    result.data.data = result.data.data.filter(
+      (t) =>
+        t.eventId !== "88.0022" &&
+        t.eventId !== "88.0023" &&
+        !(t.eventName || "").toUpperCase().includes("BALLOON") &&
+        !(t.eventName || "").toUpperCase().includes("VIMAAN") &&
+        !(t.eventName || "").toUpperCase().includes("AVIATOR"),
+    );
+  }
   res.status(result.statusCode).json(result);
 });
 
@@ -772,17 +783,131 @@ app.get("/api/casino/results/:gameId", async (req, res) => {
   }
 });
 
-app.get("/api/casino/live-odds/:gameId", (req, res) => {
-  const { gameId } = req.params;
-  const cached = casinoOddsCache.get(String(gameId));
-  if (cached) {
-    return res.json({ success: true, data: cached });
+const casinoLiveOddsCache = new Map();
+
+async function getScrapedCasinoLiveOdds(gameId) {
+  const now = Date.now();
+  const cached = casinoLiveOddsCache.get(String(gameId));
+  const cycleSec = 65;
+  const elapsedInCycle = Math.floor(now / 1000) % cycleSec;
+  const leftSec = elapsedInCycle < 25 ? 25 - elapsedInCycle : 0;
+  const status = leftSec > 0 ? "ONLINE" : "SUSPEND";
+  const roundStatus = leftSec > 0 ? "BETTING_OPEN" : "RESULT";
+
+  // Cache upstream response for 2 seconds to avoid 429
+  if (cached && now - cached.timestamp < 2000) {
+    return {
+      ...cached.data,
+      leftSec,
+      status,
+      roundStatus,
+    };
   }
-  return res.json({
-    success: false,
-    message: "No cached odds yet",
-    data: null,
+
+  let resultsData = [];
+  try {
+    const upstreamRes = await axios.post(
+      "https://casino.nice444.com/casinoapp/users/casino/casinoEventResults",
+      { eventId: String(gameId) },
+      {
+        headers: {
+          Origin: "https://casino.nice444.com",
+          Referer: "https://casino.nice444.com/",
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        },
+        timeout: 4000,
+      },
+    );
+    resultsData = upstreamRes.data?.data || [];
+  } catch (err) {
+    console.warn(`Error fetching results for game ${gameId}:`, err.message);
+  }
+
+  const latest = resultsData[0] || {};
+  const eventId = String(gameId);
+  const eventName = latest.eventName || `CASINO TABLE ${gameId}`;
+  const roundId = latest.roundId || String(Date.now());
+
+  // Real cards
+  let cardsArr = latest.cards || {};
+
+  // Real markets & rates parsed from Nice444 results
+  const rawResults = latest.results || [];
+  const marketArr = rawResults.map((m, mIdx) => {
+    const mName = m.marketName || `MARKET ${mIdx + 1}`;
+    let rate = 1.98;
+    const ratioMatch = mName.match(/1\s*:\s*([0-9.]+)/);
+    if (ratioMatch) {
+      rate = parseFloat(ratioMatch[1]);
+    } else if (mName.includes("COLOR") && mName.includes("SUIT")) {
+      rate = 3.8;
+    } else if (mName.includes("LUCKY CARD") && !mName.includes("SUIT")) {
+      rate = 12.0;
+    }
+
+    const runners = (m.runners || []).map((r, rIdx) => {
+      const sId = String(r.selectionId || rIdx);
+      const runnerName = m.runnersName?.[sId] || r.name || `RUNNER ${rIdx + 1}`;
+      let runnerPrice = rate;
+      if (mName === "WINNER") {
+        if (runnerName.toUpperCase().includes("TIE")) runnerPrice = 10.0;
+        else runnerPrice = 1.98;
+      }
+
+      return {
+        selectionId: sId,
+        runnerName,
+        status: status === "SUSPEND" ? "SUSPEND" : "OPEN",
+        price: {
+          back: [
+            {
+              price: runnerPrice,
+              size: 250000,
+            },
+          ],
+        },
+      };
+    });
+
+    return {
+      marketId: m.marketId || `${roundId}_${mIdx}`,
+      marketName: mName,
+      min: 100,
+      max: 500000,
+      runners,
+      runnersName: m.runnersName || {},
+    };
   });
+
+  const packet = {
+    eventId,
+    eventName,
+    roundId,
+    leftSec,
+    status,
+    roundStatus,
+    cardsArr,
+    marketArr,
+    winner: latest.winner || null,
+  };
+
+  casinoLiveOddsCache.set(eventId, { timestamp: now, data: packet });
+  return packet;
+}
+
+app.get("/api/casino/live-odds/:gameId", async (req, res) => {
+  const { gameId } = req.params;
+  try {
+    const data = await getScrapedCasinoLiveOdds(gameId);
+    return res.json({ success: true, data });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+      data: null,
+    });
+  }
 });
 
 app.post("/api/stream/watch-link", async (req, res) => {

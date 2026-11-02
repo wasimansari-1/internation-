@@ -70,6 +70,9 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
     fetchWatchUrl();
 
     let isMounted = true;
+    let lastFetchedRoundId = null;
+    let lastResultsFetchTime = Date.now();
+
     const pollCasino = async () => {
       try {
         const res = await axios.get(`/api/casino/live-odds/${gameId}`);
@@ -79,7 +82,13 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
           if (typeof data.leftSec === 'number') {
             setTimeLeft(data.leftSec);
           }
-          if (data.roundStatus === 'RESULT' || data.leftSec === 0) {
+          const now = Date.now();
+          if (
+            (data.roundId && data.roundId !== lastFetchedRoundId) ||
+            now - lastResultsFetchTime > 15000
+          ) {
+            lastFetchedRoundId = data.roundId;
+            lastResultsFetchTime = now;
             fetchRecentResults();
           }
         }
