@@ -1366,9 +1366,10 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
     return res.send(html);
   } catch (err) {
     console.error(`Sports TV proxy error for ${eventId}:`, err.message);
+    const detail = err.response?.data ? JSON.stringify(err.response.data) : (err.message || 'Unknown error');
     return res.status(500).send(`
       <!DOCTYPE html><html><body style="background:#000;color:#ef4444;font-family:sans-serif;display:grid;place-items:center;height:100vh;margin:0">
-        <div style="text-align:center"><h3>⚠️ Live Stream Connecting</h3><p style="font-size:12px">Waiting for live video feed...</p></div>
+        <div style="text-align:center"><h3>⚠️ Live Stream Connecting</h3><p style="font-size:12px">${detail}</p></div>
       </body></html>
     `);
   }
