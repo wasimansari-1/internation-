@@ -1169,8 +1169,20 @@ const getClientIp = (req) => {
   return "103.211.53.1";
 };
 
-const fetchSportsWatchLink = async (rawId, sportId = "4", clientIp = "") => {
+// Global in-memory cache for sports streams to prevent single-demo account stream invalidations
+const sportsStreamCache = new Map(); // key: streamId -> { url, streamId, expiresAt }
+
+const fetchSportsWatchLink = async (rawId, sportId = "4", clientIp = "", forceRefresh = false) => {
   const streamId = await resolveBetfairStreamId(rawId, sportId);
+  const cacheKey = String(streamId || rawId);
+
+  if (!forceRefresh && sportsStreamCache.has(cacheKey)) {
+    const cached = sportsStreamCache.get(cacheKey);
+    if (Date.now() < cached.expiresAt && cached.url) {
+      return { url: cached.url, streamId };
+    }
+  }
+
   const forwardedIp = clientIp && !clientIp.includes(":") && !clientIp.startsWith("127.") ? clientIp : "103.211.53.1";
   let token = await getDemoToken();
   const makeRequest = async (authToken) => {
@@ -1207,7 +1219,14 @@ const fetchSportsWatchLink = async (rawId, sportId = "4", clientIp = "") => {
   }
 
   const url = upstreamRes.data?.data?.url || "";
-  return { url, streamId };
+  const entry = { url, streamId, expiresAt: Date.now() + 45000 };
+  if (url) {
+    sportsStreamCache.set(cacheKey, entry);
+    if (rawId && String(rawId) !== cacheKey) {
+      sportsStreamCache.set(String(rawId), entry);
+    }
+  }
+  return entry;
 };
 
 app.post("/api/stream/watch-link", async (req, res) => {
@@ -1275,7 +1294,7 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
   const sportId = req.query.sportId || "4";
   const clientIp = getClientIp(req);
   try {
-    const result = await fetchSportsWatchLink(eventId, sportId, clientIp);
+    let result = await fetchSportsWatchLink(eventId, sportId, clientIp, false);
     if (!result.url) {
       return res.status(404).send(`
         <!DOCTYPE html><html><body style="background:#000;color:#94a3b8;font-family:sans-serif;display:grid;place-items:center;height:100vh;margin:0">
@@ -1284,17 +1303,39 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
       `);
     }
 
-    const pageRes = await axios.get(result.url, {
-      headers: {
-        Origin: "https://nice444.com",
-        Referer: "https://nice444.com/",
-        "User-Agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-      },
-      timeout: 8000,
-    });
+    const fetchStreamPage = async (streamUrl) => {
+      const pageRes = await axios.get(streamUrl, {
+        headers: {
+          Origin: "https://nice444.com",
+          Referer: "https://nice444.com/",
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        },
+        timeout: 8000,
+      });
+      if (
+        typeof pageRes.data === "string" &&
+        (pageRes.data.includes("not valid here") ||
+          pageRes.data.includes("replaced this one") ||
+          pageRes.data.includes("Not allowed") ||
+          pageRes.data.includes("Domain not whitelisted"))
+      ) {
+        throw new Error("Stale watch link received from upstream");
+      }
+      return pageRes.data;
+    };
 
-    let html = pageRes.data;
+    let html;
+    try {
+      html = await fetchStreamPage(result.url);
+    } catch (fetchErr) {
+      console.warn(`Watch link stale for ${eventId}, auto-recovering fresh link...`);
+      sportsStreamCache.delete(String(eventId));
+      if (result.streamId) sportsStreamCache.delete(String(result.streamId));
+      result = await fetchSportsWatchLink(eventId, sportId, clientIp, true);
+      if (!result.url) throw fetchErr;
+      html = await fetchStreamPage(result.url);
+    }
 
     // Convert relative player script to absolute so we DO NOT need <base href>
     html = html.replace('src="/player/player.js', 'src="https://tv.ltve.live/player/player.js');
@@ -1366,10 +1407,10 @@ app.get("/api/stream/sports-tv-proxy/:eventId", async (req, res) => {
     return res.send(html);
   } catch (err) {
     console.error(`Sports TV proxy error for ${eventId}:`, err.message);
-    const detail = err.response?.data ? JSON.stringify(err.response.data) : (err.message || 'Unknown error');
+    const cleanError = (err.message || 'Connecting to live broadcast...').replace(/<[^>]*>/g, '').replace(/["']/g, '');
     return res.status(500).send(`
       <!DOCTYPE html><html><body style="background:#000;color:#ef4444;font-family:sans-serif;display:grid;place-items:center;height:100vh;margin:0">
-        <div style="text-align:center"><h3>⚠️ Live Stream Connecting</h3><p style="font-size:12px">${detail}</p></div>
+        <div style="text-align:center"><h3>⚠️ Live Stream Connecting</h3><p style="font-size:12px">${cleanError}</p></div>
       </body></html>
     `);
   }
