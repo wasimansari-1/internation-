@@ -61,6 +61,31 @@ export const getDemoToken = async (forceRefresh = false) => {
 export const getCachedIntCasinoToken = () => cachedIntCasinoToken;
 export const getCachedUserDetail = () => cachedUserDetail;
 
+export const getStealthHeaders = (customHeaders = {}) => {
+  const headers = {
+    "Content-Type": "application/json",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9,hi;q=0.8",
+    "Origin": TARGET_BASE,
+    "Referer": `${TARGET_BASE}/`,
+    "User-Agent":
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "sec-ch-ua": '"Chromium";v="131", "Not_A Brand";v="24", "Google Chrome";v="131"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"macOS"',
+    "sec-fetch-dest": "empty",
+    "sec-fetch-mode": "cors",
+    "sec-fetch-site": "same-origin",
+    "Priority": "u=1, i",
+    ...customHeaders,
+  };
+
+  if (cachedToken && !headers["Authorization"]) {
+    headers["Authorization"] = `Bearer ${cachedToken}`;
+  }
+  return headers;
+};
+
 export const proxyRequest = async (endpoint, payload = {}, method = "POST") => {
   const startTime = Date.now();
   const url = `${TARGET_BASE}${endpoint}`;
@@ -69,13 +94,7 @@ export const proxyRequest = async (endpoint, payload = {}, method = "POST") => {
       method,
       url,
       data: payload,
-      headers: {
-        "Content-Type": "application/json",
-        Origin: TARGET_BASE,
-        Referer: `${TARGET_BASE}/`,
-        "User-Agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-      },
+      headers: getStealthHeaders(),
       timeout: 10000,
     });
     return {

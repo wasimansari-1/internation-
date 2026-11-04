@@ -354,6 +354,11 @@ export default function MatchDetailTablesView({ event, onBack }) {
       if (fcChanged) setFancyMarkets(data.fancy);
     }
 
+    // Check Sportsbook updates
+    if (Array.isArray(data.sportsbook) && data.sportsbook.length > 0) {
+      setSportsbook(data.sportsbook);
+    }
+
     if (newFlashBack.size > 0 || newFlashLay.size > 0) {
       setFlashBackSet(newFlashBack);
       setFlashLaySet(newFlashLay);

@@ -3,112 +3,358 @@ import { proxyRequest } from "./authService.js";
 
 const projectId = "universe-score";
 
+// 1. In-memory Scoreboard Cache (1500ms TTL)
+const scoreCache = new Map();
+
+// 2. In-memory Live Rates Cache (800ms TTL) & Single-flight deduplication
+const liveRatesCache = new Map();
+const inFlightRatesRequests = new Map();
+
 export async function getLiveScoreData(eventId, sportId = "4") {
-  const coll =
-    String(sportId) === "1"
+  const eIdStr = String(eventId || "");
+  if (!eIdStr) return null;
+
+  const cacheKey = `${eIdStr}_${sportId}`;
+  const cached = scoreCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < 1500) {
+    return cached.data;
+  }
+
+  const sId = String(sportId || "4");
+  const primaryColl =
+    sId === "1"
       ? "soccerScore"
-      : String(sportId) === "2"
+      : sId === "2"
         ? "tennisScore"
         : "cricketScore";
-  const url =
-    "https://firestore.googleapis.com/v1/projects/universe-score/databases/(default)/documents:runQuery";
-  const query = {
-    structuredQuery: {
-      from: [{ collectionId: coll }],
-      where: {
-        fieldFilter: {
-          field: { fieldPath: "eventId" },
-          op: "EQUAL",
-          value: { stringValue: String(eventId) },
-        },
-      },
-      limit: 1,
-    },
-  };
+
+  const allColls = [primaryColl, "cricketScore", "soccerScore", "tennisScore"].filter(
+    (c, i, arr) => arr.indexOf(c) === i,
+  );
+
+  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery`;
+
   try {
-    const res = await axios.post(url, query, { timeout: 4000 });
-    const doc = res.data?.[0]?.document?.fields;
-    if (!doc) return null;
+    let targetDoc = null;
+    let usedColl = primaryColl;
 
-    const slider0 =
-      doc.sliderData?.arrayValue?.values?.[0]?.mapValue?.fields || {};
-    const teams = (doc.teams?.arrayValue?.values || []).map((t) => {
-      const tf = t.mapValue?.fields || {};
-      const scoreRows = tf.scoreRows?.arrayValue?.values || [];
+    // Search across relevant collections and id fields
+    for (const coll of allColls) {
+      for (const fieldPath of ["eventId", "exEventId"]) {
+        const query = {
+          structuredQuery: {
+            from: [{ collectionId: coll }],
+            where: {
+              fieldFilter: {
+                field: { fieldPath },
+                op: "EQUAL",
+                value: { stringValue: eIdStr },
+              },
+            },
+            limit: 1,
+          },
+        };
 
-      let scoreVal = tf.score?.stringValue || "";
-      let oversVal = tf.overs?.stringValue || "";
-      let rrVal = tf.runrate?.stringValue || "";
-      let foursVal = tf.fours?.stringValue || "";
-      let sixesVal = tf.sixes?.stringValue || "";
-      let goalVal = tf.goal?.stringValue || "";
-      let htScoreVal = tf.htscore?.stringValue || "";
-      let cornersVal = tf.corners?.stringValue || "";
-      let yellowVal = tf.yellowCard?.stringValue || "";
-      let redVal = tf.redCard?.stringValue || "";
-      let setsVal = tf.sets?.stringValue || "";
-      let s1Val = tf.set1?.stringValue || "";
-      let s2Val = tf.set2?.stringValue || "";
-      let s3Val = tf.set3?.stringValue || "";
-      let ptsVal = tf.pts?.stringValue || "";
+        try {
+          const res = await axios.post(url, query, { timeout: 3500 });
+          if (res.data?.[0]?.document?.fields) {
+            targetDoc = res.data[0].document.fields;
+            usedColl = coll;
+            break;
+          }
+        } catch (e) {}
+      }
+      if (targetDoc) break;
+    }
 
-      scoreRows.forEach((row) => {
-        const rf = row.mapValue?.fields || {};
-        const colList = rf.colList?.arrayValue?.values || [];
-        colList.forEach((c) => {
-          const cf = c.mapValue?.fields || {};
-          const dt = cf.displayText?.stringValue || "";
-          const icon = (cf.iconName?.stringValue || "").toLowerCase();
-          if (icon.includes("goal") && !goalVal) goalVal = dt || "0";
-          if (icon.includes("ht") && !htScoreVal) htScoreVal = dt || "0";
-          if (icon.includes("corner") && !cornersVal) cornersVal = dt || "0";
-          if (icon.includes("yellow") && !yellowVal) yellowVal = dt || "0";
-          if (icon.includes("red") && !redVal) redVal = dt || "0";
-          if (icon.includes("sets") && !setsVal) setsVal = dt || "0";
-          if (icon === "set1" && !s1Val) s1Val = dt || "0";
-          if (icon === "set2" && !s2Val) s2Val = dt || "0";
-          if (icon === "set3" && !s3Val) s3Val = dt || "0";
-          if (icon.includes("point") || icon.includes("pts") && !ptsVal) ptsVal = dt || "0";
-          if (icon.includes("score") && !scoreVal) scoreVal = dt;
-          if (icon.includes("over") && !oversVal) oversVal = dt;
-          if (icon.includes("runrate") && !rrVal) rrVal = dt;
+    if (!targetDoc) {
+      return null;
+    }
+
+    const isSoccer = usedColl === "soccerScore" || sId === "1";
+    const isTennis = usedColl === "tennisScore" || sId === "2";
+
+    // Parse slider array (find score item)
+    const sliders =
+      targetDoc.slider?.arrayValue?.values ||
+      targetDoc.sliderData?.arrayValue?.values ||
+      [];
+
+    let scoreSlider = null;
+    for (const s of sliders) {
+      const sf = s.mapValue?.fields || {};
+      if (sf.score?.mapValue?.fields?.scoreItems) {
+        scoreSlider = sf.score.mapValue.fields;
+        break;
+      }
+    }
+
+    const teamInfo = scoreSlider?.teamInfo?.mapValue?.fields || {};
+    const team1Name =
+      teamInfo.team1Name?.stringValue || targetDoc.team1Name?.stringValue || "Team 1";
+    const team2Name =
+      teamInfo.team2Name?.stringValue || targetDoc.team2Name?.stringValue || "Team 2";
+
+    const commentary =
+      scoreSlider?.statusCommentry?.stringValue ||
+      targetDoc.commentary?.stringValue ||
+      targetDoc.statusCommentry?.stringValue ||
+      "";
+
+    let teams = [];
+
+    // Parse modern scoreItems schema
+    const rawScoreItems = scoreSlider?.scoreItems?.arrayValue?.values || [];
+    if (rawScoreItems.length > 0) {
+      teams = rawScoreItems.map((item, idx) => {
+        const tf = item.mapValue?.fields || {};
+        const teamName =
+          tf.teamName?.stringValue?.replace(/[{}]/g, "") ||
+          (idx === 0 ? team1Name : team2Name);
+
+        const scoreData = tf.scoreData?.arrayValue?.values || [];
+        const stats = {};
+        scoreData.forEach((sd) => {
+          const sdf = sd.mapValue?.fields || {};
+          const key = (
+            sdf.displayText?.stringValue ||
+            sdf.iconName?.stringValue ||
+            ""
+          ).toUpperCase();
+          const val = sdf.value?.stringValue || "";
+          if (key) stats[key] = val;
         });
+
+        if (isSoccer) {
+          return {
+            name: teamName,
+            score: stats["GOAL"] || stats["SCORE"] || "0",
+            htscore: stats["HTSCORE"] || stats["HT"] || "0",
+            corners: stats["CORNER"] || stats["CORNERS"] || stats["CRN"] || "0",
+            yellowCard: stats["YELLOW-CARD"] || stats["YELLOWCARD"] || stats["YEL"] || "0",
+            redCard: stats["RED-CARD"] || stats["REDCARD"] || stats["RED"] || "0",
+            overs: stats["HTSCORE"] || stats["HT"] || "0",
+            rr: stats["CORNER"] || "0",
+            fours: stats["YELLOW-CARD"] || "0",
+            sixes: stats["RED-CARD"] || "0",
+          };
+        }
+
+        if (isTennis) {
+          return {
+            name: teamName,
+            sets: stats["SETS"] || stats["SET"] || "0",
+            set1: stats["SET1"] || stats["S1"] || "0",
+            set2: stats["SET2"] || stats["S2"] || "0",
+            set3: stats["SET3"] || stats["S3"] || "0",
+            pts: stats["POINT"] || stats["POINTS"] || stats["PTS"] || "0",
+            score: stats["SETS"] || "0",
+            overs: stats["SET1"] || "0",
+            rr: stats["SET2"] || "0",
+            fours: stats["SET3"] || "0",
+            sixes: stats["PTS"] || "0",
+          };
+        }
+
+        // Default Cricket
+        return {
+          name: teamName,
+          score: stats["SCORE"] || "-",
+          overs: stats["OVS"] || stats["OVERS"] || "-",
+          rr: stats["RR"] || stats["RUN RATE"] || stats["RUNRATE"] || "-",
+          fours: stats["4S"] || stats["FOURS"] || stats["FOUR"] || "-",
+          sixes: stats["6S"] || stats["SIXES"] || stats["SIX"] || "-",
+        };
       });
+    }
 
-      return {
-        name: tf.name?.stringValue || "Team",
-        score: scoreVal || "0",
-        overs: oversVal || "0.0",
-        rr: rrVal || "0.00",
-        fours: foursVal || "0",
-        sixes: sixesVal || "0",
-        goal: goalVal || "0",
-        htscore: htScoreVal || "0",
-        corners: cornersVal || "0",
-        yellowCard: yellowVal || "0",
-        redCard: redVal || "0",
-        sets: setsVal || "0",
-        set1: s1Val || "0",
-        set2: s2Val || "0",
-        set3: s3Val || "0",
-        pts: ptsVal || "0",
-      };
-    });
+    // Fallback if old doc.teams schema
+    if (teams.length === 0 && targetDoc.teams?.arrayValue?.values) {
+      teams = targetDoc.teams.arrayValue.values.map((t) => {
+        const tf = t.mapValue?.fields || {};
+        return {
+          name: tf.name?.stringValue || "Team",
+          score: tf.score?.stringValue || "-",
+          overs: tf.overs?.stringValue || "-",
+          rr: tf.runrate?.stringValue || "-",
+          fours: tf.fours?.stringValue || "-",
+          sixes: tf.sixes?.stringValue || "-",
+          goal: tf.goal?.stringValue || "0",
+          htscore: tf.htscore?.stringValue || "0",
+          corners: tf.corners?.stringValue || "0",
+          yellowCard: tf.yellowCard?.stringValue || "0",
+          redCard: tf.redCard?.stringValue || "0",
+          sets: tf.sets?.stringValue || "0",
+          set1: tf.set1?.stringValue || "0",
+          set2: tf.set2?.stringValue || "0",
+          set3: tf.set3?.stringValue || "0",
+          pts: tf.pts?.stringValue || "0",
+        };
+      });
+    }
 
-    return {
-      eventId,
-      statusCommentry:
-        slider0.statusCommentry?.stringValue ||
-        slider0.commentary?.stringValue ||
-        doc.statusCommentry?.stringValue ||
-        "",
-      team1Name: doc.team1Name?.stringValue || teams[0]?.name || "Team 1",
-      team2Name: doc.team2Name?.stringValue || teams[1]?.name || "Team 2",
+    const result = {
+      eventId: eIdStr,
+      statusCommentry: commentary,
+      team1Name,
+      team2Name,
       teams,
     };
+
+    scoreCache.set(cacheKey, { timestamp: Date.now(), data: result });
+    return result;
   } catch (err) {
     return null;
   }
+}
+
+export async function getLiveRatesForEvent(eventId, sportId = "4") {
+  const eIdStr = String(eventId || "");
+  if (!eIdStr) {
+    return {
+      eventId: "",
+      news: "",
+      matchOdds: null,
+      matchOddsList: [],
+      bookmaker: null,
+      bookmakerList: [],
+      fancy: [],
+      sportsbook: [],
+    };
+  }
+
+  const cacheKey = `${eIdStr}_${sportId}`;
+  const cached = liveRatesCache.get(cacheKey);
+
+  // Return fresh cache if within 800ms
+  if (cached && Date.now() - cached.timestamp < 800) {
+    return cached.data;
+  }
+
+  // Deduplicate concurrent in-flight requests (Single-Flight Pattern)
+  if (inFlightRatesRequests.has(cacheKey)) {
+    return inFlightRatesRequests.get(cacheKey);
+  }
+
+  const fetchPromise = (async () => {
+    try {
+      const res = await proxyRequest(
+        "/api/exchange/markets/getMarketsEventList",
+        {
+          eventId: eIdStr,
+          sportId: String(sportId || "4"),
+          key: "2",
+        },
+      );
+
+      const data = res.data?.data?.data || res.data?.data || {};
+
+      const parseRunners = (runners, names) => {
+        return (runners || []).map((r) => {
+          const b0 = r.price?.back?.[0] || {};
+          const l0 = r.price?.lay?.[0] || {};
+          const isSusp =
+            r.status === "SUSPENDED" ||
+            r.status === "SUSPEND" ||
+            r.status === "CLOSED";
+          const selId = String(r.selectionId);
+          return {
+            selectionId: selId,
+            name: names?.[selId] || `Runner ${selId}`,
+            status: r.status || "ONLINE",
+            isSuspended: isSusp,
+            back: {
+              price: isSusp ? null : (b0.price ?? null),
+              size: b0.size || 0,
+            },
+            lay: {
+              price: isSusp ? null : (l0.price ?? null),
+              size: l0.size || 0,
+            },
+          };
+        });
+      };
+
+      const matchOddsList = (data.matchOddsData || []).map((mo) => ({
+        marketId: String(mo.marketId || mo.exMarketId || ""),
+        marketName: mo.marketName || "Match Odds",
+        min: mo.min || 100,
+        max: mo.max || 1000,
+        totalMatched: mo.oddsData?.totalMatched || "0",
+        status: mo.oddsData?.status || "OPEN",
+        runners: parseRunners(mo.oddsData?.runners, mo.runnersData),
+      }));
+
+      const bookmakerList = (data.bookmakersData || []).map((bm) => ({
+        marketId: String(bm.marketId || bm.exMarketId || ""),
+        marketName: bm.marketName || "Bookmaker Bhav",
+        min: bm.min || 100,
+        max: bm.max || 25000,
+        totalMatched: bm.oddsData?.totalMatched || "0",
+        status: bm.oddsData?.status || "OPEN",
+        runners: parseRunners(bm.oddsData?.runners, bm.runnersData),
+      }));
+
+      const fancy = (data.fancyData || []).map((f) => {
+        const odds = f.oddsData || {};
+        const r0 = odds.runners?.[0] || {};
+        const b0 = r0.price?.back?.[0] || {};
+        const l0 = r0.price?.lay?.[0] || {};
+        const isSusp =
+          r0.status === "SUSPENDED" ||
+          r0.status === "SUSPEND" ||
+          odds.status === "SUSPENDED" ||
+          odds.status === "SUSPEND";
+
+        return {
+          marketId: String(f.exMarketId || f.marketId || ""),
+          marketName: f.marketName || f.sessionName || "Fancy Market",
+          news: f.news || "",
+          status: odds.status || "ONLINE",
+          isSuspended: isSusp,
+          min: f.min || 100,
+          max: f.max || 50000,
+          no: {
+            price: isSusp ? null : (l0.price ?? null),
+            size: l0.size || 100,
+          },
+          yes: {
+            price: isSusp ? null : (b0.price ?? null),
+            size: b0.size || 100,
+          },
+        };
+      });
+
+      const newsTicker =
+        data.bookmakersData?.[0]?.news ||
+        data.matchOddsData?.[0]?.news ||
+        "";
+
+      const formatted = {
+        eventId: eIdStr,
+        news: newsTicker,
+        matchOdds: matchOddsList[0] || null,
+        matchOddsList,
+        bookmaker: bookmakerList[0] || null,
+        bookmakerList,
+        fancy,
+        sportsbook: data.sportsbookData || [],
+      };
+
+      liveRatesCache.set(cacheKey, { timestamp: Date.now(), data: formatted });
+      return formatted;
+    } catch (err) {
+      if (cached?.data) {
+        return cached.data;
+      }
+      return queryFirestoreForEvent(eIdStr, sportId);
+    } finally {
+      inFlightRatesRequests.delete(cacheKey);
+    }
+  })();
+
+  inFlightRatesRequests.set(cacheKey, fetchPromise);
+  return fetchPromise;
 }
 
 export const queryFirestoreForEvent = async (eventId, sportId = "4") => {
@@ -292,6 +538,6 @@ export const queryFirestoreForEvent = async (eventId, sportId = "4") => {
     bookmaker: bookmakerList[0] || null,
     bookmakerList,
     fancy: validFancy,
+    sportsbook: [],
   };
 };
-

@@ -2,6 +2,7 @@ import express from "express";
 import { proxyRequest } from "../services/authService.js";
 import {
   getLiveScoreData,
+  getLiveRatesForEvent,
   queryFirestoreForEvent,
 } from "../services/sportsService.js";
 
@@ -54,7 +55,16 @@ router.get("/score/:eventId", async (req, res) => {
   const { sportId = "4" } = req.query;
   const data = await getLiveScoreData(eventId, sportId);
   if (!data) {
-    return res.status(404).json({ success: false, error: "Score data not found" });
+    return res.json({
+      success: true,
+      data: {
+        eventId,
+        statusCommentry: "",
+        team1Name: "Team 1",
+        team2Name: "Team 2",
+        teams: [],
+      },
+    });
   }
   return res.json({ success: true, data });
 });
@@ -180,7 +190,7 @@ router.get("/live-rates/:eventId", async (req, res) => {
   const { eventId } = req.params;
   const { sportId = "4" } = req.query;
   try {
-    const realOdds = await queryFirestoreForEvent(eventId, sportId);
+    const realOdds = await getLiveRatesForEvent(eventId, sportId);
     return res.json({ success: true, data: realOdds });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
