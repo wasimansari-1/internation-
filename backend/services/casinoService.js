@@ -10,10 +10,19 @@ try {
   console.warn("Notice: socket.io-client not installed yet in node_modules. Running in resilient fallback mode.");
 }
 
-export const activeCasinoSubscribers = new Set();
+export const activeCasinoSubscribers = new Set([
+  "99.0010", // 20-20 Teen Patti
+  "99.0041", // DTL
+  "99.0018", // Dragon Tiger
+  "99.0030", // Lucky 7
+  "99.0022", // 32 Cards
+  "99.0025", // Andar Bahar
+  "99.0001", // Baccarat
+]);
 export const casinoOddsCache = new Map();
 let casinoSocket = null;
 let casinoSocketConnecting = false;
+let casinoHeartbeatInterval = null;
 
 // Fallback table cache to guarantee 200 OK even if network/upstream is momentarily unreachable
 let cachedTableList = null;
@@ -111,7 +120,13 @@ export async function ensureNiceCasinoSocket() {
   if (casinoSocket && casinoSocket.connected) {
     return casinoSocket;
   }
-  if (casinoSocketConnecting) return casinoSocket;
+  if (casinoSocketConnecting) {
+    for (let i = 0; i < 25; i++) {
+      if (casinoSocket && casinoSocket.connected) return casinoSocket;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return casinoSocket;
+  }
   casinoSocketConnecting = true;
 
   try {
@@ -139,30 +154,43 @@ export async function ensureNiceCasinoSocket() {
           websocket: { agent: httpsAgent },
         },
         reconnection: true,
-        reconnectionDelay: 1500,
+        reconnectionDelay: 1000,
         reconnectionAttempts: Infinity,
         auth: { token, uType: "usr" },
       });
 
-      casinoSocket.on("connect", () => {
-        console.log("Connected to Real Nice444 Casino Socket (/universecasino)");
+      const resubscribeAll = () => {
+        if (!casinoSocket || !casinoSocket.connected) return;
         for (const gId of activeCasinoSubscribers) {
           casinoSocket.emit("SCSN", { eventId: String(gId) });
         }
+      };
+
+      casinoSocket.on("connect", () => {
+        console.log("Connected to Real Nice444 Casino Socket (/universecasino)");
+        resubscribeAll();
       });
+
+      if (!casinoHeartbeatInterval) {
+        casinoHeartbeatInterval = setInterval(resubscribeAll, 8000);
+      }
 
       const handleCasinoPacket = (raw) => {
         try {
-          const data = typeof raw === "string" ? JSON.parse(raw) : raw;
-          if (!data) return;
+          let packet = typeof raw === "string" ? JSON.parse(raw) : raw;
+          if (!packet) return;
 
-          let payload = data.data;
+          if (Array.isArray(packet)) {
+            packet = packet[0] || {};
+          }
+
+          let payload = packet.data;
           if (Array.isArray(payload)) {
             payload = payload[0] || {};
           }
 
           const eventId = String(
-            data.eventId || payload?.eventId || payload?._id || data._id || "",
+            packet.eventId || payload?.eventId || payload?._id || packet._id || "",
           );
 
           if (!eventId) return;
@@ -170,74 +198,78 @@ export async function ensureNiceCasinoSocket() {
           const existing = casinoOddsCache.get(eventId) || {
             eventId,
             marketArr: [],
-            cardsArr: {},
-            leftSec: 0,
+            cardsArr: getDefaultCardsForTable(eventId),
+            leftSec: 45,
+            initialLeftSec: 45,
+            leftSecReceivedAt: Date.now(),
             roundId: "",
             status: "ONLINE",
             roundStatus: "PLACE_THE_BET",
           };
 
-          let currentMarketArr = existing.marketArr
-            ? JSON.parse(JSON.stringify(existing.marketArr))
-            : [];
+          const incomingRoundId = payload?.roundId || packet.roundId;
+          const isNewRound = Boolean(
+            incomingRoundId &&
+              existing.roundId &&
+              String(incomingRoundId) !== String(existing.roundId),
+          );
 
-          if (Array.isArray(payload?.marketArr) && payload.marketArr.length > 0) {
-            currentMarketArr = payload.marketArr;
-          } else if (Array.isArray(data.marketArr) && data.marketArr.length > 0) {
-            currentMarketArr = data.marketArr;
-          }
-
-          const roundId = payload?.roundId || data.roundId || existing.roundId;
-          const roundStatus =
-            payload?.roundStatus || data.roundStatus || existing.roundStatus;
-          const status = payload?.status || data.status || existing.status;
+          const roundId = incomingRoundId || existing.roundId;
           const eventName =
-            payload?.eventName || data.eventName || existing.eventName;
+            payload?.eventName || packet.eventName || existing.eventName;
 
-          // Check if a brand new round has started
-          const isNewRound =
-            roundId && existing.roundId && String(roundId) !== String(existing.roundId);
-
-          let initialLeftSec = existing.initialLeftSec;
-          let leftSecReceivedAt = existing.leftSecReceivedAt;
-
-          if (payload?.leftSec !== undefined && Number(payload.leftSec) > 0) {
-            initialLeftSec = Number(payload.leftSec);
-            leftSecReceivedAt = Date.now();
-          } else if (data?.leftSec !== undefined && Number(data.leftSec) > 0) {
-            initialLeftSec = Number(data.leftSec);
-            leftSecReceivedAt = Date.now();
-          } else if (isNewRound) {
-            initialLeftSec = Number(payload?.seconds || data?.seconds || 20);
-            leftSecReceivedAt = Date.now();
-          } else if (!leftSecReceivedAt || initialLeftSec === undefined) {
-            initialLeftSec = Number(existing.leftSec || 20);
-            leftSecReceivedAt = Date.now();
-          }
-
-          const elapsedSec = Math.floor((Date.now() - leftSecReceivedAt) / 1000);
-          const computedLeftSec =
-            roundStatus === "RESULT_DECLARED" || status === "SUSPEND"
-              ? 0
-              : Math.max(0, initialLeftSec - elapsedSec);
-
-          // Initialize or preserve current cards layout
-          let currentCards;
-          if (existing.cardsArr && Object.keys(existing.cardsArr).length > 0) {
-            currentCards = JSON.parse(JSON.stringify(existing.cardsArr));
-          } else {
-            currentCards = getDefaultCardsForTable(eventId, eventName);
-          }
+          // Status & RoundStatus management
+          let status = existing.status || "ONLINE";
+          let roundStatus = existing.roundStatus || "PLACE_THE_BET";
 
           if (isNewRound) {
-            // New round: reset every card back to "0" (closed face down)
-            const template = getDefaultCardsForTable(eventId, eventName);
-            currentCards = JSON.parse(JSON.stringify(template));
+            status = payload?.status || "ONLINE";
+            roundStatus = payload?.roundStatus || "PLACE_THE_BET";
+          } else {
+            if (payload?.status !== undefined) status = payload.status;
+            if (packet?.status !== undefined) status = packet.status;
+            if (payload?.roundStatus !== undefined) roundStatus = payload.roundStatus;
+            if (packet?.roundStatus !== undefined) roundStatus = packet.roundStatus;
           }
 
-          // Merge any incoming cardsArr from packet
+          // Timer management
+          let initialLeftSec = existing.initialLeftSec ?? 45;
+          let leftSecReceivedAt = existing.leftSecReceivedAt || Date.now();
+
+          const incomingLeftSec =
+            payload?.leftSec !== undefined ? payload.leftSec : packet?.leftSec;
+
+          if (isNewRound) {
+            initialLeftSec = Number(payload?.seconds || payload?.leftSec || 45);
+            leftSecReceivedAt = Date.now();
+          } else if (incomingLeftSec !== undefined) {
+            initialLeftSec = Number(incomingLeftSec);
+            leftSecReceivedAt = Date.now();
+          }
+
+          const isSuspended =
+            status === "SUSPEND" ||
+            status === "SUSPENDED" ||
+            roundStatus === "SUSPEND" ||
+            roundStatus === "SUSPENDED" ||
+            roundStatus === "CARD_SCAN" ||
+            roundStatus === "RESULT_DECLARED";
+
+          const elapsedSec = Math.floor((Date.now() - leftSecReceivedAt) / 1000);
+          const computedLeftSec = isSuspended
+            ? 0
+            : Math.max(0, initialLeftSec - elapsedSec);
+
+          // Cards management
+          let currentCards;
+          if (isNewRound || !existing.cardsArr || Object.keys(existing.cardsArr).length === 0) {
+            currentCards = getDefaultCardsForTable(eventId, eventName);
+          } else {
+            currentCards = JSON.parse(JSON.stringify(existing.cardsArr));
+          }
+
           const incomingCards =
-            payload?.cardsArr || payload?.cards || data.cardsArr || data.cards;
+            payload?.cardsArr || payload?.cards || packet.cardsArr || packet.cards;
           if (incomingCards && typeof incomingCards === "object") {
             for (const [k, v] of Object.entries(incomingCards)) {
               if (typeof v === "object" && v !== null && !Array.isArray(v)) {
@@ -246,7 +278,6 @@ export async function ensureNiceCasinoSocket() {
                 }
                 Object.assign(currentCards[k], v);
               } else if (typeof v === "string") {
-                // E.g. { card: "0" } -> map into { CARD: { card_1: v } }
                 const upperK = k.toUpperCase();
                 if (!currentCards[upperK] || typeof currentCards[upperK] !== "object") {
                   currentCards[upperK] = { card_1: v };
@@ -264,10 +295,26 @@ export async function ensureNiceCasinoSocket() {
             }
           }
 
-          // Apply dotted updates (cardsArr, runner status, market status, odds sizes)
-          if (payload && typeof payload === "object" && !Array.isArray(payload)) {
-            for (const [key, val] of Object.entries(payload)) {
-              if (key.startsWith("cardsArr.") || key.startsWith("cards.")) {
+          // Markets & Live Odds Updates
+          let currentMarketArr = existing.marketArr
+            ? JSON.parse(JSON.stringify(existing.marketArr))
+            : [];
+
+          if (Array.isArray(payload?.marketArr) && payload.marketArr.length > 0) {
+            currentMarketArr = payload.marketArr;
+          } else if (Array.isArray(packet?.marketArr) && packet.marketArr.length > 0) {
+            currentMarketArr = packet.marketArr;
+          }
+
+          // Apply dotted live odds & status updates (e.g. marketArr.0.runners.1.price.back.0.size)
+          const targetObj = payload && typeof payload === "object" ? payload : packet;
+          if (targetObj && typeof targetObj === "object" && !Array.isArray(targetObj)) {
+            for (const [key, val] of Object.entries(targetObj)) {
+              if (key === "status") {
+                status = val;
+              } else if (key === "roundStatus") {
+                roundStatus = val;
+              } else if (key.startsWith("cardsArr.") || key.startsWith("cards.")) {
                 const parts = key.split(".");
                 if (parts.length === 3) {
                   if (!currentCards[parts[1]] || typeof currentCards[parts[1]] !== "object") {
@@ -278,9 +325,6 @@ export async function ensureNiceCasinoSocket() {
                   currentCards[parts[1]] = val;
                 }
               } else if (key.startsWith("marketArr.")) {
-                if (currentMarketArr.length === 0 && existing.marketArr && existing.marketArr.length > 0) {
-                  currentMarketArr = JSON.parse(JSON.stringify(existing.marketArr));
-                }
                 const parts = key.split(".");
                 const mIdx = parseInt(parts[1], 10);
                 if (currentMarketArr[mIdx]) {
@@ -304,7 +348,7 @@ export async function ensureNiceCasinoSocket() {
                           runner.price.back = [{ price: 0, size: 0 }];
                         if (!runner.price.back[backIdx])
                           runner.price.back[backIdx] = { price: 0, size: 0 };
-                        runner.price.back[backIdx][prop] = val;
+                        runner.price.back[backIdx][prop] = Number(val);
                       }
                     }
                   }
@@ -321,7 +365,7 @@ export async function ensureNiceCasinoSocket() {
             initialLeftSec,
             leftSecReceivedAt,
             roundStatus,
-            status,
+            status: isSuspended ? "SUSPEND" : status,
             cardsArr: currentCards,
             marketArr: currentMarketArr,
             lastUpdated: Date.now(),
@@ -340,6 +384,12 @@ export async function ensureNiceCasinoSocket() {
         console.warn("Nice444 Casino socket error:", err.message);
       });
     }
+
+    // Await actual socket connection (up to 3 seconds)
+    for (let i = 0; i < 30; i++) {
+      if (casinoSocket && casinoSocket.connected) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
   } finally {
     casinoSocketConnecting = false;
   }
@@ -350,7 +400,7 @@ export async function ensureNiceCasinoSocket() {
 // Pre-connect casino socket
 setTimeout(() => {
   ensureNiceCasinoSocket().catch(() => {});
-}, 1500);
+}, 1000);
 
 export async function getScrapedCasinoLiveOdds(gameId) {
   const gId = String(gameId);
@@ -360,18 +410,33 @@ export async function getScrapedCasinoLiveOdds(gameId) {
     cs.emit("SCSN", { eventId: gId });
   }
 
-  const cached = casinoOddsCache.get(gId);
-  if (cached && cached.roundId && Date.now() - (cached.lastUpdated || 0) < 45000) {
+  // If cache is empty, wait up to 400ms for incoming socket packet
+  let cached = casinoOddsCache.get(gId);
+  if (!cached || !cached.roundId) {
+    for (let i = 0; i < 8; i++) {
+      await new Promise((r) => setTimeout(r, 50));
+      cached = casinoOddsCache.get(gId);
+      if (cached && cached.roundId) break;
+    }
+  }
+
+  if (cached && cached.roundId) {
     const elapsed = Math.floor(
       (Date.now() - (cached.leftSecReceivedAt || cached.lastUpdated || Date.now())) / 1000,
     );
-    const liveLeftSec =
-      cached.roundStatus === "RESULT_DECLARED" || cached.status === "SUSPEND"
-        ? 0
-        : Math.max(0, (cached.initialLeftSec ?? cached.leftSec ?? 0) - elapsed);
+    const isSuspended =
+      cached.roundStatus === "RESULT_DECLARED" ||
+      cached.roundStatus === "CARD_SCAN" ||
+      cached.roundStatus === "SUSPEND" ||
+      cached.status === "SUSPEND";
+
+    const liveLeftSec = isSuspended
+      ? 0
+      : Math.max(0, (cached.initialLeftSec ?? cached.leftSec ?? 0) - elapsed);
 
     return {
       ...cached,
+      status: isSuspended ? "SUSPEND" : cached.status,
       leftSec: liveLeftSec,
     };
   }
@@ -395,7 +460,6 @@ export async function getScrapedCasinoLiveOdds(gameId) {
     const resultsData = upstreamRes.data?.data || [];
     const latest = resultsData[0] || {};
 
-    // Scrape real markets & runners from Nice444's actual upstream results
     const rawResults = latest.results || [];
     const scrapedMarkets = rawResults.map((m, mIdx) => {
       const mName = m.marketName || `MARKET ${mIdx + 1}`;
@@ -447,12 +511,12 @@ export async function getScrapedCasinoLiveOdds(gameId) {
       eventId: gId,
       eventName: latest.eventName || `CASINO TABLE ${gId}`,
       roundId: latest.roundId || String(Date.now()),
-      leftSec: 18,
-      initialLeftSec: 18,
+      leftSec: 45,
+      initialLeftSec: 45,
       leftSecReceivedAt: Date.now(),
       status: "ONLINE",
       roundStatus: "PLACE_THE_BET",
-      cardsArr: latest.cards || getDefaultCardsForTable(gId, latest.eventName),
+      cardsArr: getDefaultCardsForTable(gId, latest.eventName),
       marketArr: scrapedMarkets,
       winner: latest.winner || null,
       lastUpdated: Date.now(),
@@ -467,9 +531,9 @@ export async function getScrapedCasinoLiveOdds(gameId) {
         eventId: gId,
         roundId: "",
         leftSec: 0,
-        status: "ONLINE",
-        roundStatus: "OPEN",
-        cardsArr: {},
+        status: "SUSPEND",
+        roundStatus: "SUSPEND",
+        cardsArr: getDefaultCardsForTable(gId),
         marketArr: [],
       }
     );

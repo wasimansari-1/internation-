@@ -249,6 +249,21 @@ router.get("/stream-proxy/:gameId", async (req, res) => {
     let html = pageRes.data;
     if (typeof html === "string") {
       html = html.replace('src="/player/player.js', 'src="https://tv.ltve.live/player/player.js');
+      // Anti-debugger loop neutralization so browser DevTools does not freeze the app
+      html = `<script>
+        (function() {
+          try {
+            window.debugger = function(){};
+            var origSetInterval = window.setInterval;
+            window.setInterval = function(fn, delay) {
+              if (typeof fn === "function" && fn.toString().includes("debugger")) {
+                return 0;
+              }
+              return origSetInterval.apply(this, arguments);
+            };
+          } catch(e) {}
+        })();
+      </script>` + html;
     }
 
     res.removeHeader("Content-Security-Policy");

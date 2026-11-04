@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Maximize2, Minimize2, RefreshCw, Trophy, GlassWater, ShieldAlert, AlertCircle, Info } from 'lucide-react';
+import { X, Maximize2, Minimize2, RefreshCw, Trophy, GlassWater, ShieldAlert, AlertCircle, Info, Lock } from 'lucide-react';
 import axios from 'axios';
 
 // Helper to resolve card image path strictly according to API values
@@ -80,7 +80,7 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
 
     const pollCasino = async () => {
       try {
-        const res = await axios.get(`/api/casino/live-odds/${gameId}`);
+        const res = await axios.get(`/api/casino/live-odds/${gameId}?_t=${Date.now()}`);
         if (isMounted && res.data?.success && res.data?.data) {
           const data = res.data.data;
           setOddsData(data);
@@ -88,7 +88,10 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
           const serverSec = Number(data.leftSec ?? 0);
           const isRoundOver =
             data.roundStatus === 'RESULT_DECLARED' ||
+            data.roundStatus === 'CARD_SCAN' ||
+            data.roundStatus === 'SUSPEND' ||
             data.status === 'SUSPEND' ||
+            data.status === 'SUSPENDED' ||
             serverSec <= 0;
 
           if (isRoundOver) {
@@ -101,9 +104,9 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
               targetEndRef.current = Date.now() + serverSec * 1000;
               setTimeLeft(serverSec);
             } else {
-              // Drift correction if local timer deviates by > 2 seconds
+              // Drift correction if local timer deviates by > 1 second
               const currentRem = Math.max(0, Math.ceil((targetEndRef.current - Date.now()) / 1000));
-              if (Math.abs(currentRem - serverSec) > 2) {
+              if (Math.abs(currentRem - serverSec) > 1) {
                 targetEndRef.current = Date.now() + serverSec * 1000;
                 setTimeLeft(serverSec);
               }
@@ -124,7 +127,7 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
     };
 
     pollCasino();
-    const interval = setInterval(pollCasino, 1000);
+    const interval = setInterval(pollCasino, 700);
 
     return () => {
       isMounted = false;
@@ -720,29 +723,76 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
               )}
             </div>
 
+            {/* Suspended Lock Session Overlay (Exact Nice444 / Kingz UI) */}
+            {isTableSuspended && (
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  backgroundColor: 'rgba(10, 6, 18, 0.78)',
+                  backdropFilter: 'blur(3px)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  zIndex: 8,
+                  pointerEvents: 'none'
+                }}
+              >
+                <div
+                  style={{
+                    width: '60px',
+                    height: '60px',
+                    borderRadius: '50%',
+                    border: '2.5px solid #e879f9',
+                    boxShadow: '0 0 16px rgba(232, 121, 249, 0.45)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginBottom: '14px'
+                  }}
+                >
+                  <Lock size={26} color="#e879f9" />
+                </div>
+                <div
+                  style={{
+                    color: '#ffffff',
+                    fontSize: '18px',
+                    fontWeight: 800,
+                    letterSpacing: '0.5px',
+                    fontFamily: 'serif, Georgia, -apple-system, sans-serif'
+                  }}
+                >
+                  This session has been closed
+                </div>
+              </div>
+            )}
+
             {/* Top-Right: Circular Countdown Timer Wheel */}
-            <div
-              style={{
-                position: 'absolute',
-                top: '10px',
-                right: '12px',
-                width: '42px',
-                height: '42px',
-                borderRadius: '50%',
-                backgroundColor: 'rgba(15, 23, 42, 0.85)',
-                border: `3px solid ${timeLeft <= 5 ? '#ef4444' : '#10b981'}`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: timeLeft <= 5 ? '#ef4444' : '#ffffff',
-                fontWeight: 900,
-                fontSize: '16px',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.6)',
-                zIndex: 10
-              }}
-            >
-              {timeLeft}
-            </div>
+            {!isTableSuspended && timeLeft > 0 && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '10px',
+                  right: '12px',
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '50%',
+                  backgroundColor: 'rgba(15, 23, 42, 0.85)',
+                  border: `3px solid ${timeLeft <= 5 ? '#ef4444' : '#10b981'}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: timeLeft <= 5 ? '#ef4444' : '#ffffff',
+                  fontWeight: 900,
+                  fontSize: '16px',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.6)',
+                  zIndex: 10
+                }}
+              >
+                {timeLeft}
+              </div>
+            )}
           </div>
 
           {/* DTL Specific Runner Tabs (Dragon | Tiger | Lion) matching user UI */}
@@ -835,19 +885,26 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
                           style={{
                             position: 'absolute',
                             inset: 0,
-                            backgroundColor: 'rgba(15, 23, 42, 0.88)',
-                            backdropFilter: 'blur(2px)',
+                            backgroundColor: 'transparent',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            color: '#ef4444',
-                            fontWeight: 900,
-                            fontSize: '14px',
-                            letterSpacing: '1px',
-                            zIndex: 5
+                            zIndex: 6,
+                            pointerEvents: 'none'
                           }}
                         >
-                          SUSPENDED
+                          <span
+                            style={{
+                              color: '#a855f7',
+                              fontWeight: 900,
+                              fontSize: '18px',
+                              letterSpacing: '2px',
+                              textShadow: '0 1px 2px rgba(255, 255, 255, 0.85), 0 0 10px rgba(168, 85, 247, 0.5)',
+                              textTransform: 'uppercase'
+                            }}
+                          >
+                            SUSPENDED
+                          </span>
                         </div>
                       )}
 
@@ -869,7 +926,7 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
                           <div
                             key={r.selectionId || rIdx}
                             style={{
-                              backgroundColor: isRunnerSuspended ? '#334155' : '#72bbef',
+                              backgroundColor: isRunnerSuspended ? '#dce8f5' : '#72bbef',
                               borderRadius: '4px',
                               padding: '8px 4px',
                               textAlign: 'center',
@@ -877,14 +934,15 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
                               display: 'flex',
                               flexDirection: 'column',
                               justifyContent: 'center',
-                              boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                              boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
                               transition: 'transform 0.1s',
-                              opacity: isRunnerSuspended ? 0.75 : 1
+                              position: 'relative',
+                              opacity: 1
                             }}
                           >
                             <span
                               style={{
-                                color: isRunnerSuspended ? '#94a3b8' : '#0f172a',
+                                color: isRunnerSuspended ? '#64748b' : '#0f172a',
                                 fontWeight: 800,
                                 fontSize: '11px',
                                 textTransform: 'uppercase',
@@ -895,22 +953,22 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
                             </span>
                             <span
                               style={{
-                                color: isRunnerSuspended ? '#cbd5e1' : '#020617',
+                                color: isRunnerSuspended ? '#475569' : '#020617',
                                 fontWeight: 900,
                                 fontSize: '16px',
                                 lineHeight: '1.1'
                               }}
                             >
-                              {isRunnerSuspended ? 'SUSP' : backPrice}
+                              {backPrice}
                             </span>
                             <span
                               style={{
-                                color: isRunnerSuspended ? '#64748b' : '#1e293b',
+                                color: isRunnerSuspended ? '#94a3b8' : '#1e293b',
                                 fontSize: '10px',
                                 fontWeight: 700
                               }}
                             >
-                              {isRunnerSuspended ? '-' : Number(backSize).toLocaleString()}
+                              {Number(backSize).toLocaleString()}
                             </span>
                           </div>
                         );
