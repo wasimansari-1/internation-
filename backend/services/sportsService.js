@@ -579,8 +579,8 @@ export async function getLiveRatesForEvent(eventId, sportId = "4") {
   const cacheKey = `${eIdStr}_${sportId}`;
   const cached = liveRatesCache.get(cacheKey);
 
-  // Return fresh cache if within 200ms
-  if (cached && Date.now() - cached.timestamp < 200) {
+  // Return fresh cache if within 100ms (Guarantees sub-0.10s instant live rate freshness)
+  if (cached && Date.now() - cached.timestamp < 100) {
     return cached.data;
   }
 
