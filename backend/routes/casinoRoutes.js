@@ -1,6 +1,7 @@
 import express from "express";
 import axios from "axios";
 import { getDemoToken, getStartexchToken, proxyRequest } from "../services/authService.js";
+import { telemetry } from "../services/telemetryService.js";
 import {
   getScrapedCasinoLiveOdds,
   getCasinoTableList,
@@ -186,33 +187,32 @@ let streamProviderCounter = 0;
 
 async function fetchUpstreamWatchUrl(gameId, incomingIp) {
   streamProviderCounter++;
-  // Alternates 50/50: Startexch99 <-> Nice444 to avoid overloading or blocking any single provider
-  const providers =
-    streamProviderCounter % 2 === 0
-      ? [
-          {
-            name: "Startexch99",
-            domain: "https://casino.startexch99.com",
-            getToken: () => getStartexchToken(),
-          },
-          {
-            name: "Nice444",
-            domain: "https://casino.nice444.com",
-            getToken: () => getDemoToken(),
-          },
-        ]
-      : [
-          {
-            name: "Nice444",
-            domain: "https://casino.nice444.com",
-            getToken: () => getDemoToken(),
-          },
-          {
-            name: "Startexch99",
-            domain: "https://casino.startexch99.com",
-            getToken: () => getStartexchToken(),
-          },
-        ];
+  const mode = telemetry.routingConfig.streamProvider || "AUTO";
+  let providers;
+
+  if (mode === "STARTEXCH99") {
+    providers = [
+      { name: "Startexch99", domain: "https://casino.startexch99.com", getToken: () => getStartexchToken() },
+      { name: "Nice444", domain: "https://casino.nice444.com", getToken: () => getDemoToken() },
+    ];
+  } else if (mode === "NICE444") {
+    providers = [
+      { name: "Nice444", domain: "https://casino.nice444.com", getToken: () => getDemoToken() },
+      { name: "Startexch99", domain: "https://casino.startexch99.com", getToken: () => getStartexchToken() },
+    ];
+  } else {
+    // AUTO: Alternates 50/50 to avoid overloading or blocking any single provider
+    providers =
+      streamProviderCounter % 2 === 0
+        ? [
+            { name: "Startexch99", domain: "https://casino.startexch99.com", getToken: () => getStartexchToken() },
+            { name: "Nice444", domain: "https://casino.nice444.com", getToken: () => getDemoToken() },
+          ]
+        : [
+            { name: "Nice444", domain: "https://casino.nice444.com", getToken: () => getDemoToken() },
+            { name: "Startexch99", domain: "https://casino.startexch99.com", getToken: () => getStartexchToken() },
+          ];
+  }
 
   const candidateIps = [incomingIp, ...RESIDENTIAL_IPS].filter(Boolean);
 
@@ -444,16 +444,31 @@ let resultsProviderCounter = 0;
 router.get("/results/:gameId", async (req, res) => {
   const { gameId } = req.params;
   resultsProviderCounter++;
-  const providers =
-    resultsProviderCounter % 2 === 0
-      ? [
-          { domain: "https://casino.startexch99.com", getToken: getStartexchToken },
-          { domain: "https://casino.nice444.com", getToken: getDemoToken },
-        ]
-      : [
-          { domain: "https://casino.nice444.com", getToken: getDemoToken },
-          { domain: "https://casino.startexch99.com", getToken: getStartexchToken },
-        ];
+  const mode = telemetry.routingConfig.casinoProvider || "AUTO";
+  let providers;
+
+  if (mode === "STARTEXCH99") {
+    providers = [
+      { domain: "https://casino.startexch99.com", getToken: getStartexchToken },
+      { domain: "https://casino.nice444.com", getToken: getDemoToken },
+    ];
+  } else if (mode === "NICE444") {
+    providers = [
+      { domain: "https://casino.nice444.com", getToken: getDemoToken },
+      { domain: "https://casino.startexch99.com", getToken: getStartexchToken },
+    ];
+  } else {
+    providers =
+      resultsProviderCounter % 2 === 0
+        ? [
+            { domain: "https://casino.startexch99.com", getToken: getStartexchToken },
+            { domain: "https://casino.nice444.com", getToken: getDemoToken },
+          ]
+        : [
+            { domain: "https://casino.nice444.com", getToken: getDemoToken },
+            { domain: "https://casino.startexch99.com", getToken: getStartexchToken },
+          ];
+  }
 
   for (const p of providers) {
     try {

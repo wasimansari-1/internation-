@@ -1,5 +1,6 @@
 import axios from "axios";
 import { TARGET_BASE, httpsAgent, httpAgent } from "../config/hosts.js";
+import { telemetry } from "./telemetryService.js";
 
 axios.defaults.httpsAgent = httpsAgent;
 axios.defaults.httpAgent = httpAgent;
@@ -49,10 +50,12 @@ export const getDemoToken = async (forceRefresh = false) => {
       cachedIntCasinoToken = res.data.data.intCasino || null;
       cachedUserDetail = res.data.data.userDetail || null;
       tokenExpiry = Date.now() + 30 * 60 * 1000;
+      telemetry.recordAuthAttempt("nice444", true);
       return cachedToken;
     }
   } catch (err) {
     console.error("Error getting demo token:", err.message);
+    telemetry.recordAuthAttempt("nice444", false, err.message);
     scheduleTokenRetry();
   }
   return cachedToken;
@@ -145,10 +148,12 @@ export const getStartexchToken = async (forceRefresh = false) => {
     if (res.data?.data?.accessToken) {
       cachedStartexchToken = res.data.data.accessToken;
       startexchTokenExpiry = Date.now() + 30 * 60 * 1000;
+      telemetry.recordAuthAttempt("startexch99", true);
       return cachedStartexchToken;
     }
   } catch (err) {
     console.error("Error getting Startexch99 demo token:", err.message);
+    telemetry.recordAuthAttempt("startexch99", false, err.message);
   }
   return cachedStartexchToken;
 };

@@ -16,7 +16,9 @@ process.on("unhandledRejection", (reason) => {
 import sportsRouter from "./routes/sportsRoutes.js";
 import casinoRouter from "./routes/casinoRoutes.js";
 import streamRouter from "./routes/streamRoutes.js";
+import adminRouter from "./routes/adminRoutes.js";
 import { proxyRequest } from "./services/authService.js";
+import { telemetry } from "./services/telemetryService.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -38,8 +40,27 @@ app.use(
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
-// Request logging in development/debug
+// Telemetry & metrics non-blocking interceptor
 app.use((req, res, next) => {
+  const start = Date.now();
+  res.on("finish", () => {
+    let category = "other";
+    if (req.path.includes("/live-odds")) category = "casinoOdds";
+    else if (req.path.includes("/watch-link")) category = "streamWatch";
+    else if (req.path.includes("/stream-proxy")) category = "streamProxy";
+    else if (req.path.includes("/result")) category = "results";
+    else if (req.path.startsWith("/api/sports") || req.path.startsWith("/ori/api/sports")) category = "sports";
+    else if (req.path.startsWith("/api/admin")) category = "admin";
+
+    telemetry.recordRequest({
+      method: req.method,
+      path: req.originalUrl || req.url,
+      category,
+      status: res.statusCode,
+      latencyMs: Date.now() - start,
+    });
+  });
+
   if (process.env.DEBUG || (req.path.startsWith("/api/") && !req.path.includes("live-odds") && !req.path.includes("live-rates"))) {
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
   }
@@ -51,6 +72,7 @@ app.use("/api/sports", sportsRouter);
 app.use("/ori/api/sports", sportsRouter);
 app.use("/api/casino", casinoRouter);
 app.use("/api/stream", streamRouter);
+app.use("/api/admin", adminRouter);
 
 // News ticker API
 app.get("/api/media/news", async (req, res) => {

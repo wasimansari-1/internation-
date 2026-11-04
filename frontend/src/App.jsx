@@ -3,10 +3,11 @@ import UniverseGamesView from './components/UniverseGamesView';
 import SportsOddsView from './components/SportsOddsView';
 import MatchDetailTablesView from './components/MatchDetailTablesView';
 import ApiInspector from './components/ApiInspector';
+import ApiManagementDashboard from './components/ApiManagementDashboard';
 import { RotateCw } from 'lucide-react';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('GAMES'); // 'GAMES' | 'SPORTS' | 'DOCS'
+  const [activeTab, setActiveTab] = useState('GAMES'); // 'GAMES' | 'SPORTS' | 'GATEWAY' | 'DOCS'
   const [selectedMatch, setSelectedMatch] = useState(null);
 
   return (
@@ -138,6 +139,29 @@ export default function App() {
             DOCS
           </button>
 
+          <button
+            onClick={() => { setActiveTab('GATEWAY'); setSelectedMatch(null); }}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: activeTab === 'GATEWAY' ? '#38bdf8' : '#94a3b8',
+              fontWeight: 800,
+              fontSize: '12px',
+              letterSpacing: '1px',
+              cursor: 'pointer',
+              height: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              borderBottom: activeTab === 'GATEWAY' ? '2px solid #38bdf8' : '2px solid transparent',
+              transition: 'all 0.2s',
+              padding: '0 4px'
+            }}
+          >
+            <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#38bdf8', boxShadow: '0 0 6px #38bdf8' }} />
+            GATEWAY HUB
+          </button>
+
           {/* Refresh icon */}
           <button
             onClick={() => window.location.reload()}
@@ -195,7 +219,12 @@ export default function App() {
           )
         )}
 
-        {/* 3. DOCS TAB */}
+        {/* 3. GATEWAY HUB TAB (Enterprise API Load & Origin Block Telemetry) */}
+        {activeTab === 'GATEWAY' && (
+          <ApiManagementDashboard />
+        )}
+
+        {/* 4. DOCS TAB */}
         {activeTab === 'DOCS' && (
           <div style={{ maxWidth: '1200px', margin: '0 auto', width: '100%', padding: '24px 20px' }}>
             <div style={{ marginBottom: '20px' }}>
