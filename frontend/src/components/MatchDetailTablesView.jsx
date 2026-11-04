@@ -172,7 +172,27 @@ export default function MatchDetailTablesView({ event, onBack }) {
       });
       const data = res.data?.data?.data || res.data?.data;
       if (data) {
-        if (Array.isArray(data.fancyData)) setFancyMarkets(data.fancyData);
+        if (Array.isArray(data.fancyData)) {
+          const parsedFancy = data.fancyData.map((f) => {
+            const odds = f.oddsData || {};
+            const r0 = odds.runners?.[0] || {};
+            const b0 = r0.price?.back?.[0] || {};
+            const l0 = r0.price?.lay?.[0] || {};
+            const isSusp = r0.status === 'SUSPENDED' || odds.status === 'SUSPENDED';
+            return {
+              marketId: String(f.exMarketId || f.marketId || ''),
+              marketName: f.marketName || f.sessionName || 'Fancy Market',
+              sequence: Number(f.sequence || f.priority || 0),
+              status: odds.status || (isSusp ? 'SUSPENDED' : 'ONLINE'),
+              isSuspended: isSusp,
+              min: f.min || 100,
+              max: f.max || 50000,
+              no: { price: l0.price ?? null, size: l0.size || 100 },
+              yes: { price: b0.price ?? null, size: b0.size || 100 },
+            };
+          });
+          setFancyMarkets(parsedFancy);
+        }
         if (Array.isArray(data.sportsbookData)) setSportsbook(data.sportsbookData);
 
         if (Array.isArray(data.matchOddsData) && data.matchOddsData.length > 0) {
@@ -282,106 +302,88 @@ export default function MatchDetailTablesView({ event, onBack }) {
       setNews(data.news);
     }
 
-    // Check Match Odds updates (tracks price AND size changes)
+    // Check Match Odds updates (flashes only when RATE changes)
     const moSource = data.matchOddsList || (data.matchOdds ? [data.matchOdds] : []);
     if (moSource.length > 0) {
-      let moChanged = false;
       moSource.forEach((m) => {
         (m.runners || []).forEach((r) => {
-          const prev = prevRatesRef.current[`mo_${r.selectionId}`];
+          const key = `mo_${m.marketId}_${r.selectionId}`;
+          const prev = prevRatesRef.current[key];
           const curBackPrice = r.back?.price;
-          const curBackSize = r.back?.size;
           const curLayPrice = r.lay?.price;
-          const curLaySize = r.lay?.size;
 
-          const backChanged = prev && (prev.backPrice !== curBackPrice || prev.backSize !== curBackSize);
-          const layChanged = prev && (prev.layPrice !== curLayPrice || prev.laySize !== curLaySize);
+          const backChanged = prev && prev.backPrice !== undefined && curBackPrice !== undefined && prev.backPrice !== curBackPrice && curBackPrice !== null;
+          const layChanged = prev && prev.layPrice !== undefined && curLayPrice !== undefined && prev.layPrice !== curLayPrice && curLayPrice !== null;
 
-          if (!prev || backChanged || layChanged) {
-            moChanged = true;
-            if (backChanged) {
-              newFlashBack.add(`mo_b_${r.selectionId}`);
-            }
-            if (layChanged) {
-              newFlashLay.add(`mo_l_${r.selectionId}`);
-            }
-            prevRatesRef.current[`mo_${r.selectionId}`] = {
-              backPrice: curBackPrice,
-              backSize: curBackSize,
-              layPrice: curLayPrice,
-              laySize: curLaySize,
-            };
+          if (backChanged) {
+            newFlashBack.add(`mo_b_${m.marketId}_${r.selectionId}`);
           }
+          if (layChanged) {
+            newFlashLay.add(`mo_l_${m.marketId}_${r.selectionId}`);
+          }
+
+          prevRatesRef.current[key] = {
+            backPrice: curBackPrice,
+            layPrice: curLayPrice,
+          };
         });
       });
-      if (moChanged) setMatchOddsList(moSource);
+      setMatchOddsList(moSource);
     }
 
-    // Check Bookmaker updates (tracks price AND size changes)
+    // Check Bookmaker updates (flashes only when RATE changes)
     const bmSource = data.bookmakerList || (data.bookmaker ? [data.bookmaker] : []);
     if (bmSource.length > 0) {
-      let bmChanged = false;
       bmSource.forEach((m) => {
         (m.runners || []).forEach((r) => {
-          const prev = prevRatesRef.current[`bm_${r.selectionId}`];
+          const key = `bm_${m.marketId}_${r.selectionId}`;
+          const prev = prevRatesRef.current[key];
           const curBackPrice = r.back?.price;
-          const curBackSize = r.back?.size;
           const curLayPrice = r.lay?.price;
-          const curLaySize = r.lay?.size;
 
-          const backChanged = prev && (prev.backPrice !== curBackPrice || prev.backSize !== curBackSize);
-          const layChanged = prev && (prev.layPrice !== curLayPrice || prev.laySize !== curLaySize);
+          const backChanged = prev && prev.backPrice !== undefined && curBackPrice !== undefined && prev.backPrice !== curBackPrice && curBackPrice !== null;
+          const layChanged = prev && prev.layPrice !== undefined && curLayPrice !== undefined && prev.layPrice !== curLayPrice && curLayPrice !== null;
 
-          if (!prev || backChanged || layChanged) {
-            bmChanged = true;
-            if (backChanged) {
-              newFlashBack.add(`bm_b_${r.selectionId}`);
-            }
-            if (layChanged) {
-              newFlashLay.add(`bm_l_${r.selectionId}`);
-            }
-            prevRatesRef.current[`bm_${r.selectionId}`] = {
-              backPrice: curBackPrice,
-              backSize: curBackSize,
-              layPrice: curLayPrice,
-              laySize: curLaySize,
-            };
+          if (backChanged) {
+            newFlashBack.add(`bm_b_${m.marketId}_${r.selectionId}`);
           }
+          if (layChanged) {
+            newFlashLay.add(`bm_l_${m.marketId}_${r.selectionId}`);
+          }
+
+          prevRatesRef.current[key] = {
+            backPrice: curBackPrice,
+            layPrice: curLayPrice,
+          };
         });
       });
-      if (bmChanged) setBookmakerList(bmSource);
+      setBookmakerList(bmSource);
     }
 
-    // Check Live Fancy updates (tracks price AND size changes)
-    if (Array.isArray(data.fancy) && data.fancy.length > 0) {
-      let fcChanged = false;
+    // Check Live Fancy updates (flashes only when RATE changes)
+    if (Array.isArray(data.fancy)) {
       data.fancy.forEach((f) => {
-        const prev = prevRatesRef.current[`fc_${f.marketId}`];
+        const key = `fc_${f.marketId}`;
+        const prev = prevRatesRef.current[key];
         const curYesPrice = f.yes?.price;
-        const curYesSize = f.yes?.size;
         const curNoPrice = f.no?.price;
-        const curNoSize = f.no?.size;
 
-        const yesChanged = prev && (prev.yesPrice !== curYesPrice || prev.yesSize !== curYesSize);
-        const noChanged = prev && (prev.noPrice !== curNoPrice || prev.noSize !== curNoSize);
+        const yesChanged = prev && prev.yesPrice !== undefined && curYesPrice !== undefined && prev.yesPrice !== curYesPrice && curYesPrice !== null;
+        const noChanged = prev && prev.noPrice !== undefined && curNoPrice !== undefined && prev.noPrice !== curNoPrice && curNoPrice !== null;
 
-        if (!prev || yesChanged || noChanged) {
-          fcChanged = true;
-          if (yesChanged) {
-            newFlashBack.add(`fc_y_${f.marketId}`);
-          }
-          if (noChanged) {
-            newFlashLay.add(`fc_n_${f.marketId}`);
-          }
-          prevRatesRef.current[`fc_${f.marketId}`] = {
-            yesPrice: curYesPrice,
-            yesSize: curYesSize,
-            noPrice: curNoPrice,
-            noSize: curNoSize,
-          };
+        if (yesChanged) {
+          newFlashBack.add(`fc_y_${f.marketId}`);
         }
+        if (noChanged) {
+          newFlashLay.add(`fc_n_${f.marketId}`);
+        }
+
+        prevRatesRef.current[key] = {
+          yesPrice: curYesPrice,
+          noPrice: curNoPrice,
+        };
       });
-      if (fcChanged) setFancyMarkets(data.fancy);
+      setFancyMarkets(data.fancy);
     }
 
     // Check Sportsbook updates
@@ -389,7 +391,7 @@ export default function MatchDetailTablesView({ event, onBack }) {
       setSportsbook(data.sportsbook);
     }
 
-    // Instant .1 second flash whenever price or volume changes
+    // Instant .1 second flash whenever price changes
     if (newFlashBack.size > 0 || newFlashLay.size > 0) {
       setFlashBackSet(newFlashBack);
       setFlashLaySet(newFlashLay);
@@ -444,10 +446,19 @@ export default function MatchDetailTablesView({ event, onBack }) {
         f.status === 'SETTLED' ||
         f.status === 'VOID';
       if (isClosed) return false;
-      const isSusp = f.isSuspended || f.status === 'SUSPENDED' || f.status === 'BALLRUN';
+      const isSusp =
+        f.isSuspended ||
+        f.status === 'SUSPENDED' ||
+        f.status === 'BALLRUN' ||
+        f.oddsData?.status === 'SUSPENDED' ||
+        f.oddsData?.runners?.[0]?.status === 'SUSPENDED';
+
+      const yesP = f.yes?.price ?? f.oddsData?.runners?.[0]?.price?.back?.[0]?.price;
+      const noP = f.no?.price ?? f.oddsData?.runners?.[0]?.price?.lay?.[0]?.price;
       const hasRates =
-        (f.yes?.price !== null && f.yes?.price !== undefined && f.yes.price > 0) ||
-        (f.no?.price !== null && f.no?.price !== undefined && f.no.price > 0);
+        (yesP !== null && yesP !== undefined && Number(yesP) > 0) ||
+        (noP !== null && noP !== undefined && Number(noP) > 0);
+
       if (!hasRates && !isSusp) return false;
 
       if (fancySubTab === 'ALL') return true;
@@ -828,8 +839,8 @@ export default function MatchDetailTablesView({ event, onBack }) {
                 </div>
 
                 {mo.runners.map((r, rIdx) => {
-                  const isFlashBack = flashBackSet.has(`mo_b_${r.selectionId}`);
-                  const isFlashLay = flashLaySet.has(`mo_l_${r.selectionId}`);
+                  const isFlashBack = flashBackSet.has(`mo_b_${mo.marketId}_${r.selectionId}`);
+                  const isFlashLay = flashLaySet.has(`mo_l_${mo.marketId}_${r.selectionId}`);
                   const isSuspended = r.isSuspended || r.status === 'SUSPENDED';
                   return (
                     <div
@@ -994,8 +1005,8 @@ export default function MatchDetailTablesView({ event, onBack }) {
 
           {/* Runners */}
           {bm.runners.map((r, rIdx) => {
-            const isFlashBack = flashBackSet.has(`bm_b_${r.selectionId}`);
-            const isFlashLay = flashLaySet.has(`bm_l_${r.selectionId}`);
+            const isFlashBack = flashBackSet.has(`bm_b_${bm.marketId}_${r.selectionId}`);
+            const isFlashLay = flashLaySet.has(`bm_l_${bm.marketId}_${r.selectionId}`);
             const isSuspended =
               r.isSuspended ||
               r.status === 'SUSPENDED';

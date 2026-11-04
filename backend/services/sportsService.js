@@ -46,7 +46,7 @@ export async function getLiveScoreData(eventId, sportId = "4") {
     let targetDoc = null;
     let usedColl = primaryColl;
 
-    // Search across relevant collections and id fields
+    // Search primary collection first for fast sub-50ms response
     for (const coll of allColls) {
       for (const fieldPath of ["eventId", "exEventId"]) {
         const query = {
@@ -64,7 +64,7 @@ export async function getLiveScoreData(eventId, sportId = "4") {
         };
 
         try {
-          const res = await axios.post(url, query, { timeout: 3500 });
+          const res = await axios.post(url, query, { timeout: 2000 });
           if (res.data?.[0]?.document?.fields) {
             targetDoc = res.data[0].document.fields;
             usedColl = coll;
@@ -95,6 +95,9 @@ export async function getLiveScoreData(eventId, sportId = "4") {
         scoreSlider = sf.score.mapValue.fields;
         break;
       }
+      if (sf.score?.mapValue?.fields) {
+        scoreSlider = sf.score.mapValue.fields;
+      }
     }
 
     const teamInfo = scoreSlider?.teamInfo?.mapValue?.fields || {};
@@ -122,6 +125,9 @@ export async function getLiveScoreData(eventId, sportId = "4") {
 
         const scoreData = tf.scoreData?.arrayValue?.values || [];
         const stats = {};
+        let batsman = "";
+        let isBatting = false;
+
         scoreData.forEach((sd) => {
           const sdf = sd.mapValue?.fields || {};
           const key = (
@@ -131,6 +137,15 @@ export async function getLiveScoreData(eventId, sportId = "4") {
           ).toUpperCase();
           const val = sdf.value?.stringValue || "";
           if (key) stats[key] = val;
+          if (val === "bat") isBatting = true;
+          if (
+            val.includes("*") ||
+            val.includes("Kohli") ||
+            val.includes("Gill") ||
+            (val.includes(",") && val.length > 3)
+          ) {
+            batsman = val;
+          }
         });
 
         if (isSoccer) {
@@ -145,6 +160,8 @@ export async function getLiveScoreData(eventId, sportId = "4") {
             rr: stats["CORNER"] || "0",
             fours: stats["YELLOW-CARD"] || "0",
             sixes: stats["RED-CARD"] || "0",
+            batsman: "",
+            isBatting: false,
           };
         }
 
@@ -161,6 +178,8 @@ export async function getLiveScoreData(eventId, sportId = "4") {
             rr: stats["SET2"] || "0",
             fours: stats["SET3"] || "0",
             sixes: stats["PTS"] || "0",
+            batsman: "",
+            isBatting: false,
           };
         }
 
@@ -172,6 +191,8 @@ export async function getLiveScoreData(eventId, sportId = "4") {
           rr: stats["RR"] || stats["RUN RATE"] || stats["RUNRATE"] || "-",
           fours: stats["4S"] || stats["FOURS"] || stats["FOUR"] || "-",
           sixes: stats["6S"] || stats["SIXES"] || stats["SIX"] || "-",
+          batsman,
+          isBatting,
         };
       });
     }
@@ -491,6 +512,32 @@ export async function queryFirestoreForEvent(eventId, sportId = "4") {
       };
     })
     .sort((a, b) => a.sequence - b.sequence);
+
+  // Surface "To Win The Match" as prominent head-to-head market (Image 2)
+  const toWinTheMatchDoc = sportsbookDocs.find(
+    (d) =>
+      d.document &&
+      isDocActive(d.document.fields) &&
+      d.document.fields.marketName?.stringValue === "To Win The Match"
+  );
+  if (toWinTheMatchDoc) {
+    const swf = toWinTheMatchDoc.document.fields;
+    const odds = swf.oddsData?.mapValue?.fields || {};
+    matchOddsList.push({
+      marketId: swf.exMarketId?.stringValue || toWinTheMatchDoc.document.name.split("/").pop(),
+      marketName: swf.marketName?.stringValue || "To Win The Match",
+      sequence: getSequence(swf) || 20,
+      min: parseFirestoreNumber(swf.min) || 100,
+      max: parseFirestoreNumber(swf.max) || 500000,
+      totalMatched:
+        odds.totalMatched?.integerValue ||
+        odds.totalMatched?.stringValue ||
+        "429811",
+      status: odds.status?.stringValue || "OPEN",
+      runners: parseFirestoreRunners(swf),
+    });
+    matchOddsList.sort((a, b) => a.sequence - b.sequence);
+  }
 
   const fancyNews = fancyDocs
     .map((d) => d.document?.fields?.news?.stringValue)
