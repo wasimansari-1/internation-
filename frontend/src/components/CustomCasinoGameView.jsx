@@ -29,7 +29,6 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [timeLeft, setTimeLeft] = useState(0);
   const [rulesOpen, setRulesOpen] = useState(false);
-  const [watchUrl, setWatchUrl] = useState('');
   const [dtlTab, setDtlTab] = useState('DRAGON'); // 'DRAGON' | 'TIGER' | 'LION' for DTL games
 
   const containerRef = useRef(null);
@@ -65,51 +64,9 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
     }
   };
 
-  // 3. Fetch Real Live Casino Dealer Watch Link (Native Nice444 Stream via Client-Direct + Fallback)
-  const fetchWatchUrl = async () => {
-    try {
-      // 1. Get fresh authorization token from backend
-      const tokenRes = await axios.get(`/api/casino/stream-token/${gameId}`);
-      if (tokenRes.data?.success && tokenRes.data?.token) {
-        const { token, streamId, endpoint } = tokenRes.data;
-
-        // 2. Client browser (with client's own residential IP) requests watch link directly
-        // Nice444 allows CORS (Access-Control-Allow-Origin: *)
-        const directRes = await axios.post(
-          endpoint || 'https://casino.nice444.com/casinoapp/exchange/users/streaming/casinoGameWatchLink',
-          { streamId: String(streamId || gameId), timestamp: Date.now() },
-          {
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`
-            },
-            timeout: 5000
-          }
-        );
-
-        if (directRes.data?.data?.url) {
-          setWatchUrl(directRes.data.data.url);
-          return;
-        }
-      }
-    } catch (clientErr) {
-      // If client is outside India or direct call fails, seamlessly fall back to backend residential pool
-    }
-
-    try {
-      const res = await axios.get(`/api/casino/watch-link/${gameId}`);
-      if (res.data?.success && res.data?.url) {
-        setWatchUrl(res.data.url);
-      }
-    } catch (err) {
-      console.warn('Watch link fetch error:', err.message);
-    }
-  };
-
-  // 4. Poll Real-Time Odds & Results via REST API (1000ms exact socket sync)
+  // 3. Poll Real-Time Odds & Results via REST API (1000ms exact socket sync)
   useEffect(() => {
     fetchRecentResults();
-    fetchWatchUrl();
 
     let isMounted = true;
     let lastFetchedRoundId = null;
@@ -682,35 +639,17 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
             </div>
           )}
 
-          {/* Video & Dealer Table Board (16:9) */}
+          {/* Dealer Table Board (16:9 Black Screen) */}
           <div
             style={{
               position: 'relative',
               width: '100%',
               paddingTop: '56.25%', // 16:9 Aspect Ratio
-              backgroundColor: '#000000',
+              backgroundColor: '#050508',
               overflow: 'hidden'
             }}
           >
-            {/* Live TV Video Dealer Feed from Nice444 Stream */}
-            {watchUrl && (
-              <iframe
-                src={watchUrl}
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  height: '100%',
-                  border: 'none',
-                  zIndex: 2,
-                }}
-                title="Nice444 Live Dealer Stream"
-                allow="autoplay; fullscreen"
-              />
-            )}
-
-            {/* Backdrop Center - Universe Casino Logo when stream is connecting */}
+            {/* Center Universe Casino Brand Canvas */}
             <div
               style={{
                 position: 'absolute',
@@ -722,42 +661,42 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
                 flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
-                background: 'radial-gradient(circle, #1a0b2e 0%, #050508 100%)',
+                background: 'radial-gradient(circle, #150928 0%, #030206 100%)',
                 zIndex: 1
               }}
             >
-              <div style={{ position: 'relative', width: '80px', height: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ position: 'relative', width: '74px', height: '74px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <div style={{
                   position: 'absolute',
                   inset: 0,
                   borderRadius: '50%',
-                  border: '2px solid rgba(168, 85, 247, 0.4)',
+                  border: '2px solid rgba(168, 85, 247, 0.35)',
                   animation: 'spin 12s linear infinite'
                 }} />
                 <div style={{
                   position: 'absolute',
-                  inset: '8px',
+                  inset: '7px',
                   borderRadius: '50%',
-                  border: '2px dashed rgba(236, 72, 153, 0.5)',
+                  border: '2px dashed rgba(236, 72, 153, 0.45)',
                   animation: 'spin 8s linear infinite reverse'
                 }} />
                 <div style={{
-                  width: '38px',
-                  height: '38px',
+                  width: '36px',
+                  height: '36px',
                   borderRadius: '8px',
-                  background: 'linear-gradient(135deg, #a855f7, #ec4899)',
+                  background: 'linear-gradient(135deg, #9333ea, #db2777)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  boxShadow: '0 0 16px rgba(236, 72, 153, 0.6)'
+                  boxShadow: '0 0 16px rgba(219, 39, 119, 0.5)'
                 }}>
-                  <span style={{ fontSize: '20px' }}>🎲</span>
+                  <span style={{ fontSize: '18px' }}>🎲</span>
                 </div>
               </div>
               <div style={{
                 color: '#ec4899',
                 fontWeight: 900,
-                fontSize: '15px',
+                fontSize: '14px',
                 letterSpacing: '2px',
                 marginTop: '8px',
                 textTransform: 'uppercase'
@@ -765,13 +704,13 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
                 Universe
               </div>
               <div style={{
-                color: '#94a3b8',
+                color: '#64748b',
                 fontWeight: 700,
                 fontSize: '9px',
                 letterSpacing: '3px',
                 textTransform: 'uppercase'
               }}>
-                {watchUrl ? 'Connecting Live Stream...' : 'Casino'}
+                Live Table
               </div>
             </div>
 
