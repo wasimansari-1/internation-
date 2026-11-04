@@ -20,9 +20,12 @@ export const activeCasinoSubscribers = new Set([
   "99.0001", // Baccarat
 ]);
 export const casinoOddsCache = new Map();
+export const casinoLatestResultCache = new Map();
+export const casinoResultsHistoryCache = new Map();
 let casinoSocket = null;
 let casinoSocketConnecting = false;
 let casinoHeartbeatInterval = null;
+let casinoWatchdogInterval = null;
 
 // Fallback table cache to guarantee 200 OK even if network/upstream is momentarily unreachable
 let cachedTableList = null;
@@ -149,9 +152,16 @@ export async function ensureNiceCasinoSocket() {
     if (!casinoSocket && ioClient) {
       casinoSocket = ioClient("https://casino.nice444.com", {
         path: "/universecasino",
-        transports: ["websocket"],
+        transports: ["websocket", "polling"],
         transportOptions: {
           websocket: { agent: httpsAgent },
+          polling: { agent: httpsAgent },
+        },
+        extraHeaders: {
+          Origin: "https://casino.nice444.com",
+          Referer: "https://casino.nice444.com/",
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
         },
         reconnection: true,
         reconnectionDelay: 1000,
@@ -171,8 +181,29 @@ export async function ensureNiceCasinoSocket() {
         resubscribeAll();
       });
 
+      casinoSocket.on("disconnect", async (reason) => {
+        console.warn("[Nice444 Socket] Disconnected:", reason);
+        if (reason === "io server disconnect" || reason === "transport close") {
+          try {
+            const freshToken = await getDemoToken(true);
+            if (casinoSocket && freshToken) {
+              casinoSocket.auth = { token: freshToken, uType: "usr" };
+              casinoSocket.connect();
+            }
+          } catch (e) {}
+        }
+      });
+
       if (!casinoHeartbeatInterval) {
-        casinoHeartbeatInterval = setInterval(resubscribeAll, 8000);
+        casinoHeartbeatInterval = setInterval(resubscribeAll, 6000);
+      }
+
+      if (!casinoWatchdogInterval) {
+        casinoWatchdogInterval = setInterval(() => {
+          if (!casinoSocket || !casinoSocket.connected) {
+            ensureNiceCasinoSocket().catch(() => {});
+          }
+        }, 5000);
       }
 
       const handleCasinoPacket = (raw) => {
@@ -385,6 +416,37 @@ export async function ensureNiceCasinoSocket() {
           };
 
           casinoOddsCache.set(eventId, merged);
+
+          // Instant Result Recording for the Dedicated Results API (<1ms latency)
+          if (
+            gameResult ||
+            roundStatus === "RESULT_DECLARED" ||
+            payload?.roundStatus === "RESULT_DECLARED"
+          ) {
+            const declaredWinner = gameResult || payload?.gameResult || packet?.gameResult;
+            if (declaredWinner) {
+              const resultPayload = {
+                eventId,
+                eventName: merged.eventName,
+                roundId,
+                winner: String(declaredWinner).replace(/_/g, " ").trim(),
+                gameResult: declaredWinner,
+                status: "RESULT_DECLARED",
+                roundStatus: "RESULT_DECLARED",
+                cardsArr: JSON.parse(JSON.stringify(currentCards)),
+                timestamp: Date.now(),
+                declaredAt: new Date().toISOString(),
+              };
+              casinoLatestResultCache.set(eventId, resultPayload);
+
+              const history = casinoResultsHistoryCache.get(eventId) || [];
+              if (!history.find((h) => h.roundId === roundId)) {
+                history.unshift(resultPayload);
+                if (history.length > 50) history.pop();
+                casinoResultsHistoryCache.set(eventId, history);
+              }
+            }
+          }
         } catch (err) {
           console.warn("Casino packet parse error:", err.message);
         }
@@ -551,6 +613,91 @@ export async function getScrapedCasinoLiveOdds(gameId) {
       }
     );
   }
+}
+
+/**
+ * Dedicated, ultra-fast casino round result API
+ * Returns declared winner, round ID, and cards with <1ms in-memory speed
+ */
+export async function getDedicatedCasinoResult(gameId) {
+  const gId = String(gameId);
+  activeCasinoSubscribers.add(gId);
+  ensureNiceCasinoSocket().catch(() => {});
+
+  // 1. Instant declared result from live WebSocket stream RAM cache (<1ms latency)
+  const latest = casinoLatestResultCache.get(gId);
+  if (latest && latest.roundId) {
+    return {
+      success: true,
+      data: latest,
+      source: "live_socket_stream",
+    };
+  }
+
+  // 2. Check if current live odds in RAM has a declared winner
+  const liveOdds = casinoOddsCache.get(gId);
+  if (liveOdds && (liveOdds.gameResult || liveOdds.roundStatus === "RESULT_DECLARED")) {
+    const winner = liveOdds.gameResult || "DECLARED";
+    const res = {
+      eventId: gId,
+      eventName: liveOdds.eventName,
+      roundId: liveOdds.roundId,
+      winner: String(winner).replace(/_/g, " ").trim(),
+      gameResult: winner,
+      status: "RESULT_DECLARED",
+      roundStatus: "RESULT_DECLARED",
+      cardsArr: liveOdds.cardsArr,
+      timestamp: Date.now(),
+      declaredAt: new Date().toISOString(),
+    };
+    casinoLatestResultCache.set(gId, res);
+    return { success: true, data: res, source: "live_odds_cache" };
+  }
+
+  // 3. Upstream results API fallback
+  try {
+    const token = await getDemoToken();
+    const upstreamRes = await axios.post(
+      "https://casino.nice444.com/casinoapp/users/casino/casinoEventResults",
+      { eventId: gId },
+      {
+        headers: {
+          Origin: "https://casino.nice444.com",
+          Referer: "https://casino.nice444.com/",
+          Authorization: `Bearer ${token}`,
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        },
+        timeout: 4000,
+      },
+    );
+    const resultsData = upstreamRes.data?.data || [];
+    const first = resultsData[0];
+    if (first) {
+      const winner = first.winner || first.gameResult || "DECLARED";
+      const formatted = {
+        eventId: gId,
+        eventName: first.eventName,
+        roundId: first.roundId,
+        winner: String(winner).replace(/_/g, " "),
+        gameResult: winner,
+        status: "RESULT_DECLARED",
+        roundStatus: "RESULT_DECLARED",
+        cardsArr: first.cards || getDefaultCardsForTable(gId, first.eventName),
+        results: first.results || [],
+        timestamp: Date.now(),
+        declaredAt: new Date().toISOString(),
+      };
+      casinoLatestResultCache.set(gId, formatted);
+      return { success: true, data: formatted, source: "upstream_results" };
+    }
+  } catch (e) {}
+
+  return {
+    success: false,
+    message: "No declared result available yet for this game round",
+    data: null,
+  };
 }
 
 export async function getCasinoTableList(id = 110) {

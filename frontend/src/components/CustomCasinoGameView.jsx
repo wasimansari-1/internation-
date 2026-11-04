@@ -729,14 +729,14 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
               )}
             </div>
 
-            {/* Round Result Announcement Overlay (Visible for 2-3s when winner declared) */}
+            {/* Universe Casino Planetary Orbit + 3D Dice Result Banner (Exact matching user design) */}
             {(oddsData?.roundStatus === 'RESULT_DECLARED' || oddsData?.gameResult) ? (
               <div
                 style={{
                   position: 'absolute',
                   inset: 0,
-                  backgroundColor: 'rgba(5, 5, 12, 0.82)',
-                  backdropFilter: 'blur(4px)',
+                  backgroundColor: 'rgba(3, 2, 8, 0.82)',
+                  backdropFilter: 'blur(3px)',
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
@@ -745,24 +745,115 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
                   pointerEvents: 'none'
                 }}
               >
-                <div
-                  style={{
-                    padding: '12px 28px',
-                    borderRadius: '12px',
-                    background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.3), rgba(236, 72, 153, 0.3))',
-                    border: '2px solid #facc15',
-                    boxShadow: '0 0 30px rgba(250, 204, 21, 0.55)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: '4px'
-                  }}
-                >
-                  <div style={{ color: '#fde047', fontSize: '12px', fontWeight: 900, letterSpacing: '2px', textTransform: 'uppercase' }}>
-                    ROUND RESULT
+                <div style={{ position: 'relative', width: '220px', height: '180px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {/* Outer Blue Orbit */}
+                  <div
+                    style={{
+                      position: 'absolute',
+                      width: '180px',
+                      height: '180px',
+                      borderRadius: '50%',
+                      border: '2.5px solid #3b82f6',
+                      boxShadow: '0 0 16px rgba(59, 130, 246, 0.45)',
+                      transform: 'rotate(-15deg)'
+                    }}
+                  >
+                    <div style={{ position: 'absolute', top: '16px', right: '28px', width: '9px', height: '9px', backgroundColor: '#e2e8f0', borderRadius: '2px', border: '1px solid #94a3b8', transform: 'rotate(25deg)' }} />
                   </div>
-                  <div style={{ color: '#ffffff', fontSize: '22px', fontWeight: 900, letterSpacing: '1px' }}>
-                    {String(oddsData.gameResult || 'DECLARED').replace(/_/g, ' ')} WON
+
+                  {/* Middle Magenta/Pink Orbit */}
+                  <div
+                    style={{
+                      position: 'absolute',
+                      width: '146px',
+                      height: '146px',
+                      borderRadius: '50%',
+                      border: '2.5px solid #ec4899',
+                      boxShadow: '0 0 16px rgba(236, 72, 153, 0.45)',
+                      transform: 'rotate(25deg)'
+                    }}
+                  >
+                    <div style={{ position: 'absolute', bottom: '12px', left: '24px', width: '9px', height: '9px', backgroundColor: '#e2e8f0', borderRadius: '2px', border: '1px solid #94a3b8', transform: 'rotate(-15deg)' }} />
+                  </div>
+
+                  {/* Inner Yellow Orbit */}
+                  <div
+                    style={{
+                      position: 'absolute',
+                      width: '116px',
+                      height: '116px',
+                      borderRadius: '50%',
+                      border: '2px solid #eab308',
+                      boxShadow: '0 0 12px rgba(234, 179, 8, 0.4)',
+                      transform: 'rotate(-35deg)'
+                    }}
+                  >
+                    <div style={{ position: 'absolute', bottom: '10px', right: '22px', width: '8px', height: '8px', backgroundColor: '#e2e8f0', borderRadius: '2px', border: '1px solid #94a3b8' }} />
+                  </div>
+
+                  {/* Glowing Purple Core Aura */}
+                  <div
+                    style={{
+                      position: 'absolute',
+                      width: '86px',
+                      height: '86px',
+                      borderRadius: '50%',
+                      background: 'radial-gradient(circle, #9333ea 0%, #ec4899 65%, transparent 100%)',
+                      opacity: 0.9,
+                      boxShadow: '0 0 25px rgba(168, 85, 247, 0.7)'
+                    }}
+                  />
+
+                  {/* 3D Casino Dice SVG */}
+                  <div style={{ position: 'relative', zIndex: 3, marginTop: '-14px' }}>
+                    <svg width="68" height="68" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M50 15 L82 32 L50 49 L18 32 Z" fill="#ffffff" stroke="#cbd5e1" strokeWidth="2" strokeLinejoin="round"/>
+                      <circle cx="34" cy="28" r="3.2" fill="#0f172a"/>
+                      <circle cx="50" cy="32" r="3.2" fill="#0f172a"/>
+                      <circle cx="66" cy="36" r="3.2" fill="#0f172a"/>
+                      <path d="M18 32 L50 49 L50 85 L18 68 Z" fill="#e2e8f0" stroke="#cbd5e1" strokeWidth="2" strokeLinejoin="round"/>
+                      <circle cx="34" cy="54" r="3.2" fill="#0f172a"/>
+                      <circle cx="34" cy="68" r="3.2" fill="#0f172a"/>
+                      <path d="M50 49 L82 32 L82 68 L50 85 Z" fill="#cbd5e1" stroke="#94a3b8" strokeWidth="2" strokeLinejoin="round"/>
+                      <circle cx="62" cy="52" r="3.2" fill="#0f172a"/>
+                      <circle cx="70" cy="48" r="3.2" fill="#0f172a"/>
+                      <circle cx="62" cy="68" r="3.2" fill="#0f172a"/>
+                      <circle cx="70" cy="64" r="3.2" fill="#0f172a"/>
+                    </svg>
+                  </div>
+
+                  {/* Iconic Orange Winner Badge */}
+                  <div
+                    style={{
+                      position: 'absolute',
+                      bottom: '22px',
+                      zIndex: 6,
+                      background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+                      borderRadius: '22px 6px 22px 6px',
+                      padding: '7px 22px',
+                      boxShadow: '0 4px 18px rgba(234, 88, 12, 0.75)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      border: '1px solid rgba(255, 255, 255, 0.3)',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    <span
+                      style={{
+                        color: '#000000',
+                        fontWeight: 900,
+                        fontSize: '16px',
+                        letterSpacing: '0.6px',
+                        textTransform: 'uppercase',
+                        fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+                      }}
+                    >
+                      {String(oddsData?.gameResult || 'PLAYER A')
+                        .replace(/_/g, ' ')
+                        .replace(/\bWIN\b|\bWON\b/gi, '')
+                        .trim()} WIN
+                    </span>
                   </div>
                 </div>
               </div>

@@ -4,6 +4,7 @@ import { getDemoToken, proxyRequest } from "../services/authService.js";
 import {
   getScrapedCasinoLiveOdds,
   getCasinoTableList,
+  getDedicatedCasinoResult,
 } from "../services/casinoService.js";
 import { casinoConfig } from "../config/casinoConfig.js";
 import { providerManager } from "../providers/index.js";
@@ -249,16 +250,43 @@ router.get("/stream-proxy/:gameId", async (req, res) => {
     let html = pageRes.data;
     if (typeof html === "string") {
       html = html.replace('src="/player/player.js', 'src="https://tv.ltve.live/player/player.js');
-      // Anti-debugger loop neutralization so browser DevTools does not freeze the app
+      // Strip any raw debugger statements
+      html = html.replace(/\bdebugger\b/g, '/*noop*/');
+      // Anti-debugger & Anti-Worker loop neutralization so browser DevTools never freezes
       html = `<script>
         (function() {
           try {
             window.debugger = function(){};
+            var origFn = window.Function;
+            window.Function = function() {
+              for (var i = 0; i < arguments.length; i++) {
+                if (typeof arguments[i] === 'string' && arguments[i].includes('debugger')) {
+                  arguments[i] = arguments[i].replace(/\\bdebugger\\b/g, '/*noop*/');
+                }
+              }
+              return origFn.apply(this, arguments);
+            };
+            window.Function.prototype = origFn.prototype;
+
+            var OrigWorker = window.Worker;
+            window.Worker = function(scriptURL, options) {
+              if (typeof scriptURL === 'string' && scriptURL.startsWith('blob:')) {
+                return {
+                  postMessage: function(){},
+                  terminate: function(){},
+                  addEventListener: function(){},
+                  removeEventListener: function(){},
+                  onmessage: null,
+                  onerror: null
+                };
+              }
+              return new OrigWorker(scriptURL, options);
+            };
+
             var origSetInterval = window.setInterval;
             window.setInterval = function(fn, delay) {
-              if (typeof fn === "function" && fn.toString().includes("debugger")) {
-                return 0;
-              }
+              if (typeof fn === "function" && fn.toString().includes("debugger")) return 0;
+              if (typeof fn === "string" && fn.includes("debugger")) return 0;
               return origSetInterval.apply(this, arguments);
             };
           } catch(e) {}
@@ -297,6 +325,37 @@ router.get("/results/:gameId", async (req, res) => {
     return res.json({ success: true, data: upstreamRes.data?.data || [] });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message, data: [] });
+  }
+});
+
+// Dedicated ultra-fast result API (instant response as soon as round ends)
+router.get("/result/:gameId", async (req, res) => {
+  const { gameId } = req.params;
+  try {
+    const result = await getDedicatedCasinoResult(gameId);
+    return res.json(result);
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get("/latest-result/:gameId", async (req, res) => {
+  const { gameId } = req.params;
+  try {
+    const result = await getDedicatedCasinoResult(gameId);
+    return res.json(result);
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get("/:gameId/result", async (req, res) => {
+  const { gameId } = req.params;
+  try {
+    const result = await getDedicatedCasinoResult(gameId);
+    return res.json(result);
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 
