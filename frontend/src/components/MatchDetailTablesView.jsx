@@ -2,20 +2,21 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Tv, ArrowLeft, RefreshCw, Volume2, Info, ExternalLink } from 'lucide-react';
 import axios from 'axios';
 
-// Format size: 10000000 -> 10M, 2500000 -> 2.5M, 22800 -> 22.8K
+// Backend serves exact formatted size (e.g. "116.11", "2.1K", "72.28", "0")
 const formatSize = (size) => {
-  if (size === null || size === undefined || size === '') return '';
+  if (size === null || size === undefined || size === '') return '0';
+  if (typeof size === 'string') return size;
   const num = Number(size);
-  if (isNaN(num) || num <= 0) return '';
+  if (isNaN(num) || num <= 0) return '0';
   if (num >= 1000000) {
-    const val = num / 1000000;
-    return val % 1 === 0 ? `${val}M` : `${val.toFixed(1)}M`;
+    const val = Math.round((num / 1000000) * 10) / 10;
+    return `${val}M`;
   }
   if (num >= 1000) {
-    const val = num / 1000;
-    return val % 1 === 0 ? `${val}K` : `${val.toFixed(1)}K`;
+    const val = Math.round((num / 1000) * 10) / 10;
+    return `${val}K`;
   }
-  return num % 1 === 0 ? `${num}` : `${num.toFixed(1)}`;
+  return `${parseFloat(num.toFixed(2))}`;
 };
 
 const MemoizedLiveTvPlayer = React.memo(function MemoizedLiveTvPlayer({

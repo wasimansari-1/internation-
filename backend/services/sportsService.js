@@ -247,6 +247,23 @@ const parseFirestoreNumber = (f) => {
   return isNaN(n) ? null : n;
 };
 
+// Formats live market rate sizes identically to upstream original exchange (116.11, 2.1K, 72.28, 107.91, 0)
+export const formatDisplaySize = (size) => {
+  if (size === null || size === undefined || size === "") return "0";
+  const num = Number(size);
+  if (isNaN(num) || num <= 0) return "0";
+  if (num >= 1000000) {
+    const val = Math.round((num / 1000000) * 10) / 10;
+    return `${val}M`;
+  }
+  if (num >= 1000) {
+    const val = Math.round((num / 1000) * 10) / 10;
+    return `${val}K`;
+  }
+  // For < 1000: preserves exact decimals up to 2 decimal places without trailing zeros (e.g. 116.11, 72.28, 374.1, 500)
+  return `${parseFloat(num.toFixed(2))}`;
+};
+
 const parseFirestoreRunners = (fields) => {
   if (!fields) return [];
   const rawRunners =
@@ -282,11 +299,13 @@ const parseFirestoreRunners = (fields) => {
       isSuspended,
       back: {
         price: backPrice,
-        size: backSize || 0,
+        size: formatDisplaySize(backSize),
+        rawSize: backSize || 0,
       },
       lay: {
         price: layPrice,
-        size: laySize || 0,
+        size: formatDisplaySize(laySize),
+        rawSize: laySize || 0,
       },
     };
   });
@@ -404,6 +423,11 @@ export async function queryFirestoreForEvent(eventId, sportId = "4") {
           bDoc.oddsData?.mapValue?.fields?.totalMatched?.integerValue ||
           bDoc.oddsData?.mapValue?.fields?.totalMatched?.stringValue ||
           "0",
+        totalMatchedFormatted: formatDisplaySize(
+          bDoc.oddsData?.mapValue?.fields?.totalMatched?.integerValue ||
+          bDoc.oddsData?.mapValue?.fields?.totalMatched?.stringValue ||
+          0
+        ),
         status: bDoc.oddsData?.mapValue?.fields?.status?.stringValue || "OPEN",
         runners: parseFirestoreRunners(bDoc),
       };
@@ -424,6 +448,11 @@ export async function queryFirestoreForEvent(eventId, sportId = "4") {
           bmDoc.oddsData?.mapValue?.fields?.totalMatched?.integerValue ||
           bmDoc.oddsData?.mapValue?.fields?.totalMatched?.stringValue ||
           "0",
+        totalMatchedFormatted: formatDisplaySize(
+          bmDoc.oddsData?.mapValue?.fields?.totalMatched?.integerValue ||
+          bmDoc.oddsData?.mapValue?.fields?.totalMatched?.stringValue ||
+          0
+        ),
         status: bmDoc.oddsData?.mapValue?.fields?.status?.stringValue || "OPEN",
         runners: parseFirestoreRunners(bmDoc),
       };
@@ -470,11 +499,13 @@ export async function queryFirestoreForEvent(eventId, sportId = "4") {
         max: parseFirestoreNumber(f.max) || 50000,
         no: {
           price: noPrice,
-          size: noSize,
+          size: formatDisplaySize(noSize),
+          rawSize: noSize,
         },
         yes: {
           price: yesPrice,
-          size: yesSize,
+          size: formatDisplaySize(yesSize),
+          rawSize: yesSize,
         },
       };
     })
@@ -502,7 +533,8 @@ export async function queryFirestoreForEvent(eventId, sportId = "4") {
           runnerName: name,
           name,
           price: parseFirestoreNumber(b0?.price) || 0,
-          size: parseFirestoreNumber(b0?.size) || 100000,
+          size: formatDisplaySize(parseFirestoreNumber(b0?.size) || 100000),
+          rawSize: parseFirestoreNumber(b0?.size) || 100000,
         };
       });
 
@@ -633,11 +665,13 @@ export async function getLiveRatesForEvent(eventId, sportId = "4") {
             isSuspended: isSusp,
             back: {
               price: b0.price ?? null,
-              size: b0.size || 0,
+              size: formatDisplaySize(b0.size),
+              rawSize: b0.size || 0,
             },
             lay: {
               price: l0.price ?? null,
-              size: l0.size || 0,
+              size: formatDisplaySize(l0.size),
+              rawSize: l0.size || 0,
             },
           };
         });
@@ -692,11 +726,13 @@ export async function getLiveRatesForEvent(eventId, sportId = "4") {
             max: f.max || 50000,
             no: {
               price: l0.price ?? null,
-              size: l0.size || 100,
+              size: formatDisplaySize(l0.size || 100),
+              rawSize: l0.size || 100,
             },
             yes: {
               price: b0.price ?? null,
-              size: b0.size || 100,
+              size: formatDisplaySize(b0.size || 100),
+              rawSize: b0.size || 100,
             },
           };
         })
