@@ -4,11 +4,17 @@ import axios from 'axios';
 
 // Helper to resolve card image path strictly according to API values
 const getCardImg = (val) => {
-  if (!val || val === '0' || val === '1' || val === 'null' || val === '-' || val === 'undefined') {
+  if (!val || val === '0' || val === 'null' || val === '-' || val === 'undefined') {
     return '/card/0.png';
   }
-  let clean = String(val).trim();
-  // Ensure suit + rank has trailing underscore matching static assets if required
+  let clean = String(val).trim().toUpperCase();
+
+  // If number 1..13 (e.g. Lucky 7 numbered card assets)
+  if (/^([1-9]|1[0-3])$/.test(clean)) {
+    return `/card/${clean}.jpeg`;
+  }
+
+  // Ensure suit + rank has trailing underscore matching static assets
   if (!clean.endsWith('_') && /^[CDHS][0-9AKQJ]+$/i.test(clean)) {
     clean += '_';
   }
@@ -723,8 +729,44 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
               )}
             </div>
 
-            {/* Suspended Lock Session Overlay (Exact Nice444 / Kingz UI) */}
-            {isTableSuspended && (
+            {/* Round Result Announcement Overlay (Visible for 2-3s when winner declared) */}
+            {(oddsData?.roundStatus === 'RESULT_DECLARED' || oddsData?.gameResult) ? (
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  backgroundColor: 'rgba(5, 5, 12, 0.82)',
+                  backdropFilter: 'blur(4px)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  zIndex: 8,
+                  pointerEvents: 'none'
+                }}
+              >
+                <div
+                  style={{
+                    padding: '12px 28px',
+                    borderRadius: '12px',
+                    background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.3), rgba(236, 72, 153, 0.3))',
+                    border: '2px solid #facc15',
+                    boxShadow: '0 0 30px rgba(250, 204, 21, 0.55)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <div style={{ color: '#fde047', fontSize: '12px', fontWeight: 900, letterSpacing: '2px', textTransform: 'uppercase' }}>
+                    ROUND RESULT
+                  </div>
+                  <div style={{ color: '#ffffff', fontSize: '22px', fontWeight: 900, letterSpacing: '1px' }}>
+                    {String(oddsData.gameResult || 'DECLARED').replace(/_/g, ' ')} WON
+                  </div>
+                </div>
+              </div>
+            ) : isTableSuspended ? (
               <div
                 style={{
                   position: 'absolute',
@@ -766,7 +808,7 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
                   This session has been closed
                 </div>
               </div>
-            )}
+            ) : null}
 
             {/* Top-Right: Circular Countdown Timer Wheel */}
             {!isTableSuspended && timeLeft > 0 && (

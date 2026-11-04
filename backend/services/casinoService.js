@@ -221,15 +221,19 @@ export async function ensureNiceCasinoSocket() {
           // Status & RoundStatus management
           let status = existing.status || "ONLINE";
           let roundStatus = existing.roundStatus || "PLACE_THE_BET";
+          let gameResult = existing.gameResult || null;
 
           if (isNewRound) {
             status = payload?.status || "ONLINE";
             roundStatus = payload?.roundStatus || "PLACE_THE_BET";
+            gameResult = null; // Clear past round result on new round
           } else {
             if (payload?.status !== undefined) status = payload.status;
             if (packet?.status !== undefined) status = packet.status;
             if (payload?.roundStatus !== undefined) roundStatus = payload.roundStatus;
             if (packet?.roundStatus !== undefined) roundStatus = packet.roundStatus;
+            if (payload?.gameResult !== undefined) gameResult = payload.gameResult;
+            if (packet?.gameResult !== undefined) gameResult = packet.gameResult;
           }
 
           // Timer management
@@ -260,7 +264,7 @@ export async function ensureNiceCasinoSocket() {
             ? 0
             : Math.max(0, initialLeftSec - elapsedSec);
 
-          // Cards management
+          // Cards management (Case-insensitive merge for all table layouts)
           let currentCards;
           if (isNewRound || !existing.cardsArr || Object.keys(existing.cardsArr).length === 0) {
             currentCards = getDefaultCardsForTable(eventId, eventName);
@@ -271,18 +275,18 @@ export async function ensureNiceCasinoSocket() {
           const incomingCards =
             payload?.cardsArr || payload?.cards || packet.cardsArr || packet.cards;
           if (incomingCards && typeof incomingCards === "object") {
-            for (const [k, v] of Object.entries(incomingCards)) {
+            for (const [rawK, v] of Object.entries(incomingCards)) {
+              const k = rawK.toUpperCase();
               if (typeof v === "object" && v !== null && !Array.isArray(v)) {
                 if (!currentCards[k] || typeof currentCards[k] !== "object") {
                   currentCards[k] = {};
                 }
                 Object.assign(currentCards[k], v);
               } else if (typeof v === "string") {
-                const upperK = k.toUpperCase();
-                if (!currentCards[upperK] || typeof currentCards[upperK] !== "object") {
-                  currentCards[upperK] = { card_1: v };
+                if (!currentCards[k] || typeof currentCards[k] !== "object") {
+                  currentCards[k] = { card_1: v };
                 } else {
-                  currentCards[upperK].card_1 = v;
+                  currentCards[k].card_1 = v;
                 }
               } else if (Array.isArray(v)) {
                 if (!currentCards[k] || typeof currentCards[k] !== "object") {
@@ -314,15 +318,23 @@ export async function ensureNiceCasinoSocket() {
                 status = val;
               } else if (key === "roundStatus") {
                 roundStatus = val;
+              } else if (key === "gameResult") {
+                gameResult = val;
               } else if (key.startsWith("cardsArr.") || key.startsWith("cards.")) {
                 const parts = key.split(".");
                 if (parts.length === 3) {
-                  if (!currentCards[parts[1]] || typeof currentCards[parts[1]] !== "object") {
-                    currentCards[parts[1]] = {};
+                  const k = parts[1].toUpperCase();
+                  if (!currentCards[k] || typeof currentCards[k] !== "object") {
+                    currentCards[k] = {};
                   }
-                  currentCards[parts[1]][parts[2]] = val;
+                  currentCards[k][parts[2]] = val;
                 } else if (parts.length === 2) {
-                  currentCards[parts[1]] = val;
+                  const k = parts[1].toUpperCase();
+                  if (!currentCards[k] || typeof currentCards[k] !== "object") {
+                    currentCards[k] = { card_1: val };
+                  } else {
+                    currentCards[k].card_1 = val;
+                  }
                 }
               } else if (key.startsWith("marketArr.")) {
                 const parts = key.split(".");
@@ -368,6 +380,7 @@ export async function ensureNiceCasinoSocket() {
             status: isSuspended ? "SUSPEND" : status,
             cardsArr: currentCards,
             marketArr: currentMarketArr,
+            gameResult,
             lastUpdated: Date.now(),
           };
 
