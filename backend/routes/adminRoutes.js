@@ -38,7 +38,49 @@ router.post("/probe", async (req, res) => {
   }
 });
 
-// 4. Reset Counters
+// 4. Rotate Stealth ISP Persona
+router.post("/stealth/rotate", (req, res) => {
+  try {
+    const persona = telemetry.rotatePersona();
+    return res.json({ success: true, message: "Stealth persona rotated", persona });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 5. Toggle Stealth Origin Masking
+router.post("/stealth/toggle", (req, res) => {
+  try {
+    const { enabled } = req.body;
+    const config = telemetry.toggleStealthMode(enabled);
+    return res.json({ success: true, message: `Stealth mode ${config.enabled ? 'enabled' : 'disabled'}`, config });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 6. 1-Click Apply Master Brain AI Recommendation
+router.post("/brain/apply", (req, res) => {
+  try {
+    const rec = telemetry.brainStatus.recommendedAction;
+    if (rec && rec !== "KEEP_CURRENT") {
+      telemetry.setRoutingConfig({
+        casinoProvider: rec,
+        streamProvider: rec,
+      }, "Master Brain 1-Click");
+    }
+    return res.json({
+      success: true,
+      message: `Brain recommendation applied: ${rec}`,
+      routingConfig: telemetry.routingConfig,
+      brainStatus: telemetry.brainStatus,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 7. Reset Counters
 router.post("/reset", (req, res) => {
   try {
     telemetry.resetCounters();
@@ -49,3 +91,4 @@ router.post("/reset", (req, res) => {
 });
 
 export default router;
+

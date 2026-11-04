@@ -1,6 +1,7 @@
 import axios from "axios";
 import { httpsAgent, refreshHostIps } from "../config/hosts.js";
 import { getDemoToken, getStartexchToken, proxyRequest } from "./authService.js";
+import { telemetry } from "./telemetryService.js";
 
 let ioClient = null;
 try {
@@ -896,64 +897,66 @@ export async function getDedicatedCasinoResult(gameId) {
 }
 
 export async function getCasinoTableList(id = 110) {
-  try {
-    const result = await proxyRequest(
-      "/api/exchange/navigations/casino/casinoTableList",
-      { id },
-    );
-    if (result.success && result.data?.data && Array.isArray(result.data.data)) {
-      const filtered = result.data.data.filter(
-        (t) =>
-          t.eventId !== "88.0022" &&
-          t.eventId !== "88.0023" &&
-          !(t.eventName || "").toUpperCase().includes("BALLOON") &&
-          !(t.eventName || "").toUpperCase().includes("VIMAAN") &&
-          !(t.eventName || "").toUpperCase().includes("AVIATOR"),
+  return telemetry.deduplicateOrFetch(`casino_tables_${id}`, 2500, async () => {
+    try {
+      const result = await proxyRequest(
+        "/api/exchange/navigations/casino/casinoTableList",
+        { id },
       );
-      cachedTableList = filtered;
-      return { success: true, statusCode: 200, data: filtered };
+      if (result.success && result.data?.data && Array.isArray(result.data.data)) {
+        const filtered = result.data.data.filter(
+          (t) =>
+            t.eventId !== "88.0022" &&
+            t.eventId !== "88.0023" &&
+            !(t.eventName || "").toUpperCase().includes("BALLOON") &&
+            !(t.eventName || "").toUpperCase().includes("VIMAAN") &&
+            !(t.eventName || "").toUpperCase().includes("AVIATOR"),
+        );
+        cachedTableList = filtered;
+        return { success: true, statusCode: 200, data: filtered };
+      }
+    } catch (err) {
+      console.warn("Error fetching casino tables from upstream:", err.message);
     }
-  } catch (err) {
-    console.warn("Error fetching casino tables from upstream:", err.message);
-  }
 
-  // If cached list is available, return it
-  if (cachedTableList && cachedTableList.length > 0) {
-    return { success: true, statusCode: 200, data: cachedTableList };
-  }
+    // If cached list is available, return it
+    if (cachedTableList && cachedTableList.length > 0) {
+      return { success: true, statusCode: 200, data: cachedTableList };
+    }
 
-  // Default initial table list to prevent 500 error under sandbox or network interruption
-  const fallbackList = [
-    { eventId: "99.0010", eventName: "20-20 TEEN PATTI", companyName: "UNIVERSE" },
-    { eventId: "99.0030", eventName: "LUCKY 7 - A", companyName: "UNIVERSE" },
-    { eventId: "99.0013", eventName: "1DAY TEEN PATTI", companyName: "UNIVERSE" },
-    { eventId: "99.0016", eventName: "JOKER TEEN PATTI", companyName: "UNIVERSE" },
-    { eventId: "99.0018", eventName: "DRAGON TIGER", companyName: "UNIVERSE" },
-    { eventId: "99.0001", eventName: "BACCARAT", companyName: "UNIVERSE" },
-    { eventId: "99.0002", eventName: "BACCARAT - A", companyName: "UNIVERSE" },
-    { eventId: "99.0025", eventName: "ANDAR BAHAR - A", companyName: "UNIVERSE" },
-    { eventId: "99.0022", eventName: "32 CARDS - A", companyName: "UNIVERSE" },
-    { eventId: "99.0007", eventName: "20-20 POKER - A", companyName: "UNIVERSE" },
-    { eventId: "99.0041", eventName: "DTL - A", companyName: "UNIVERSE" },
-    { eventId: "99.0021", eventName: "1 DAY DRAGON TIGER", companyName: "UNIVERSE" },
-    { eventId: "99.0014", eventName: "MUFLIS TEEN PATTI", companyName: "UNIVERSE" },
-    { eventId: "99.0046", eventName: "20-20 CARD RACE", companyName: "UNIVERSE" },
-    { eventId: "99.0005", eventName: "AMAR AKBAR ANTHONY", companyName: "UNIVERSE" },
-    { eventId: "99.0019", eventName: "20-20 DRAGON TIGER", companyName: "UNIVERSE" },
-    { eventId: "99.0031", eventName: "LUCKY 7 - B", companyName: "UNIVERSE" },
-    { eventId: "99.0032", eventName: "FAST LUCKY - 7", companyName: "UNIVERSE" },
-    { eventId: "99.0020", eventName: "FAST DRAGON TIGER", companyName: "UNIVERSE" },
-    { eventId: "99.0023", eventName: "32 CARDS - B", companyName: "UNIVERSE" },
-    { eventId: "99.0034", eventName: "ANDAR BAHAR - C", companyName: "UNIVERSE" },
-    { eventId: "99.0008", eventName: "20-20 POKER - B", companyName: "UNIVERSE" },
-    { eventId: "99.0015", eventName: "POINT TEEN PATTI", companyName: "UNIVERSE" },
-    { eventId: "99.0004", eventName: "DTL TEENPATTI", companyName: "UNIVERSE" },
-    { eventId: "99.0040", eventName: "3 CARD JUDGEMENT - A", companyName: "UNIVERSE" },
-    { eventId: "99.0027", eventName: "CASINO WAR", companyName: "UNIVERSE" },
-    { eventId: "99.0009", eventName: "INSTANT WORLI", companyName: "UNIVERSE" },
-    { eventId: "99.0050", eventName: "BOLLYWOOD CASINO", companyName: "UNIVERSE" },
-    { eventId: "99.0006", eventName: "INA MINA DIKA", companyName: "UNIVERSE" },
-  ];
-  return { success: true, statusCode: 200, data: fallbackList };
+    // Default initial table list to prevent 500 error under sandbox or network interruption
+    const fallbackList = [
+      { eventId: "99.0010", eventName: "20-20 TEEN PATTI", companyName: "UNIVERSE" },
+      { eventId: "99.0030", eventName: "LUCKY 7 - A", companyName: "UNIVERSE" },
+      { eventId: "99.0013", eventName: "1DAY TEEN PATTI", companyName: "UNIVERSE" },
+      { eventId: "99.0016", eventName: "JOKER TEEN PATTI", companyName: "UNIVERSE" },
+      { eventId: "99.0018", eventName: "DRAGON TIGER", companyName: "UNIVERSE" },
+      { eventId: "99.0001", eventName: "BACCARAT", companyName: "UNIVERSE" },
+      { eventId: "99.0002", eventName: "BACCARAT - A", companyName: "UNIVERSE" },
+      { eventId: "99.0025", eventName: "ANDAR BAHAR - A", companyName: "UNIVERSE" },
+      { eventId: "99.0022", eventName: "32 CARDS - A", companyName: "UNIVERSE" },
+      { eventId: "99.0007", eventName: "20-20 POKER - A", companyName: "UNIVERSE" },
+      { eventId: "99.0041", eventName: "DTL - A", companyName: "UNIVERSE" },
+      { eventId: "99.0021", eventName: "1 DAY DRAGON TIGER", companyName: "UNIVERSE" },
+      { eventId: "99.0014", eventName: "MUFLIS TEEN PATTI", companyName: "UNIVERSE" },
+      { eventId: "99.0046", eventName: "20-20 CARD RACE", companyName: "UNIVERSE" },
+      { eventId: "99.0005", eventName: "AMAR AKBAR ANTHONY", companyName: "UNIVERSE" },
+      { eventId: "99.0019", eventName: "20-20 DRAGON TIGER", companyName: "UNIVERSE" },
+      { eventId: "99.0031", eventName: "LUCKY 7 - B", companyName: "UNIVERSE" },
+      { eventId: "99.0032", eventName: "FAST LUCKY - 7", companyName: "UNIVERSE" },
+      { eventId: "99.0020", eventName: "FAST DRAGON TIGER", companyName: "UNIVERSE" },
+      { eventId: "99.0023", eventName: "32 CARDS - B", companyName: "UNIVERSE" },
+      { eventId: "99.0034", eventName: "ANDAR BAHAR - C", companyName: "UNIVERSE" },
+      { eventId: "99.0008", eventName: "20-20 POKER - B", companyName: "UNIVERSE" },
+      { eventId: "99.0015", eventName: "POINT TEEN PATTI", companyName: "UNIVERSE" },
+      { eventId: "99.0004", eventName: "DTL TEENPATTI", companyName: "UNIVERSE" },
+      { eventId: "99.0040", eventName: "3 CARD JUDGEMENT - A", companyName: "UNIVERSE" },
+      { eventId: "99.0027", eventName: "CASINO WAR", companyName: "UNIVERSE" },
+      { eventId: "99.0009", eventName: "INSTANT WORLI", companyName: "UNIVERSE" },
+      { eventId: "99.0050", eventName: "BOLLYWOOD CASINO", companyName: "UNIVERSE" },
+      { eventId: "99.0006", eventName: "INA MINA DIKA", companyName: "UNIVERSE" },
+    ];
+    return { success: true, statusCode: 200, data: fallbackList };
+  });
 }
 

@@ -1,5 +1,6 @@
 import express from "express";
 import { proxyRequest } from "../services/authService.js";
+import { telemetry } from "../services/telemetryService.js";
 import {
   getLiveScoreData,
   getLiveRatesForEvent,
@@ -74,9 +75,9 @@ router.get("/", handleSportsCatalog);
 router.get("/list", handleSportsCatalog);
 
 async function handleEvents(req, res) {
-  const result = await proxyRequest(
-    "/api/exchange/market/matchodds/allEventsList",
-  );
+  const result = await telemetry.deduplicateOrFetch("sports_all_events", 1200, async () => {
+    return proxyRequest("/api/exchange/market/matchodds/allEventsList");
+  });
 
   if (!result || !result.success) {
     return res.status(result?.statusCode || 500).json({

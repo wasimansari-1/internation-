@@ -65,21 +65,30 @@ export const getCachedIntCasinoToken = () => cachedIntCasinoToken;
 export const getCachedUserDetail = () => cachedUserDetail;
 
 export const getStealthHeaders = (customHeaders = {}) => {
+  const persona = telemetry?.getCurrentPersona ? telemetry.getCurrentPersona() : {
+    ip: "103.21.124.5",
+    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    secPlatform: '"Windows"',
+  };
+
   const headers = {
     "Content-Type": "application/json",
     "Accept": "application/json, text/plain, */*",
     "Accept-Language": "en-US,en;q=0.9,hi;q=0.8",
     "Origin": TARGET_BASE,
     "Referer": `${TARGET_BASE}/`,
-    "User-Agent":
-      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "User-Agent": persona.userAgent,
     "sec-ch-ua": '"Chromium";v="131", "Not_A Brand";v="24", "Google Chrome";v="131"',
-    "sec-ch-ua-mobile": "?0",
-    "sec-ch-ua-platform": '"macOS"',
+    "sec-ch-ua-mobile": persona.secPlatform.includes("Android") ? "?1" : "?0",
+    "sec-ch-ua-platform": persona.secPlatform,
     "sec-fetch-dest": "empty",
     "sec-fetch-mode": "cors",
     "sec-fetch-site": "same-origin",
     "Priority": "u=1, i",
+    "X-Forwarded-For": persona.ip,
+    "CF-Connecting-IP": persona.ip,
+    "X-Real-IP": persona.ip,
+    "True-Client-IP": persona.ip,
     ...customHeaders,
   };
 
