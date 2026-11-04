@@ -647,20 +647,18 @@ export async function getScrapedCasinoLiveOdds(gameId) {
       eventId: gId,
       eventName: latest.eventName || `CASINO TABLE ${gId}`,
       roundId: latest.roundId || String(Date.now()),
-      leftSec: 45,
-      initialLeftSec: 45,
+      leftSec: 0,
+      initialLeftSec: 0,
       leftSecReceivedAt: Date.now(),
-      status: "ONLINE",
-      roundStatus: "PLACE_THE_BET",
-      cardsArr: getDefaultCardsForTable(gId, latest.eventName),
+      status: "SUSPEND",
+      roundStatus: "RESULT_DECLARED",
+      cardsArr: latest.cards || getDefaultCardsForTable(gId, latest.eventName),
       marketArr: scrapedMarkets,
-      winner: latest.winner || null,
+      winner: resolveWinnerLabel(latest.winner, null, latest.eventName),
       lastUpdated: Date.now(),
     };
-    if (!casinoOddsCache.has(gId)) {
-      casinoOddsCache.set(gId, seeded);
-    }
-    return casinoOddsCache.get(gId);
+    casinoOddsCache.set(gId, seeded);
+    return seeded;
   } catch (err) {
     return (
       cached || {

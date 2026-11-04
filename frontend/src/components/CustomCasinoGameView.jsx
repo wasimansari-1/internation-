@@ -652,9 +652,9 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
               overflow: 'hidden'
             }}
           >
-            {/* Live TV Video Dealer Feed from Nice444 Stream via Stream-Proxy */}
+            {/* Live TV Video Dealer Feed from Nice444 Stream */}
             <iframe
-              src={`/api/casino/stream-proxy/${gameId}`}
+              src={watchUrl || `/api/casino/stream-proxy/${gameId}`}
               style={{
                 position: 'absolute',
                 top: 0,
