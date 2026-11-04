@@ -1,12 +1,20 @@
 import axios from "axios";
 import { proxyRequest } from "./authService.js";
 
-const projectId = "universe-score";
+// Multi-project Firestore mapping matching Nice444 original architecture
+export const getFirestoreProjectIdForSport = (sportId = "4") => {
+  const s = String(sportId || "4");
+  if (s === "1") return "soccer-57fb9";
+  if (s === "2") return "tennis-101ef";
+  if (s === "4") return "t20-cricket-add9b";
+  if (s === "66103") return "binary-61625";
+  return "other-sports-1bba3";
+};
 
-// 1. In-memory Scoreboard Cache (1500ms TTL)
+// 1. In-memory Scoreboard Cache (1000ms TTL)
 const scoreCache = new Map();
 
-// 2. In-memory Live Rates Cache (800ms TTL) & Single-flight deduplication
+// 2. In-memory Live Rates Cache (200ms TTL) & Single-flight deduplication
 const liveRatesCache = new Map();
 const inFlightRatesRequests = new Map();
 
@@ -16,7 +24,7 @@ export async function getLiveScoreData(eventId, sportId = "4") {
 
   const cacheKey = `${eIdStr}_${sportId}`;
   const cached = scoreCache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < 1500) {
+  if (cached && Date.now() - cached.timestamp < 1000) {
     return cached.data;
   }
 
@@ -32,7 +40,7 @@ export async function getLiveScoreData(eventId, sportId = "4") {
     (c, i, arr) => arr.indexOf(c) === i,
   );
 
-  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery`;
+  const url = `https://firestore.googleapis.com/v1/projects/universe-score/databases/(default)/documents:runQuery`;
 
   try {
     let targetDoc = null;
@@ -208,6 +216,187 @@ export async function getLiveScoreData(eventId, sportId = "4") {
   }
 }
 
+const parseFirestoreNumber = (f) => {
+  if (!f) return null;
+  const raw = f.doubleValue ?? f.integerValue;
+  if (raw === "NaN" || raw === null || raw === undefined) return null;
+  const n = Number(raw);
+  return isNaN(n) ? null : n;
+};
+
+const parseFirestoreRunners = (fields) => {
+  if (!fields) return [];
+  const rawRunners =
+    fields.oddsData?.mapValue?.fields?.runners?.arrayValue?.values || [];
+  const names = fields.runnersData?.mapValue?.fields || {};
+
+  return rawRunners.map((r) => {
+    const rf = r.mapValue?.fields || {};
+    const selId = String(
+      rf.selectionId?.integerValue || rf.selectionId?.stringValue || "",
+    );
+    const name = names[selId]?.stringValue || `Runner ${selId}`;
+    const runnerStatus = rf.status?.stringValue || "ONLINE";
+    const isSuspended =
+      runnerStatus === "SUSPENDED" || runnerStatus === "SUSPEND";
+
+    const backArr =
+      rf.price?.mapValue?.fields?.back?.arrayValue?.values || [];
+    const layArr = rf.price?.mapValue?.fields?.lay?.arrayValue?.values || [];
+
+    const b0 = backArr[0]?.mapValue?.fields;
+    const l0 = layArr[0]?.mapValue?.fields;
+
+    const backPrice = parseFirestoreNumber(b0?.price);
+    const backSize = parseFirestoreNumber(b0?.size);
+    const layPrice = parseFirestoreNumber(l0?.price);
+    const laySize = parseFirestoreNumber(l0?.size);
+
+    return {
+      selectionId: selId,
+      name,
+      status: runnerStatus,
+      isSuspended:
+        isSuspended ||
+        (backPrice === null && layPrice === null && backSize === null && laySize === null),
+      back: {
+        price: isSuspended || backPrice === 0 ? null : backPrice,
+        size: backSize || 0,
+      },
+      lay: {
+        price: isSuspended || layPrice === 0 ? null : layPrice,
+        size: laySize || 0,
+      },
+    };
+  });
+};
+
+export async function queryFirestoreForEvent(eventId, sportId = "4") {
+  const eIdStr = String(eventId || "");
+  const targetProject = getFirestoreProjectIdForSport(sportId);
+  const url = `https://firestore.googleapis.com/v1/projects/${targetProject}/databases/(default)/documents:runQuery`;
+
+  const fetchCollection = async (collectionId) => {
+    try {
+      const query = {
+        structuredQuery: {
+          from: [{ collectionId }],
+          where: {
+            fieldFilter: {
+              field: { fieldPath: "exEventId" },
+              op: "EQUAL",
+              value: { stringValue: eIdStr },
+            },
+          },
+        },
+      };
+      const res = await axios.post(url, query, { timeout: 3500 });
+      return res.data || [];
+    } catch (e) {
+      return [];
+    }
+  };
+
+  const [betfairDocs, bookmakerDocs, fancyDocs, sportsbookDocs] = await Promise.all([
+    fetchCollection("Betfair"),
+    fetchCollection("Bookmakers"),
+    fetchCollection("Fancy"),
+    fetchCollection("Sportsbook"),
+  ]);
+
+  const matchOddsList = betfairDocs
+    .filter((d) => d.document)
+    .map((d) => {
+      const bDoc = d.document.fields;
+      return {
+        marketId: bDoc.exMarketId?.stringValue || d.document.name.split("/").pop(),
+        marketName: bDoc.marketName?.stringValue || "Match Odds",
+        min: parseFirestoreNumber(bDoc.min) || 100,
+        max: parseFirestoreNumber(bDoc.max) || 1000,
+        totalMatched:
+          bDoc.oddsData?.mapValue?.fields?.totalMatched?.integerValue ||
+          bDoc.oddsData?.mapValue?.fields?.totalMatched?.stringValue ||
+          "0",
+        status: bDoc.oddsData?.mapValue?.fields?.status?.stringValue || "OPEN",
+        runners: parseFirestoreRunners(bDoc),
+      };
+    });
+
+  const bookmakerList = bookmakerDocs
+    .filter((d) => d.document)
+    .map((d) => {
+      const bmDoc = d.document.fields;
+      return {
+        marketId: bmDoc.exMarketId?.stringValue || d.document.name.split("/").pop(),
+        marketName: bmDoc.marketName?.stringValue || "Bookmaker Bhav",
+        min: parseFirestoreNumber(bmDoc.min) || 100,
+        max: parseFirestoreNumber(bmDoc.max) || 25000,
+        totalMatched:
+          bmDoc.oddsData?.mapValue?.fields?.totalMatched?.integerValue ||
+          bmDoc.oddsData?.mapValue?.fields?.totalMatched?.stringValue ||
+          "0",
+        status: bmDoc.oddsData?.mapValue?.fields?.status?.stringValue || "OPEN",
+        runners: parseFirestoreRunners(bmDoc),
+      };
+    });
+
+  const bDoc = betfairDocs[0]?.document?.fields;
+  const bmDoc = bookmakerDocs[0]?.document?.fields;
+
+  const validFancy = fancyDocs
+    .filter((d) => d.document)
+    .map((d) => {
+      const f = d.document.fields;
+      const odds = f.oddsData?.mapValue?.fields || {};
+      const rArr = odds.runners?.arrayValue?.values || [];
+      const r0 = rArr[0]?.mapValue?.fields || {};
+      const rStatus =
+        r0.status?.stringValue || odds.status?.stringValue || "ONLINE";
+      const isSuspended =
+        rStatus === "SUSPENDED" ||
+        rStatus === "SUSPEND" ||
+        odds.status === "SUSPENDED";
+
+      const backArr =
+        r0.price?.mapValue?.fields?.back?.arrayValue?.values || [];
+      const layArr = r0.price?.mapValue?.fields?.lay?.arrayValue?.values || [];
+
+      const b0 = backArr[0]?.mapValue?.fields;
+      const l0 = layArr[0]?.mapValue?.fields;
+
+      return {
+        marketId: f.exMarketId?.stringValue || d.document.name.split("/").pop(),
+        marketName: f.marketName?.stringValue || "Fancy Market",
+        news: f.news?.stringValue || "",
+        status: odds.status?.stringValue || "ONLINE",
+        isSuspended,
+        min: parseFirestoreNumber(f.min) || 100,
+        max: parseFirestoreNumber(f.max) || 50000,
+        no: {
+          price: isSuspended ? null : parseFirestoreNumber(l0?.price),
+          size: parseFirestoreNumber(l0?.size) || 100,
+        },
+        yes: {
+          price: isSuspended ? null : parseFirestoreNumber(b0?.price),
+          size: parseFirestoreNumber(b0?.size) || 100,
+        },
+      };
+    });
+
+  const newsTicker = bmDoc?.news?.stringValue || bDoc?.news?.stringValue || "";
+
+  return {
+    eventId: eIdStr,
+    news: newsTicker,
+    matchOdds: matchOddsList[0] || null,
+    matchOddsList,
+    bookmaker: bookmakerList[0] || null,
+    bookmakerList,
+    fancy: validFancy,
+    sportsbook: sportsbookDocs.filter((d) => d.document).map((d) => d.document.fields),
+  };
+}
+
 export async function getLiveRatesForEvent(eventId, sportId = "4") {
   const eIdStr = String(eventId || "");
   if (!eIdStr) {
@@ -226,8 +415,8 @@ export async function getLiveRatesForEvent(eventId, sportId = "4") {
   const cacheKey = `${eIdStr}_${sportId}`;
   const cached = liveRatesCache.get(cacheKey);
 
-  // Return fresh cache if within 800ms
-  if (cached && Date.now() - cached.timestamp < 800) {
+  // Return fresh cache if within 200ms
+  if (cached && Date.now() - cached.timestamp < 200) {
     return cached.data;
   }
 
@@ -238,6 +427,18 @@ export async function getLiveRatesForEvent(eventId, sportId = "4") {
 
   const fetchPromise = (async () => {
     try {
+      // 1. First priority: Direct Firestore query to Nice444's real Firebase project
+      const firestoreData = await queryFirestoreForEvent(eIdStr, sportId);
+      if (
+        (firestoreData.matchOddsList && firestoreData.matchOddsList.length > 0) ||
+        (firestoreData.bookmakerList && firestoreData.bookmakerList.length > 0) ||
+        (firestoreData.fancy && firestoreData.fancy.length > 0)
+      ) {
+        liveRatesCache.set(cacheKey, { timestamp: Date.now(), data: firestoreData });
+        return firestoreData;
+      }
+
+      // 2. Fallback to upstream getMarketsEventList if Firestore collection has delay
       const res = await proxyRequest(
         "/api/exchange/markets/getMarketsEventList",
         {
@@ -325,14 +526,9 @@ export async function getLiveRatesForEvent(eventId, sportId = "4") {
         };
       });
 
-      const newsTicker =
-        data.bookmakersData?.[0]?.news ||
-        data.matchOddsData?.[0]?.news ||
-        "";
-
       const formatted = {
         eventId: eIdStr,
-        news: newsTicker,
+        news: data.bookmakersData?.[0]?.news || data.matchOddsData?.[0]?.news || "",
         matchOdds: matchOddsList[0] || null,
         matchOddsList,
         bookmaker: bookmakerList[0] || null,
@@ -347,7 +543,16 @@ export async function getLiveRatesForEvent(eventId, sportId = "4") {
       if (cached?.data) {
         return cached.data;
       }
-      return queryFirestoreForEvent(eIdStr, sportId);
+      return {
+        eventId: eIdStr,
+        news: "",
+        matchOdds: null,
+        matchOddsList: [],
+        bookmaker: null,
+        bookmakerList: [],
+        fancy: [],
+        sportsbook: [],
+      };
     } finally {
       inFlightRatesRequests.delete(cacheKey);
     }
@@ -356,188 +561,3 @@ export async function getLiveRatesForEvent(eventId, sportId = "4") {
   inFlightRatesRequests.set(cacheKey, fetchPromise);
   return fetchPromise;
 }
-
-export const queryFirestoreForEvent = async (eventId, sportId = "4") => {
-  const fetchCollection = async (collectionId) => {
-    try {
-      const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery`;
-      const query = {
-        structuredQuery: {
-          from: [{ collectionId }],
-          where: {
-            fieldFilter: {
-              field: { fieldPath: "exEventId" },
-              op: "EQUAL",
-              value: { stringValue: String(eventId) },
-            },
-          },
-        },
-      };
-      const res = await axios.post(url, query, { timeout: 3500 });
-      return res.data || [];
-    } catch (e) {
-      return [];
-    }
-  };
-
-  const [betfairDocs, bookmakerDocs, fancyDocs] = await Promise.all([
-    fetchCollection("Betfair"),
-    fetchCollection("Bookmakers"),
-    fetchCollection("Fancy"),
-  ]);
-
-  const parseNumber = (f) => {
-    if (!f) return 0;
-    const raw = f.doubleValue ?? f.integerValue;
-    if (raw === "NaN" || raw === null || raw === undefined) return 0;
-    const n = Number(raw);
-    return isNaN(n) ? 0 : n;
-  };
-
-  const parseRunners = (fields) => {
-    if (!fields) return [];
-    const rawRunners =
-      fields.oddsData?.mapValue?.fields?.runners?.arrayValue?.values || [];
-    const names = fields.runnersData?.mapValue?.fields || {};
-
-    return rawRunners.map((r) => {
-      const rf = r.mapValue?.fields || {};
-      const selId = String(
-        rf.selectionId?.integerValue || rf.selectionId?.stringValue || "",
-      );
-      const name = names[selId]?.stringValue || `Runner ${selId}`;
-      const runnerStatus = rf.status?.stringValue || "ONLINE";
-      const isSuspended =
-        runnerStatus === "SUSPENDED" || runnerStatus === "SUSPEND";
-
-      const backArr =
-        rf.price?.mapValue?.fields?.back?.arrayValue?.values || [];
-      const layArr = rf.price?.mapValue?.fields?.lay?.arrayValue?.values || [];
-
-      const b0 = backArr[0]?.mapValue?.fields;
-      const l0 = layArr[0]?.mapValue?.fields;
-
-      const backPrice = parseNumber(b0?.price);
-      const backSize = parseNumber(b0?.size);
-      const layPrice = parseNumber(l0?.price);
-      const laySize = parseNumber(l0?.size);
-
-      return {
-        selectionId: selId,
-        name,
-        status: runnerStatus,
-        isSuspended:
-          isSuspended ||
-          (backPrice === 0 &&
-            layPrice === 0 &&
-            backSize === 0 &&
-            laySize === 0) ||
-          isNaN(backPrice) ||
-          isNaN(layPrice),
-        back: {
-          price:
-            isSuspended || backPrice === 0 || isNaN(backPrice)
-              ? null
-              : backPrice,
-          size: isNaN(backSize) ? 0 : backSize,
-        },
-        lay: {
-          price: isSuspended || isNaN(layPrice) ? 0 : layPrice,
-          size: isNaN(laySize) ? 0 : laySize,
-        },
-      };
-    });
-  };
-
-  const matchOddsList = betfairDocs
-    .filter((d) => d.document)
-    .map((d) => {
-      const bDoc = d.document.fields;
-      return {
-        marketId: bDoc.exMarketId?.stringValue || d.document.name.split("/").pop(),
-        marketName: bDoc.marketName?.stringValue || "Match Odds",
-        min: parseNumber(bDoc.min) || 100,
-        max: parseNumber(bDoc.max) || 1000,
-        totalMatched:
-          bDoc.oddsData?.mapValue?.fields?.totalMatched?.integerValue ||
-          bDoc.oddsData?.mapValue?.fields?.totalMatched?.stringValue ||
-          "0",
-        status: bDoc.oddsData?.mapValue?.fields?.status?.stringValue || "OPEN",
-        runners: parseRunners(bDoc),
-      };
-    });
-
-  const bookmakerList = bookmakerDocs
-    .filter((d) => d.document)
-    .map((d) => {
-      const bmDoc = d.document.fields;
-      return {
-        marketId: bmDoc.exMarketId?.stringValue || d.document.name.split("/").pop(),
-        marketName: bmDoc.marketName?.stringValue || "Bookmaker Bhav",
-        min: parseNumber(bmDoc.min) || 100,
-        max: parseNumber(bmDoc.max) || 25000,
-        totalMatched:
-          bmDoc.oddsData?.mapValue?.fields?.totalMatched?.integerValue ||
-          bmDoc.oddsData?.mapValue?.fields?.totalMatched?.stringValue ||
-          "0",
-        status: bmDoc.oddsData?.mapValue?.fields?.status?.stringValue || "OPEN",
-        runners: parseRunners(bmDoc),
-      };
-    });
-
-  const bDoc = betfairDocs[0]?.document?.fields;
-  const bmDoc = bookmakerDocs[0]?.document?.fields;
-
-  const validFancy = fancyDocs
-    .filter((d) => d.document)
-    .map((d) => {
-      const f = d.document.fields;
-      const odds = f.oddsData?.mapValue?.fields || {};
-      const rArr = odds.runners?.arrayValue?.values || [];
-      const r0 = rArr[0]?.mapValue?.fields || {};
-      const rStatus =
-        r0.status?.stringValue || odds.status?.stringValue || "ONLINE";
-      const isSuspended =
-        rStatus === "SUSPENDED" ||
-        rStatus === "SUSPEND" ||
-        odds.status?.stringValue === "SUSPENDED";
-
-      const backArr =
-        r0.price?.mapValue?.fields?.back?.arrayValue?.values || [];
-      const layArr = r0.price?.mapValue?.fields?.lay?.arrayValue?.values || [];
-
-      const b0 = backArr[0]?.mapValue?.fields;
-      const l0 = layArr[0]?.mapValue?.fields;
-
-      return {
-        marketId: f.exMarketId?.stringValue || d.document.name.split("/").pop(),
-        marketName: f.marketName?.stringValue || "Fancy Market",
-        news: f.news?.stringValue || "",
-        status: odds.status?.stringValue || "ONLINE",
-        isSuspended,
-        min: parseNumber(f.min) || 100,
-        max: parseNumber(f.max) || 50000,
-        no: {
-          price: parseNumber(l0?.price),
-          size: parseNumber(l0?.size) || 100,
-        },
-        yes: {
-          price: parseNumber(b0?.price),
-          size: parseNumber(b0?.size) || 100,
-        },
-      };
-    });
-
-  const newsTicker = bmDoc?.news?.stringValue || bDoc?.news?.stringValue || "";
-
-  return {
-    eventId,
-    news: newsTicker,
-    matchOdds: matchOddsList[0] || null,
-    matchOddsList,
-    bookmaker: bookmakerList[0] || null,
-    bookmakerList,
-    fancy: validFancy,
-    sportsbook: [],
-  };
-};

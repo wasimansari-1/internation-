@@ -282,24 +282,34 @@ export default function MatchDetailTablesView({ event, onBack }) {
       setNews(data.news);
     }
 
-    // Check Match Odds updates
+    // Check Match Odds updates (tracks price AND size changes)
     const moSource = data.matchOddsList || (data.matchOdds ? [data.matchOdds] : []);
     if (moSource.length > 0) {
       let moChanged = false;
       moSource.forEach((m) => {
         (m.runners || []).forEach((r) => {
           const prev = prevRatesRef.current[`mo_${r.selectionId}`];
-          if (!prev || prev.backPrice !== r.back?.price || prev.layPrice !== r.lay?.price) {
+          const curBackPrice = r.back?.price;
+          const curBackSize = r.back?.size;
+          const curLayPrice = r.lay?.price;
+          const curLaySize = r.lay?.size;
+
+          const backChanged = prev && (prev.backPrice !== curBackPrice || prev.backSize !== curBackSize);
+          const layChanged = prev && (prev.layPrice !== curLayPrice || prev.laySize !== curLaySize);
+
+          if (!prev || backChanged || layChanged) {
             moChanged = true;
-            if (prev && r.back?.price !== null && prev.backPrice !== r.back?.price) {
+            if (backChanged) {
               newFlashBack.add(`mo_b_${r.selectionId}`);
             }
-            if (prev && r.lay?.price !== null && prev.layPrice !== r.lay?.price) {
+            if (layChanged) {
               newFlashLay.add(`mo_l_${r.selectionId}`);
             }
             prevRatesRef.current[`mo_${r.selectionId}`] = {
-              backPrice: r.back?.price,
-              layPrice: r.lay?.price
+              backPrice: curBackPrice,
+              backSize: curBackSize,
+              layPrice: curLayPrice,
+              laySize: curLaySize,
             };
           }
         });
@@ -307,24 +317,34 @@ export default function MatchDetailTablesView({ event, onBack }) {
       if (moChanged) setMatchOddsList(moSource);
     }
 
-    // Check Bookmaker updates
+    // Check Bookmaker updates (tracks price AND size changes)
     const bmSource = data.bookmakerList || (data.bookmaker ? [data.bookmaker] : []);
     if (bmSource.length > 0) {
       let bmChanged = false;
       bmSource.forEach((m) => {
         (m.runners || []).forEach((r) => {
           const prev = prevRatesRef.current[`bm_${r.selectionId}`];
-          if (!prev || prev.backPrice !== r.back?.price || prev.layPrice !== r.lay?.price) {
+          const curBackPrice = r.back?.price;
+          const curBackSize = r.back?.size;
+          const curLayPrice = r.lay?.price;
+          const curLaySize = r.lay?.size;
+
+          const backChanged = prev && (prev.backPrice !== curBackPrice || prev.backSize !== curBackSize);
+          const layChanged = prev && (prev.layPrice !== curLayPrice || prev.laySize !== curLaySize);
+
+          if (!prev || backChanged || layChanged) {
             bmChanged = true;
-            if (prev && r.back?.price !== null && prev.backPrice !== r.back?.price) {
+            if (backChanged) {
               newFlashBack.add(`bm_b_${r.selectionId}`);
             }
-            if (prev && r.lay?.price !== null && prev.layPrice !== r.lay?.price) {
+            if (layChanged) {
               newFlashLay.add(`bm_l_${r.selectionId}`);
             }
             prevRatesRef.current[`bm_${r.selectionId}`] = {
-              backPrice: r.back?.price,
-              layPrice: r.lay?.price
+              backPrice: curBackPrice,
+              backSize: curBackSize,
+              layPrice: curLayPrice,
+              laySize: curLaySize,
             };
           }
         });
@@ -332,22 +352,32 @@ export default function MatchDetailTablesView({ event, onBack }) {
       if (bmChanged) setBookmakerList(bmSource);
     }
 
-    // Check Live Fancy updates
+    // Check Live Fancy updates (tracks price AND size changes)
     if (Array.isArray(data.fancy) && data.fancy.length > 0) {
       let fcChanged = false;
       data.fancy.forEach((f) => {
         const prev = prevRatesRef.current[`fc_${f.marketId}`];
-        if (!prev || prev.yesPrice !== f.yes?.price || prev.noPrice !== f.no?.price) {
+        const curYesPrice = f.yes?.price;
+        const curYesSize = f.yes?.size;
+        const curNoPrice = f.no?.price;
+        const curNoSize = f.no?.size;
+
+        const yesChanged = prev && (prev.yesPrice !== curYesPrice || prev.yesSize !== curYesSize);
+        const noChanged = prev && (prev.noPrice !== curNoPrice || prev.noSize !== curNoSize);
+
+        if (!prev || yesChanged || noChanged) {
           fcChanged = true;
-          if (prev && prev.yesPrice !== f.yes?.price) {
+          if (yesChanged) {
             newFlashBack.add(`fc_y_${f.marketId}`);
           }
-          if (prev && prev.noPrice !== f.no?.price) {
+          if (noChanged) {
             newFlashLay.add(`fc_n_${f.marketId}`);
           }
           prevRatesRef.current[`fc_${f.marketId}`] = {
-            yesPrice: f.yes?.price,
-            noPrice: f.no?.price
+            yesPrice: curYesPrice,
+            yesSize: curYesSize,
+            noPrice: curNoPrice,
+            noSize: curNoSize,
           };
         }
       });
@@ -359,17 +389,18 @@ export default function MatchDetailTablesView({ event, onBack }) {
       setSportsbook(data.sportsbook);
     }
 
+    // Instant .1 second flash whenever price or volume changes
     if (newFlashBack.size > 0 || newFlashLay.size > 0) {
       setFlashBackSet(newFlashBack);
       setFlashLaySet(newFlashLay);
       setTimeout(() => {
         setFlashBackSet(new Set());
         setFlashLaySet(new Set());
-      }, 220);
+      }, 100);
     }
   };
 
-  // Direct REST API live rates: 1s for in-play, 5s for upcoming
+  // Ultra-fast live rate polling: 400ms for in-play (matches Betfair/Nice444 high frequency ticks)
   useEffect(() => {
     fetchMarketSnapshot();
     fetchFancyResults();
@@ -383,7 +414,7 @@ export default function MatchDetailTablesView({ event, onBack }) {
       event.oddsData?.inPlay ||
       event.oddsData?.inplay
     );
-    const pollInterval = isInPlay ? 1000 : 5000;
+    const pollInterval = isInPlay ? 400 : 2500;
 
     let isMounted = true;
     const pollRates = async () => {
@@ -805,7 +836,7 @@ export default function MatchDetailTablesView({ event, onBack }) {
                         className={isFlashBack ? 'flash-back' : ''}
                         disabled={isSuspended}
                         style={{
-                          background: '#72bbef',
+                          background: isFlashBack ? '#fde047' : '#72bbef',
                           border: 'none',
                           borderRight: '1px solid #ffffff',
                           padding: '4px 0',
@@ -815,7 +846,8 @@ export default function MatchDetailTablesView({ event, onBack }) {
                           flexDirection: 'column',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          height: '42px'
+                          height: '42px',
+                          transition: 'background-color 0.1s'
                         }}
                       >
                         <span style={{ fontSize: '13px', fontWeight: 800, color: '#000' }}>
@@ -832,7 +864,7 @@ export default function MatchDetailTablesView({ event, onBack }) {
                         className={isFlashLay ? 'flash-lay' : ''}
                         disabled={isSuspended}
                         style={{
-                          background: '#faa9ba',
+                          background: isFlashLay ? '#f43f5e' : '#faa9ba',
                           border: 'none',
                           padding: '4px 0',
                           textAlign: 'center',
@@ -841,7 +873,8 @@ export default function MatchDetailTablesView({ event, onBack }) {
                           flexDirection: 'column',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          height: '42px'
+                          height: '42px',
+                          transition: 'background-color 0.1s'
                         }}
                       >
                         <span style={{ fontSize: '13px', fontWeight: 800, color: '#000' }}>
@@ -949,7 +982,7 @@ export default function MatchDetailTablesView({ event, onBack }) {
                   className={isFlashBack ? 'flash-back' : ''}
                   disabled={isSuspended}
                   style={{
-                    background: '#72bbef',
+                    background: isFlashBack ? '#fde047' : '#72bbef',
                     border: 'none',
                     borderRight: '1px solid #ffffff',
                     padding: '4px 0',
@@ -959,7 +992,8 @@ export default function MatchDetailTablesView({ event, onBack }) {
                     flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    height: '42px'
+                    height: '42px',
+                    transition: 'background-color 0.1s'
                   }}
                 >
                   <span style={{ fontSize: '13px', fontWeight: 800, color: '#000' }}>
@@ -976,7 +1010,7 @@ export default function MatchDetailTablesView({ event, onBack }) {
                   className={isFlashLay ? 'flash-lay' : ''}
                   disabled={isSuspended}
                   style={{
-                    background: '#faa9ba',
+                    background: isFlashLay ? '#f43f5e' : '#faa9ba',
                     border: 'none',
                     padding: '4px 0',
                     textAlign: 'center',
@@ -985,7 +1019,8 @@ export default function MatchDetailTablesView({ event, onBack }) {
                     flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    height: '42px'
+                    height: '42px',
+                    transition: 'background-color 0.1s'
                   }}
                 >
                   <span style={{ fontSize: '13px', fontWeight: 800, color: '#000' }}>
@@ -1190,7 +1225,7 @@ export default function MatchDetailTablesView({ event, onBack }) {
                       className={isFlashNo ? 'flash-lay' : ''}
                       disabled={isSuspended}
                       style={{
-                        background: '#faa9ba',
+                        background: isFlashNo ? '#f43f5e' : '#faa9ba',
                         border: 'none',
                         borderRight: '1px solid #ffffff',
                         padding: '4px 0',
@@ -1201,7 +1236,8 @@ export default function MatchDetailTablesView({ event, onBack }) {
                         alignItems: 'center',
                         justifyContent: 'center',
                         height: '42px',
-                        opacity: isSuspended ? 0.6 : 1
+                        opacity: isSuspended ? 0.6 : 1,
+                        transition: 'background-color 0.1s'
                       }}
                     >
                       <span style={{ fontSize: '13px', fontWeight: 800, color: '#000' }}>
@@ -1218,7 +1254,7 @@ export default function MatchDetailTablesView({ event, onBack }) {
                       className={isFlashYes ? 'flash-back' : ''}
                       disabled={isSuspended}
                       style={{
-                        background: '#72bbef',
+                        background: isFlashYes ? '#fde047' : '#72bbef',
                         border: 'none',
                         padding: '4px 0',
                         textAlign: 'center',
@@ -1228,7 +1264,8 @@ export default function MatchDetailTablesView({ event, onBack }) {
                         alignItems: 'center',
                         justifyContent: 'center',
                         height: '42px',
-                        opacity: isSuspended ? 0.6 : 1
+                        opacity: isSuspended ? 0.6 : 1,
+                        transition: 'background-color 0.1s'
                       }}
                     >
                       <span style={{ fontSize: '13px', fontWeight: 800, color: '#000' }}>
