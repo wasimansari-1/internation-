@@ -249,49 +249,121 @@ router.get("/stream-proxy/:gameId", async (req, res) => {
 
     let html = pageRes.data;
     if (typeof html === "string") {
-      html = html.replace('src="/player/player.js', 'src="https://tv.ltve.live/player/player.js');
+      let streamOrigin = "https://live.livecdnplatin.com";
+      try {
+        streamOrigin = new URL(streamUrl).origin;
+      } catch (e) {}
+
+      // Correct player.js path to the actual stream host
+      html = html.replace(/src="\/player\/player\.js/g, `src="${streamOrigin}/player/player.js`);
+      html = html.replace(/href="\/player\//g, `href="${streamOrigin}/player/`);
+
+      // Neutralize frame enforcement and devtools guard in configuration
+      html = html.replace(/"enforce"\s*:\s*true/g, '"enforce":false');
+      html = html.replace(/"devtoolsGuard"\s*:\s*true/g, '"devtoolsGuard":false');
+
       // Strip any raw debugger statements
       html = html.replace(/\bdebugger\b/g, '/*noop*/');
-      // Anti-debugger & Anti-Worker loop neutralization so browser DevTools never freezes
-      html = `<script>
-        (function() {
-          try {
-            window.debugger = function(){};
-            var origFn = window.Function;
-            window.Function = function() {
-              for (var i = 0; i < arguments.length; i++) {
-                if (typeof arguments[i] === 'string' && arguments[i].includes('debugger')) {
-                  arguments[i] = arguments[i].replace(/\\bdebugger\\b/g, '/*noop*/');
+
+      // Cleanly inject inside <head> with base href, CORS /ping bypass, and anti-debugger
+      const injectedScript = `
+        <base href="${streamOrigin}/">
+        <script>
+          (function() {
+            try {
+              // 1. Mock /ping and telemetry requests to prevent CORS errors on livecdnplatin
+              var origFetch = window.fetch;
+              window.fetch = function(input, init) {
+                var url = typeof input === "string" ? input : (input && input.url ? input.url : "");
+                if (url.includes("/ping") || url.includes("/flag") || url.includes("/bye")) {
+                  return Promise.resolve(new Response(JSON.stringify({ status: 200, message: "ok" }), {
+                    status: 200,
+                    headers: { "Content-Type": "application/json" }
+                  }));
                 }
-              }
-              return origFn.apply(this, arguments);
-            };
-            window.Function.prototype = origFn.prototype;
+                return origFetch.apply(this, arguments).catch(function(err) {
+                  if (url.includes("/ping") || url.includes("/flag")) {
+                    return new Response(JSON.stringify({ status: 200 }), { status: 200 });
+                  }
+                  throw err;
+                });
+              };
 
-            var OrigWorker = window.Worker;
-            window.Worker = function(scriptURL, options) {
-              if (typeof scriptURL === 'string' && scriptURL.startsWith('blob:')) {
-                return {
-                  postMessage: function(){},
-                  terminate: function(){},
-                  addEventListener: function(){},
-                  removeEventListener: function(){},
-                  onmessage: null,
-                  onerror: null
+              // 2. Intercept XMLHttpRequest for telemetry /ping
+              var OrigXHR = window.XMLHttpRequest;
+              window.XMLHttpRequest = function() {
+                var xhr = new OrigXHR();
+                var origOpen = xhr.open;
+                var origSend = xhr.send;
+                var isPing = false;
+                xhr.open = function(method, url) {
+                  if (typeof url === "string" && (url.includes("/ping") || url.includes("/flag") || url.includes("/bye"))) {
+                    isPing = true;
+                  }
+                  return origOpen.apply(xhr, arguments);
                 };
-              }
-              return new OrigWorker(scriptURL, options);
-            };
+                xhr.send = function() {
+                  if (isPing) {
+                    Object.defineProperty(xhr, "status", { get: function() { return 200; } });
+                    Object.defineProperty(xhr, "readyState", { get: function() { return 4; } });
+                    Object.defineProperty(xhr, "responseText", { get: function() { return '{"status":"ok"}'; } });
+                    setTimeout(function() {
+                      if (typeof xhr.onload === "function") xhr.onload();
+                      if (typeof xhr.onreadystatechange === "function") xhr.onreadystatechange();
+                    }, 5);
+                    return;
+                  }
+                  return origSend.apply(xhr, arguments);
+                };
+                return xhr;
+              };
 
-            var origSetInterval = window.setInterval;
-            window.setInterval = function(fn, delay) {
-              if (typeof fn === "function" && fn.toString().includes("debugger")) return 0;
-              if (typeof fn === "string" && fn.includes("debugger")) return 0;
-              return origSetInterval.apply(this, arguments);
-            };
-          } catch(e) {}
-        })();
-      </script>` + html;
+              // 3. Neutralize debugger
+              window.debugger = function(){};
+              var origFn = window.Function;
+              window.Function = function() {
+                for (var i = 0; i < arguments.length; i++) {
+                  if (typeof arguments[i] === "string" && arguments[i].includes("debugger")) {
+                    arguments[i] = arguments[i].replace(/\\bdebugger\\b/g, "/*noop*/");
+                  }
+                }
+                return origFn.apply(this, arguments);
+              };
+              window.Function.prototype = origFn.prototype;
+
+              // 4. Neutralize anti-debugger worker
+              var OrigWorker = window.Worker;
+              window.Worker = function(scriptURL, options) {
+                if (typeof scriptURL === "string" && scriptURL.startsWith("blob:")) {
+                  return {
+                    postMessage: function(){},
+                    terminate: function(){},
+                    addEventListener: function(){},
+                    removeEventListener: function(){},
+                    onmessage: null,
+                    onerror: null
+                  };
+                }
+                return new OrigWorker(scriptURL, options);
+              };
+
+              // 5. Neutralize setInterval debugger
+              var origSetInterval = window.setInterval;
+              window.setInterval = function(fn, delay) {
+                if (typeof fn === "function" && fn.toString().includes("debugger")) return 0;
+                if (typeof fn === "string" && fn.includes("debugger")) return 0;
+                return origSetInterval.apply(this, arguments);
+              };
+            } catch(e) {}
+          })();
+        </script>
+      `;
+
+      if (html.includes("<head>")) {
+        html = html.replace("<head>", "<head>" + injectedScript);
+      } else {
+        html = injectedScript + html;
+      }
     }
 
     res.removeHeader("Content-Security-Policy");
