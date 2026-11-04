@@ -211,6 +211,20 @@ async function fetchUpstreamWatchUrl(gameId, incomingIp) {
   return null;
 }
 
+router.get("/stream-token/:gameId", async (req, res) => {
+  try {
+    const token = await getDemoToken();
+    return res.json({
+      success: true,
+      token,
+      streamId: req.params.gameId,
+      endpoint: "https://casino.nice444.com/casinoapp/exchange/users/streaming/casinoGameWatchLink",
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 router.get("/watch-link/:gameId", async (req, res) => {
   const { gameId } = req.params;
   const clientIp =

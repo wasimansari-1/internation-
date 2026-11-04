@@ -65,8 +65,37 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
     }
   };
 
-  // 3. Fetch Real Live Casino Dealer Watch Link (Native Nice444 Stream)
+  // 3. Fetch Real Live Casino Dealer Watch Link (Native Nice444 Stream via Client-Direct + Fallback)
   const fetchWatchUrl = async () => {
+    try {
+      // 1. Get fresh authorization token from backend
+      const tokenRes = await axios.get(`/api/casino/stream-token/${gameId}`);
+      if (tokenRes.data?.success && tokenRes.data?.token) {
+        const { token, streamId, endpoint } = tokenRes.data;
+
+        // 2. Client browser (with client's own residential IP) requests watch link directly
+        // Nice444 allows CORS (Access-Control-Allow-Origin: *)
+        const directRes = await axios.post(
+          endpoint || 'https://casino.nice444.com/casinoapp/exchange/users/streaming/casinoGameWatchLink',
+          { streamId: String(streamId || gameId), timestamp: Date.now() },
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`
+            },
+            timeout: 5000
+          }
+        );
+
+        if (directRes.data?.data?.url) {
+          setWatchUrl(directRes.data.data.url);
+          return;
+        }
+      }
+    } catch (clientErr) {
+      // If client is outside India or direct call fails, seamlessly fall back to backend residential pool
+    }
+
     try {
       const res = await axios.get(`/api/casino/watch-link/${gameId}`);
       if (res.data?.success && res.data?.url) {
