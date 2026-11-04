@@ -52,12 +52,28 @@ function formatSportEvent(e) {
   };
 }
 
-router.get("/list", async (req, res) => {
-  const result = await proxyRequest("/api/exchange/sports/sportsList");
-  res.status(result.statusCode).json(result);
-});
+const SPORTS_CATALOG = [
+  { sportId: "1", name: "Soccer" },
+  { sportId: "2", name: "Tennis" },
+  { sportId: "4", name: "Cricket" },
+  { sportId: "7", name: "Horse Racing" },
+  { sportId: "4339", name: "Greyhound Racing" },
+  { sportId: "7522", name: "Basketball" },
+];
 
-router.get("/all-events", async (req, res) => {
+function handleSportsCatalog(req, res) {
+  res.status(200).json({
+    success: true,
+    message: "Sports catalog fetched successfully",
+    data: SPORTS_CATALOG,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+router.get("/", handleSportsCatalog);
+router.get("/list", handleSportsCatalog);
+
+async function handleEvents(req, res) {
   const result = await proxyRequest(
     "/api/exchange/market/matchodds/allEventsList",
   );
@@ -67,6 +83,7 @@ router.get("/all-events", async (req, res) => {
       success: false,
       message: result?.error || "Failed to fetch sports events",
       data: [],
+      timestamp: new Date().toISOString(),
     });
   }
 
@@ -83,20 +100,30 @@ router.get("/all-events", async (req, res) => {
     }
   }
 
-  if (req.query.sportId) {
-    allRaw = allRaw.filter(
-      (e) => String(e.sportId) === String(req.query.sportId),
-    );
+  const sportId = req.params.sportId || req.query.sportId;
+  if (sportId) {
+    allRaw = allRaw.filter((e) => String(e.sportId) === String(sportId));
+    const formattedData = allRaw.map(formatSportEvent);
+    return res.status(200).json({
+      success: true,
+      message: "Sport events fetched successfully",
+      data: formattedData,
+      timestamp: new Date().toISOString(),
+    });
   }
 
   const formattedData = allRaw.map(formatSportEvent);
-
-  res.status(200).json({
+  return res.status(200).json({
     success: true,
     message: "All sports events fetched successfully",
     data: formattedData,
+    timestamp: new Date().toISOString(),
   });
-});
+}
+
+router.get("/events", handleEvents);
+router.get("/all-events", handleEvents);
+router.get("/:sportId/events", handleEvents);
 
 async function getEventMarketsHandler(req, res) {
   const sportId = String(
@@ -126,12 +153,10 @@ async function getEventMarketsHandler(req, res) {
 
   if (!result || !result.success) {
     return res.status(result?.statusCode || 500).json({
+      success: false,
+      message: result?.error || "Failed to fetch markets",
       data: null,
-      meta: {
-        message: result?.error || "Failed to fetch markets",
-        status_code: result?.statusCode || 500,
-        status: false,
-      },
+      timestamp: new Date().toISOString(),
     });
   }
 
@@ -142,19 +167,22 @@ async function getEventMarketsHandler(req, res) {
     status: true,
   };
 
-  // Exact schema matching original exchange response:
-  // Root keys: 'data' and 'meta'
   return res.status(200).json({
+    success: true,
+    message: "Markets fetched successfully",
     data: {
-      fancyData: rawData.fancyData || [],
-      matchOddsData: rawData.matchOddsData || [],
-      bookmakersData: rawData.bookmakersData || [],
-      sportsbookData: rawData.sportsbookData || [],
-      binaryData: rawData.binaryData || [],
-      lotteryData: rawData.lotteryData || [],
-      isScore: Boolean(rawData.isScore ?? false),
+      data: {
+        fancyData: rawData.fancyData || [],
+        matchOddsData: rawData.matchOddsData || [],
+        bookmakersData: rawData.bookmakersData || [],
+        sportsbookData: rawData.sportsbookData || [],
+        binaryData: rawData.binaryData || [],
+        lotteryData: rawData.lotteryData || [],
+        isScore: Boolean(rawData.isScore ?? false),
+      },
+      meta: meta,
     },
-    meta: meta,
+    timestamp: new Date().toISOString(),
   });
 }
 

@@ -50,7 +50,8 @@ export default function SportsOddsView({ onSwitchToCasino, onSelectMatch }) {
   }, []);
 
   const handleSportClick = (sport) => {
-    if (sport.sportName?.toLowerCase().includes('casino')) {
+    const sName = sport.name || sport.sportName || '';
+    if (sName.toLowerCase().includes('casino')) {
       if (onSwitchToCasino) {
         onSwitchToCasino();
         return;
@@ -93,7 +94,8 @@ export default function SportsOddsView({ onSwitchToCasino, onSelectMatch }) {
           {sports.map(s => {
             const count = eventsMap[s.sportId]?.length || 0;
             const isSelected = selectedSport === String(s.sportId);
-            const isCasinoPill = s.sportName?.toLowerCase().includes('casino');
+            const sName = s.name || s.sportName || '';
+            const isCasinoPill = sName.toLowerCase().includes('casino');
             return (
               <button
                 key={s.sportId}
@@ -120,7 +122,7 @@ export default function SportsOddsView({ onSwitchToCasino, onSelectMatch }) {
                   gap: '6px'
                 }}
               >
-                <span>{s.sportName}</span>
+                <span>{sName}</span>
                 <span style={{
                   background: isCasinoPill ? '#be185d' : isSelected ? '#0369a1' : '#0f172a',
                   padding: '2px 6px',
