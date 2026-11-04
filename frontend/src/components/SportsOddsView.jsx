@@ -19,9 +19,22 @@ export default function SportsOddsView({ onSwitchToCasino, onSelectMatch }) {
 
       if (sportsRes.data?.data?.data) {
         setSports(sportsRes.data.data.data);
+      } else if (Array.isArray(sportsRes.data?.data)) {
+        setSports(sportsRes.data.data);
       }
-      if (eventsRes.data?.data?.data) {
-        setEventsMap(eventsRes.data.data.data);
+      const rawEvents = eventsRes.data?.data;
+      if (Array.isArray(rawEvents)) {
+        const map = {};
+        for (const ev of rawEvents) {
+          const sid = String(ev.sportId || '4');
+          if (!map[sid]) map[sid] = [];
+          map[sid].push(ev);
+        }
+        setEventsMap(map);
+      } else if (rawEvents?.data) {
+        setEventsMap(rawEvents.data);
+      } else if (rawEvents && typeof rawEvents === 'object') {
+        setEventsMap(rawEvents);
       }
     } catch (err) {
       console.error('Error fetching sports data:', err);
@@ -49,11 +62,11 @@ export default function SportsOddsView({ onSwitchToCasino, onSelectMatch }) {
   const currentEvents = eventsMap[selectedSport] || [];
   // Prioritize In-Play and Open matches at the top so user immediately sees live rates
   const sortedEvents = [...currentEvents].sort((a, b) => {
-    const aInPlay = a.oddsData?.inPlay ? 1 : 0;
-    const bInPlay = b.oddsData?.inPlay ? 1 : 0;
+    const aInPlay = (a.inPlay ?? a.oddsData?.inPlay) ? 1 : 0;
+    const bInPlay = (b.inPlay ?? b.oddsData?.inPlay) ? 1 : 0;
     if (aInPlay !== bInPlay) return bInPlay - aInPlay;
-    const aOpen = a.oddsData?.status === 'OPEN' ? 1 : 0;
-    const bOpen = b.oddsData?.status === 'OPEN' ? 1 : 0;
+    const aOpen = (a.status === 'OPEN' || a.oddsData?.status === 'OPEN') ? 1 : 0;
+    const bOpen = (b.status === 'OPEN' || b.oddsData?.status === 'OPEN') ? 1 : 0;
     return bOpen - aOpen;
   });
 
@@ -192,8 +205,9 @@ export default function SportsOddsView({ onSwitchToCasino, onSelectMatch }) {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             {filteredEvents.map((ev, idx) => {
-              const inPlay = ev.oddsData?.inPlay;
-              const runners = ev.oddsData?.runners || [];
+              const inPlay = ev.inPlay ?? ev.oddsData?.inPlay;
+              const runners = ev.runners || ev.oddsData?.runners || [];
+              const status = ev.status || ev.oddsData?.status;
               const runnerNames = ev.runnersData || {};
 
               return (
@@ -244,19 +258,19 @@ export default function SportsOddsView({ onSwitchToCasino, onSelectMatch }) {
 
                   {/* Quick Back/Lay Scraped Rates Preview */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    {ev.oddsData?.status === 'CLOSED' ? (
+                    {status === 'CLOSED' ? (
                       <span style={{ background: '#1e293b', color: '#94a3b8', fontSize: '11px', padding: '4px 8px', borderRadius: '4px', fontWeight: 700 }}>
                         CLOSED
                       </span>
-                    ) : ev.oddsData?.status === 'SUSPENDED' ? (
+                    ) : status === 'SUSPENDED' ? (
                       <span style={{ background: '#7f1d1d', color: '#fca5a5', fontSize: '11px', padding: '4px 8px', borderRadius: '4px', fontWeight: 700 }}>
                         SUSPENDED
                       </span>
                     ) : runners.length >= 2 ? (
                       <div style={{ display: 'flex', gap: '6px' }}>
                         {runners.slice(0, 2).map((r, rIdx) => {
-                          const backP = r.price?.back?.[0]?.price;
-                          const layP = r.price?.lay?.[0]?.price;
+                          const backP = r.backPrice ?? r.price?.back?.[0]?.price;
+                          const layP = r.layPrice ?? r.price?.lay?.[0]?.price;
                           return (
                             <div key={rIdx} style={{ display: 'flex', gap: '2px' }}>
                               <div style={{ width: '42px', height: '34px', background: '#72bbef', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 800, color: '#000' }}>

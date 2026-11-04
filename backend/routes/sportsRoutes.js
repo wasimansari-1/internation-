@@ -8,6 +8,50 @@ import {
 
 const router = express.Router();
 
+function formatSportEvent(e) {
+  const odds = e.oddsData || {};
+  return {
+    _id: String(e._id || e.exEventId || ""),
+    isCasinoGame: Boolean(e.isCasinoGame ?? false),
+    isVirtual: Boolean(e.isVirtual ?? false),
+    marketType: e.marketType || "MATCH_ODDS",
+    popular: Boolean(e.popular ?? false),
+    quickLink: Boolean(e.quickLink ?? false),
+    runnersData: e.runnersData || {},
+    betDelay: Number(odds.betDelay ?? e.betDelay ?? 0),
+    preBet: Boolean(odds.preBet ?? e.preBet ?? false),
+    crossMatching: Boolean(odds.crossMatching ?? e.crossMatching ?? false),
+    totalMatched: Number(odds.totalMatched ?? e.totalMatched ?? 0),
+    tournamentId: String(e.tournamentId || ""),
+    isBookmakers: Boolean(e.isBookmakers ?? false),
+    isFancy: Boolean(e.isFancy ?? false),
+    isSportsbook: Boolean(e.isSportsbook ?? false),
+    isStreaming: Boolean(e.isStreaming ?? false),
+    tv: Boolean(e.tv ?? false),
+    productId: e.productId || `${e.sportId || "1"}.${e.exEventId || e._id}`,
+    sportId: String(e.sportId || ""),
+    sportName: e.sportName || "",
+    exEventId: String(e.exEventId || e._id || ""),
+    eventName: e.eventName || "",
+    marketId: String(e.marketId || ""),
+    marketName: e.marketName || "Match Odds",
+    eventTime: e.eventTime || "",
+    tournamentName: e.tournamentName || "",
+    inPlay: Boolean(odds.inPlay ?? e.inPlay ?? false),
+    status: odds.status || e.status || "OPEN",
+    runners: (odds.runners || e.runners || []).map((r) => ({
+      selectionId: String(r.selectionId ?? ""),
+      status: r.status || "ACTIVE",
+      handicap: Number(r.handicap ?? 0),
+      backPrice: Number(r.backPrice ?? r.price?.back?.[0]?.price ?? 0),
+      backSize: Number(r.backSize ?? r.price?.back?.[0]?.size ?? 0),
+      layPrice: Number(r.layPrice ?? r.price?.lay?.[0]?.price ?? 0),
+      laySize: Number(r.laySize ?? r.price?.lay?.[0]?.size ?? 0),
+    })),
+    isScore: Boolean(e.isScore ?? false),
+  };
+}
+
 router.get("/list", async (req, res) => {
   const result = await proxyRequest("/api/exchange/sports/sportsList");
   res.status(result.statusCode).json(result);
@@ -17,7 +61,41 @@ router.get("/all-events", async (req, res) => {
   const result = await proxyRequest(
     "/api/exchange/market/matchodds/allEventsList",
   );
-  res.status(result.statusCode).json(result);
+
+  if (!result || !result.success) {
+    return res.status(result?.statusCode || 500).json({
+      success: false,
+      message: result?.error || "Failed to fetch sports events",
+      data: [],
+    });
+  }
+
+  let allRaw = [];
+  const rawData =
+    result.data?.data?.data || result.data?.data || result.data || [];
+  if (Array.isArray(rawData)) {
+    allRaw = rawData;
+  } else if (typeof rawData === "object" && rawData !== null) {
+    for (const key of Object.keys(rawData)) {
+      if (Array.isArray(rawData[key])) {
+        allRaw.push(...rawData[key]);
+      }
+    }
+  }
+
+  if (req.query.sportId) {
+    allRaw = allRaw.filter(
+      (e) => String(e.sportId) === String(req.query.sportId),
+    );
+  }
+
+  const formattedData = allRaw.map(formatSportEvent);
+
+  res.status(200).json({
+    success: true,
+    message: "All sports events fetched successfully",
+    data: formattedData,
+  });
 });
 
 router.post("/markets-event-list", async (req, res) => {
