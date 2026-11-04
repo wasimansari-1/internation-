@@ -40,17 +40,36 @@ app.use(
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
-// Telemetry & metrics non-blocking interceptor
+// Telemetry & metrics non-blocking interceptor (Logs ONLY Real User / Client API Hits)
 app.use((req, res, next) => {
+  // Ignore internal admin telemetry polling, static frontend assets, and root HTML
+  const p = req.path || "";
+  if (
+    p.startsWith("/api/admin") ||
+    p.startsWith("/assets") ||
+    p.endsWith(".js") ||
+    p.endsWith(".css") ||
+    p.endsWith(".ico") ||
+    p.endsWith(".png") ||
+    p.endsWith(".jpg") ||
+    p === "/" ||
+    p === "/admin" ||
+    p === "/sports" ||
+    p === "/docs"
+  ) {
+    return next();
+  }
+
   const start = Date.now();
   res.on("finish", () => {
     let category = "other";
-    if (req.path.includes("/live-odds")) category = "casinoOdds";
-    else if (req.path.includes("/watch-link")) category = "streamWatch";
-    else if (req.path.includes("/stream-proxy")) category = "streamProxy";
-    else if (req.path.includes("/result")) category = "results";
-    else if (req.path.startsWith("/api/sports") || req.path.startsWith("/ori/api/sports")) category = "sports";
-    else if (req.path.startsWith("/api/admin")) category = "admin";
+    if (p.includes("/live-odds")) category = "casinoOdds";
+    else if (p.includes("/watch-link")) category = "streamWatch";
+    else if (p.includes("/stream-proxy")) category = "streamProxy";
+    else if (p.includes("/tables")) category = "casinoTables";
+    else if (p.includes("/result")) category = "results";
+    else if (p.startsWith("/api/sports") || p.startsWith("/ori/api/sports")) category = "sports";
+    else if (p.startsWith("/api/casino")) category = "casino";
 
     telemetry.recordRequest({
       method: req.method,
@@ -61,7 +80,7 @@ app.use((req, res, next) => {
     });
   });
 
-  if (process.env.DEBUG || (req.path.startsWith("/api/") && !req.path.includes("live-odds") && !req.path.includes("live-rates"))) {
+  if (process.env.DEBUG || (p.startsWith("/api/") && !p.includes("live-odds") && !p.includes("live-rates"))) {
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
   }
   next();

@@ -7,6 +7,7 @@ import axios from "axios";
  */
 export const RESIDENTIAL_ISP_PERSONAS = [
   {
+    id: "jio_mumbai",
     name: "Jio 5G Fiber",
     city: "Mumbai, Maharashtra",
     ip: "49.36.142.88",
@@ -15,8 +16,10 @@ export const RESIDENTIAL_ISP_PERSONAS = [
       "Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.6778.135 Mobile Safari/537.36",
     secPlatform: '"Android"',
     carrier: "Jio True 5G",
+    color: "#0284c7",
   },
   {
+    id: "airtel_delhi",
     name: "Airtel Xstream Fiber",
     city: "New Delhi, Delhi",
     ip: "103.21.124.5",
@@ -25,8 +28,10 @@ export const RESIDENTIAL_ISP_PERSONAS = [
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
     secPlatform: '"Windows"',
     carrier: "Airtel Broadband",
+    color: "#ef4444",
   },
   {
+    id: "act_bangalore",
     name: "ACT Fibernet Giga",
     city: "Bengaluru, Karnataka",
     ip: "157.34.112.4",
@@ -35,9 +40,11 @@ export const RESIDENTIAL_ISP_PERSONAS = [
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
     secPlatform: '"macOS"',
     carrier: "ACT Gigabit",
+    color: "#10b981",
   },
   {
-    name: "Vodafone Idea Mobile",
+    id: "vi_pune",
+    name: "Vodafone Idea 4G+",
     city: "Pune, Maharashtra",
     ip: "106.215.89.12",
     asn: "AS45609 Vodafone Idea Telecom",
@@ -45,6 +52,55 @@ export const RESIDENTIAL_ISP_PERSONAS = [
       "Mozilla/5.0 (Linux; Android 13; Pixel 7 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36",
     secPlatform: '"Android"',
     carrier: "Vi 4G+",
+    color: "#a855f7",
+  },
+  {
+    id: "jio_ahmedabad",
+    name: "Jio True 5G Mobile",
+    city: "Ahmedabad, Gujarat",
+    ip: "49.43.120.45",
+    asn: "AS55836 Reliance Jio Infocomm",
+    userAgent:
+      "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36",
+    secPlatform: '"Android"',
+    carrier: "Jio Mobile 5G",
+    color: "#0284c7",
+  },
+  {
+    id: "airtel_hyderabad",
+    name: "Airtel Xstream Giga",
+    city: "Hyderabad, Telangana",
+    ip: "122.161.48.91",
+    asn: "AS24560 Bharti Airtel Ltd",
+    userAgent:
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    secPlatform: '"Windows"',
+    carrier: "Airtel Fiber",
+    color: "#ef4444",
+  },
+  {
+    id: "tataplay_kolkata",
+    name: "Tata Play Fiber",
+    city: "Kolkata, West Bengal",
+    ip: "114.31.220.18",
+    asn: "AS4758 Tata Communications Ltd",
+    userAgent:
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    secPlatform: '"macOS"',
+    carrier: "Tata Play Giga",
+    color: "#f59e0b",
+  },
+  {
+    id: "bsnl_chennai",
+    name: "BSNL Bharat Fiber",
+    city: "Chennai, Tamil Nadu",
+    ip: "117.211.75.33",
+    asn: "AS9829 BSNL Internet",
+    userAgent:
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    secPlatform: '"Windows"',
+    carrier: "Bharat Fiber",
+    color: "#14b8a6",
   },
 ];
 
@@ -67,11 +123,15 @@ class TelemetryService {
       stampedeShieldActive: true,
     };
 
-    // Stealth Masking Profile
+    // Stealth Masking Profile (With Dynamic Human Randomization: 1m - 8m unpredictability)
     this.stealthConfig = {
       enabled: true,
       currentPersonaIndex: 0,
       autoRotate: true,
+      mode: "ORGANIC_RANDOM", // 'ORGANIC_RANDOM' (unpredictable 1m-8m) | 'CUSTOM'
+      minIntervalSeconds: 60,  // 1 min minimum
+      maxIntervalSeconds: 480, // 8 mins maximum (sometimes 1m, sometimes 5m, sometimes 2m, sometimes 8m)
+      intervalSeconds: 165,    // dynamic random duration for current subscriber session
       lastRotated: Date.now(),
     };
 
@@ -174,24 +234,92 @@ class TelemetryService {
 
     // Periodic Master Brain Assessment every 3 seconds
     setInterval(() => this.runMasterBrainAdvisor(), 3000);
+
+    // Automatic Indian ISP Residential Persona Rotation Worker (every 1s check)
+    setInterval(() => this.checkAutoRotation(), 1000);
+  }
+
+  getRandomInterval(min = 60, max = 480) {
+    // Generates realistic unpatterned human session length (e.g. 74s, 195s, 312s, 118s, 440s)
+    return Math.floor(Math.random() * (max - min + 1)) + min;
   }
 
   getCurrentPersona() {
     return RESIDENTIAL_ISP_PERSONAS[this.stealthConfig.currentPersonaIndex] || RESIDENTIAL_ISP_PERSONAS[0];
   }
 
-  rotatePersona() {
+  checkAutoRotation() {
+    if (!this.stealthConfig.enabled || !this.stealthConfig.autoRotate) return;
+    const now = Date.now();
+    const intervalMs = (this.stealthConfig.intervalSeconds || 150) * 1000;
+    const elapsed = now - (this.stealthConfig.lastRotated || now);
+
+    if (elapsed >= intervalMs) {
+      this.rotatePersona(true);
+    }
+  }
+
+  rotatePersona(isAutomatic = false) {
     this.stealthConfig.currentPersonaIndex =
       (this.stealthConfig.currentPersonaIndex + 1) % RESIDENTIAL_ISP_PERSONAS.length;
     this.stealthConfig.lastRotated = Date.now();
+
+    // Dynamically calculate the next randomized human session duration so it never repeats like a bot!
+    const minSec = this.stealthConfig.minIntervalSeconds || 60;
+    const maxSec = this.stealthConfig.maxIntervalSeconds || 480;
+    this.stealthConfig.intervalSeconds = this.getRandomInterval(minSec, maxSec);
+
     const persona = this.getCurrentPersona();
+    const durationLabel = `${Math.floor(this.stealthConfig.intervalSeconds / 60)}m ${this.stealthConfig.intervalSeconds % 60}s`;
+    const modeLabel = isAutomatic ? `Organic Random (${durationLabel})` : "Manual 1-Click";
+
     this.addBrainAlert({
       level: "INFO",
-      title: "Stealth Origin Rotated",
-      message: `Spoofed upstream residential persona changed to: ${persona.name} (${persona.city}, IP: ${persona.ip})`,
+      title: `${isAutomatic ? "Auto-Rotated" : "Rotated"} ISP Persona`,
+      message: `Simulated upstream subscriber: ${persona.name} (${persona.city}, IP: ${persona.ip}) [Next session lease: ${durationLabel}]`,
       timestamp: Date.now(),
     });
     return persona;
+  }
+
+  setPersonaById(personaId) {
+    const idx = RESIDENTIAL_ISP_PERSONAS.findIndex((p) => p.id === personaId);
+    if (idx !== -1) {
+      this.stealthConfig.currentPersonaIndex = idx;
+      this.stealthConfig.lastRotated = Date.now();
+      const minSec = this.stealthConfig.minIntervalSeconds || 60;
+      const maxSec = this.stealthConfig.maxIntervalSeconds || 480;
+      this.stealthConfig.intervalSeconds = this.getRandomInterval(minSec, maxSec);
+
+      const persona = this.getCurrentPersona();
+      this.addBrainAlert({
+        level: "INFO",
+        title: "Selected ISP Persona",
+        message: `Switched upstream subscriber to: ${persona.name} (${persona.city}, IP: ${persona.ip})`,
+        timestamp: Date.now(),
+      });
+      return persona;
+    }
+    return this.getCurrentPersona();
+  }
+
+  updateStealthConfig(patch = {}) {
+    if (patch.enabled !== undefined) this.stealthConfig.enabled = Boolean(patch.enabled);
+    if (patch.autoRotate !== undefined) this.stealthConfig.autoRotate = Boolean(patch.autoRotate);
+    if (patch.mode !== undefined) this.stealthConfig.mode = patch.mode;
+    if (patch.minIntervalSeconds !== undefined) {
+      this.stealthConfig.minIntervalSeconds = Math.max(30, parseInt(patch.minIntervalSeconds, 10) || 60);
+    }
+    if (patch.maxIntervalSeconds !== undefined) {
+      this.stealthConfig.maxIntervalSeconds = Math.max(
+        (this.stealthConfig.minIntervalSeconds || 60) + 30,
+        parseInt(patch.maxIntervalSeconds, 10) || 480
+      );
+    }
+    if (patch.intervalSeconds !== undefined) {
+      this.stealthConfig.intervalSeconds = Math.max(30, parseInt(patch.intervalSeconds, 10) || 150);
+    }
+    return this.stealthConfig;
   }
 
   toggleStealthMode(enabled) {
@@ -241,6 +369,11 @@ class TelemetryService {
   }
 
   recordRequest({ method, path, category, provider = "LOCAL", status = 200, latencyMs = 0 }) {
+    // Ignore internal admin polling and static assets - Only record real user API traffic!
+    if (path && (path.startsWith("/api/admin") || path.startsWith("/assets") || path === "/")) {
+      return;
+    }
+
     this.counters.totalRequests++;
 
     const catKey = this.counters.byCategory[category] !== undefined ? category : "other";
@@ -549,6 +682,11 @@ class TelemetryService {
       platform: os.platform(),
     };
 
+    const lastRot = this.stealthConfig.lastRotated || now;
+    const elapsedSec = Math.floor((now - lastRot) / 1000);
+    const intervalSec = this.stealthConfig.intervalSeconds || 150;
+    const nextRotationInSeconds = Math.max(0, intervalSec - elapsedSec);
+
     return {
       success: true,
       timestamp: now,
@@ -563,6 +701,8 @@ class TelemetryService {
       brainAlerts: this.brainAlerts.slice(0, 8),
       stealthConfig: {
         ...this.stealthConfig,
+        nextRotationInSeconds,
+        elapsedSinceRotationSec: elapsedSec,
         currentPersona: this.getCurrentPersona(),
         allPersonas: RESIDENTIAL_ISP_PERSONAS,
       },
@@ -573,7 +713,7 @@ class TelemetryService {
             ? `${Math.round((this.scaleStats.cachedHits / this.scaleStats.totalServed) * 100)}%`
             : "99.4%",
       },
-      recentRequests: this.requestLog.slice(0, 30),
+      recentRequests: this.requestLog.filter((r) => !r.path.startsWith("/api/admin")).slice(0, 30),
     };
   }
 

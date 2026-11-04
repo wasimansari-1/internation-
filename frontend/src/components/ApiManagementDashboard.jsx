@@ -35,7 +35,17 @@ export default function ApiManagementDashboard() {
   const [probing, setProbing] = useState(false);
   const [savingRouting, setSavingRouting] = useState(false);
   const [rotatingPersona, setRotatingPersona] = useState(false);
+  const [updatingStealth, setUpdatingStealth] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
+  const [localCountdown, setLocalCountdown] = useState(150);
+
+  // Client-side smooth 1s countdown tick for next auto-rotation
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setLocalCountdown((prev) => (prev > 0 ? prev - 1 : 150));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   const showToast = (title, message, type = 'success') => {
     setToastMessage({ title, message, type, id: Date.now() });
@@ -101,6 +111,37 @@ export default function ApiManagementDashboard() {
     }
   };
 
+  const handleUpdateStealthConfig = async (patch) => {
+    setUpdatingStealth(true);
+    try {
+      const res = await axios.post('/api/admin/stealth/config', patch);
+      if (res.data?.success) {
+        fetchMetrics(true);
+        if (patch.autoRotate !== undefined) {
+          showToast('Auto-Rotation Engine', `Auto-rotation is now ${patch.autoRotate ? 'ACTIVE (Timed)' : 'PAUSED'}`, 'info');
+        }
+        if (patch.intervalSeconds !== undefined) {
+          showToast('Interval Updated', `Persona auto-switch interval set to ${patch.intervalSeconds / 60} minutes`, 'success');
+        }
+      }
+    } catch (err) {
+      showToast('Config Error', err.message, 'error');
+    } finally {
+      setUpdatingStealth(false);
+    }
+  };
+
+  const handleSelectPersona = async (personaId) => {
+    try {
+      const res = await axios.post('/api/admin/stealth/select', { personaId });
+      if (res.data?.success) {
+        fetchMetrics(true);
+        showToast('ISP Persona Selected', `Active subscriber: ${res.data.persona.name} (${res.data.persona.city})`, 'info');
+      }
+    } catch (err) {
+      showToast('Select Error', err.message, 'error');
+    }
+  };
   const handleRotateStealthPersona = async () => {
     setRotatingPersona(true);
     try {
@@ -519,7 +560,7 @@ export default function ApiManagementDashboard() {
         marginBottom: '20px'
       }}>
 
-        {/* SECTION A: STEALTH RESIDENTIAL ISP ORIGIN MASKING */}
+        {/* SECTION A: STEALTH RESIDENTIAL ISP ORIGIN MASKING (WITH TIMED AUTO-ROTATION) */}
         <div style={{
           background: '#0f172a',
           border: '1px solid rgba(255, 255, 255, 0.08)',
@@ -530,62 +571,195 @@ export default function ApiManagementDashboard() {
           justifyContent: 'space-between'
         }}>
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+            {/* Top controls: Protection Toggle + Auto-Rotate Toggle */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <EyeOff size={18} style={{ color: '#38bdf8' }} />
                 <span style={{ fontSize: '14px', fontWeight: 800, color: '#ffffff' }}>
                   Stealth Origin Masking (ISP Spoofing)
                 </span>
               </div>
-              <button
-                onClick={handleToggleStealth}
-                style={{
-                  background: stealthConfig.enabled ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                  border: stealthConfig.enabled ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(239, 68, 68, 0.4)',
-                  color: stealthConfig.enabled ? '#10b981' : '#ef4444',
-                  borderRadius: '6px',
-                  padding: '4px 10px',
-                  fontSize: '11px',
-                  fontWeight: 800,
-                  cursor: 'pointer'
-                }}
-              >
-                {stealthConfig.enabled ? 'PROTECTION: ON' : 'PROTECTION: OFF'}
-              </button>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {/* Auto Rotate Toggle */}
+                <button
+                  onClick={() => handleUpdateStealthConfig({ autoRotate: !stealthConfig.autoRotate })}
+                  style={{
+                    background: stealthConfig.autoRotate ? 'rgba(56, 189, 248, 0.15)' : 'rgba(100, 116, 139, 0.15)',
+                    border: stealthConfig.autoRotate ? '1px solid rgba(56, 189, 248, 0.5)' : '1px solid rgba(100, 116, 139, 0.3)',
+                    color: stealthConfig.autoRotate ? '#38bdf8' : '#94a3b8',
+                    borderRadius: '6px',
+                    padding: '4px 10px',
+                    fontSize: '11px',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <RefreshCw size={11} className={stealthConfig.autoRotate ? 'animate-spin' : ''} />
+                  AUTO-ROTATE: {stealthConfig.autoRotate ? 'ON' : 'OFF'}
+                </button>
+
+                {/* Master Shield Toggle */}
+                <button
+                  onClick={handleToggleStealth}
+                  style={{
+                    background: stealthConfig.enabled ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                    border: stealthConfig.enabled ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(239, 68, 68, 0.4)',
+                    color: stealthConfig.enabled ? '#10b981' : '#ef4444',
+                    borderRadius: '6px',
+                    padding: '4px 10px',
+                    fontSize: '11px',
+                    fontWeight: 800,
+                    cursor: 'pointer'
+                  }}
+                >
+                  {stealthConfig.enabled ? 'SHIELD: ACTIVE' : 'SHIELD: OFF'}
+                </button>
+              </div>
             </div>
 
-            <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 16px 0', lineHeight: 1.4 }}>
-              Provider ko hamara VPS server IP nahi dikhega. Unhe lagega genuine normal user login kiya hai Indian mobile/broadband connection se.
+            <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 14px 0', lineHeight: 1.4 }}>
+              Upstream exchange provider ko hamara server IP nahi dikhta. System time-to-time real Indian residential subscribers ban kar automatic rotate hota rehta hai (Jio, Airtel, ACT, Vi, BSNL).
             </p>
 
-            {/* Active ISP Profile Card */}
+            {/* Auto-Rotation Timing & Live Countdown Bar (With Organic Human Randomization) */}
+            {stealthConfig.autoRotate && (
+              <div style={{
+                background: 'rgba(56, 189, 248, 0.08)',
+                border: '1px solid rgba(56, 189, 248, 0.25)',
+                borderRadius: '8px',
+                padding: '10px 14px',
+                marginBottom: '14px',
+                fontSize: '11px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#38bdf8', boxShadow: '0 0 8px #38bdf8' }} />
+                    <span style={{ color: '#e2e8f0', fontWeight: 800 }}>
+                      Next Random Switch In:
+                    </span>
+                    <span style={{ color: '#38bdf8', fontWeight: 800, fontSize: '13px', fontFamily: 'monospace' }}>
+                      {Math.floor((stealthConfig.nextRotationInSeconds || localCountdown) / 60)}m {((stealthConfig.nextRotationInSeconds || localCountdown) % 60).toString().padStart(2, '0')}s
+                    </span>
+                  </div>
+
+                  <span style={{ color: '#94a3b8', fontSize: '10px' }}>
+                    Current Lease: <strong style={{ color: '#e2e8f0' }}>{Math.floor((stealthConfig.intervalSeconds || 165) / 60)}m {(stealthConfig.intervalSeconds || 165) % 60}s</strong>
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+                  <span style={{ fontSize: '10px', color: '#64748b' }}>
+                    Random Human Pattern Range:
+                  </span>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    {[
+                      { min: 60, max: 480, label: '🎲 Organic Random (1m - 8m)' },
+                      { min: 60, max: 180, label: '⚡ Fast (1m - 3m)' },
+                      { min: 300, max: 600, label: '⏳ Long (5m - 10m)' }
+                    ].map((modeItem) => {
+                      const isCur =
+                        (stealthConfig.minIntervalSeconds || 60) === modeItem.min &&
+                        (stealthConfig.maxIntervalSeconds || 480) === modeItem.max;
+                      return (
+                        <button
+                          key={modeItem.label}
+                          disabled={updatingStealth}
+                          onClick={() => handleUpdateStealthConfig({ minIntervalSeconds: modeItem.min, maxIntervalSeconds: modeItem.max })}
+                          style={{
+                            background: isCur ? '#38bdf8' : 'rgba(255, 255, 255, 0.05)',
+                            color: isCur ? '#090d16' : '#94a3b8',
+                            border: 'none',
+                            borderRadius: '4px',
+                            padding: '3px 8px',
+                            fontSize: '10px',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            transition: 'all 0.15s'
+                          }}
+                        >
+                          {modeItem.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div style={{ fontSize: '10px', color: '#10b981', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Check size={11} /> Upstream AI Bot Defense: Switch times are unpredictable (kabhi 1m, kabhi 5m, kabhi 8m) so upstream provider never detects a robot.
+                </div>
+              </div>
+            )}
+
+            {/* Active ISP Profile Hero Card */}
             <div style={{
               background: '#1e293b',
-              border: '1px solid rgba(56, 189, 248, 0.25)',
+              border: '1px solid rgba(56, 189, 248, 0.3)',
               borderRadius: '10px',
               padding: '14px 16px',
-              marginBottom: '14px'
+              marginBottom: '14px',
+              boxShadow: '0 4px 14px rgba(0, 0, 0, 0.25)'
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: '11px', fontWeight: 800, color: '#38bdf8' }}>
-                  ACTIVE SIMULATED RESIDENTIAL SUBSCRIBER
+                  CURRENT ACTIVE RESIDENTIAL SUBSCRIBER
                 </span>
-                <span style={{ fontSize: '10px', background: 'rgba(56, 189, 248, 0.2)', color: '#38bdf8', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
-                  {currentPersona.carrier || 'Airtel 5G'}
+                <span style={{ fontSize: '10px', background: 'rgba(56, 189, 248, 0.2)', color: '#38bdf8', padding: '2px 8px', borderRadius: '4px', fontWeight: 800 }}>
+                  {currentPersona.carrier || 'Jio True 5G'}
                 </span>
               </div>
 
-              <div style={{ fontSize: '16px', fontWeight: 800, color: '#ffffff', marginTop: '8px' }}>
+              <div style={{ fontSize: '17px', fontWeight: 800, color: '#ffffff', marginTop: '8px' }}>
                 {currentPersona.name || 'Jio 5G Fiber'}
               </div>
-              <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>
-                Location: <strong style={{ color: '#e2e8f0' }}>{currentPersona.city || 'Mumbai, Maharashtra'}</strong>
+              <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '3px' }}>
+                City: <strong style={{ color: '#e2e8f0' }}>{currentPersona.city || 'Mumbai, Maharashtra'}</strong>
               </div>
-              <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>
-                Spoofed IP: <code style={{ color: '#38bdf8', background: 'rgba(0,0,0,0.3)', padding: '2px 6px', borderRadius: '4px' }}>{currentPersona.ip || '103.21.124.5'}</code>
+              <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '3px' }}>
+                Spoofed Subscriber IP: <code style={{ color: '#38bdf8', background: 'rgba(0,0,0,0.3)', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>{currentPersona.ip || '49.36.142.88'}</code>
               </div>
               <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
-                ASN: {currentPersona.asn || 'AS55836 Reliance Jio'}
+                ASN: {currentPersona.asn || 'AS55836 Reliance Jio Infocomm'}
+              </div>
+            </div>
+
+            {/* Quick 8-ISP Selection Grid */}
+            <div style={{ marginBottom: '14px' }}>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', marginBottom: '8px' }}>
+                QUICK SWITCH RESIDENTIAL OPERATOR (1-CLICK):
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '6px' }}>
+                {(stealthConfig.allPersonas || []).map((p) => {
+                  const isActive = currentPersona.id === p.id || currentPersona.name === p.name;
+                  return (
+                    <button
+                      key={p.id || p.name}
+                      onClick={() => handleSelectPersona(p.id)}
+                      style={{
+                        background: isActive ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255, 255, 255, 0.03)',
+                        border: isActive ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.08)',
+                        color: isActive ? '#38bdf8' : '#94a3b8',
+                        borderRadius: '6px',
+                        padding: '6px 8px',
+                        fontSize: '10px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'all 0.15s',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap'
+                      }}
+                      title={`${p.name} - ${p.city} (${p.ip})`}
+                    >
+                      <div style={{ fontWeight: 800, color: isActive ? '#ffffff' : '#cbd5e1' }}>{p.name}</div>
+                      <div style={{ fontSize: '9px', color: isActive ? '#38bdf8' : '#64748b' }}>{p.city.split(',')[0]}</div>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -611,7 +785,7 @@ export default function ApiManagementDashboard() {
             }}
           >
             <RefreshCw size={14} className={rotatingPersona ? 'animate-spin' : ''} style={{ color: '#38bdf8' }} />
-            {rotatingPersona ? 'Switching ISP Persona...' : 'Rotate to Next Indian ISP (Jio / Airtel / ACT / Vi)'}
+            {rotatingPersona ? 'Switching ISP Persona...' : 'Rotate to Next Indian ISP (Jio / Airtel / ACT / Vi / BSNL)'}
           </button>
         </div>
 
