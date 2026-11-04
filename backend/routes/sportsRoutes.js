@@ -126,10 +126,12 @@ async function getEventMarketsHandler(req, res) {
 
   if (!result || !result.success) {
     return res.status(result?.statusCode || 500).json({
-      success: false,
-      message: result?.error || "Failed to fetch markets",
       data: null,
-      timestamp: new Date().toISOString(),
+      meta: {
+        message: result?.error || "Failed to fetch markets",
+        status_code: result?.statusCode || 500,
+        status: false,
+      },
     });
   }
 
@@ -140,25 +142,20 @@ async function getEventMarketsHandler(req, res) {
     status: true,
   };
 
-  const responsePayload = {
-    success: true,
-    message: "Markets fetched successfully",
+  // Exact schema matching original exchange response:
+  // Root keys: 'data' and 'meta'
+  return res.status(200).json({
     data: {
-      data: {
-        fancyData: rawData.fancyData || [],
-        matchOddsData: rawData.matchOddsData || [],
-        bookmakersData: rawData.bookmakersData || [],
-        sportsbookData: rawData.sportsbookData || [],
-        binaryData: rawData.binaryData || [],
-        lotteryData: rawData.lotteryData || [],
-        isScore: Boolean(rawData.isScore ?? false),
-      },
-      meta: meta,
+      fancyData: rawData.fancyData || [],
+      matchOddsData: rawData.matchOddsData || [],
+      bookmakersData: rawData.bookmakersData || [],
+      sportsbookData: rawData.sportsbookData || [],
+      binaryData: rawData.binaryData || [],
+      lotteryData: rawData.lotteryData || [],
+      isScore: Boolean(rawData.isScore ?? false),
     },
-    timestamp: new Date().toISOString(),
-  };
-
-  return res.status(200).json(responsePayload);
+    meta: meta,
+  });
 }
 
 router.post("/markets-event-list", getEventMarketsHandler);
