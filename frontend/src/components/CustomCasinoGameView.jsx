@@ -120,13 +120,32 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
           }
 
           const now = Date.now();
+          const isResultRound = data.roundStatus === 'RESULT_DECLARED' || data.gameResult;
           if (
             (data.roundId && data.roundId !== lastFetchedRoundId) ||
+            isResultRound ||
             now - lastResultsFetchTime > 15000
           ) {
-            lastFetchedRoundId = data.roundId;
+            if (data.roundId && data.roundId !== lastFetchedRoundId) {
+              lastFetchedRoundId = data.roundId;
+            }
             lastResultsFetchTime = now;
             fetchRecentResults();
+          }
+
+          if (isResultRound && !data.winner && !data.gameResult) {
+            axios
+              .get(`/api/casino/result/${gameId}?_t=${Date.now()}`)
+              .then((res) => {
+                if (res.data?.success && res.data?.data?.winner) {
+                  setOddsData((prev) => ({
+                    ...prev,
+                    winner: res.data.data.winner,
+                    gameResult: res.data.data.winner,
+                  }));
+                }
+              })
+              .catch(() => {});
           }
         }
       } catch (err) {}
@@ -310,6 +329,56 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
       return { label: 'T', bg: '#10b981' };
     }
     return { label: w.slice(0, 2), bg: '#10b981' };
+  };
+
+  // Determine actual real-time declared winner for all games (Teen Patti, Dragon Tiger, Lucky 7, etc.)
+  const getLiveDeclaredWinner = () => {
+    // 1. Direct from oddsData
+    const raw = oddsData?.winner || oddsData?.gameResult;
+    if (raw && raw !== 'DECLARED') {
+      const w = String(raw).trim().toUpperCase();
+      if (w === 'A' || w === 'PLAYER_A') return 'PLAYER A';
+      if (w === 'B' || w === 'PLAYER_B') return 'PLAYER B';
+      if (w === 'D' || w === 'DRAGON') return 'DRAGON';
+      if (w === 'T' || w === 'TIGER') return 'TIGER';
+      if (w === 'L' || w === 'LOW') {
+        const ev = (gameName || oddsData?.eventName || '').toUpperCase();
+        return ev.includes('LION') || ev.includes('DTL') ? 'LION' : 'LOW CARD';
+      }
+      if (w === 'H' || w === 'HIGH') return 'HIGH CARD';
+      if (w === '7') return 'LUCKY 7';
+      if (w === 'TIE') return 'TIE';
+      return String(raw).replace(/_/g, ' ').replace(/\bWIN\b|\bWON\b/gi, '').trim();
+    }
+
+    // 2. Check latest results item from results list
+    const latestResult = results?.[0];
+    if (latestResult) {
+      const mainMkt = latestResult.results?.find((m) => m.marketName === 'WINNER' || m.index === 0);
+      const winRunner = mainMkt?.runners?.find((rn) => rn.result === 'WINNER');
+      const runnerName = winRunner && mainMkt?.runnersName ? mainMkt.runnersName[winRunner.selectionId] : null;
+
+      if (runnerName) {
+        const clean = runnerName.replace(/\(.*?\)/g, '').trim();
+        if (clean) return clean;
+      }
+
+      const w = String(latestResult.winner || '').trim().toUpperCase();
+      if (w === 'A') return 'PLAYER A';
+      if (w === 'B') return 'PLAYER B';
+      if (w === 'D') return 'DRAGON';
+      if (w === 'T') return 'TIGER';
+      if (w === 'L') {
+        const ev = (gameName || oddsData?.eventName || '').toUpperCase();
+        return ev.includes('LION') || ev.includes('DTL') ? 'LION' : 'LOW CARD';
+      }
+      if (w === 'H') return 'HIGH CARD';
+      if (w === '7') return 'LUCKY 7';
+      if (w === 'TIE') return 'TIE';
+      if (w) return w;
+    }
+
+    return null;
   };
 
   // Live API-driven suspension condition
@@ -730,134 +799,142 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
             </div>
 
             {/* Universe Casino Planetary Orbit + 3D Dice Result Banner (Exact matching user design) */}
-            {(oddsData?.roundStatus === 'RESULT_DECLARED' || oddsData?.gameResult) ? (
-              <div
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  backgroundColor: 'rgba(3, 2, 8, 0.82)',
-                  backdropFilter: 'blur(3px)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  zIndex: 8,
-                  pointerEvents: 'none'
-                }}
-              >
-                <div style={{ position: 'relative', width: '220px', height: '180px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {/* Outer Blue Orbit */}
-                  <div
-                    style={{
-                      position: 'absolute',
-                      width: '180px',
-                      height: '180px',
-                      borderRadius: '50%',
-                      border: '2.5px solid #3b82f6',
-                      boxShadow: '0 0 16px rgba(59, 130, 246, 0.45)',
-                      transform: 'rotate(-15deg)'
-                    }}
-                  >
-                    <div style={{ position: 'absolute', top: '16px', right: '28px', width: '9px', height: '9px', backgroundColor: '#e2e8f0', borderRadius: '2px', border: '1px solid #94a3b8', transform: 'rotate(25deg)' }} />
-                  </div>
+            {(() => {
+              const liveWinner = getLiveDeclaredWinner();
+              const isDeclared =
+                oddsData?.roundStatus === 'RESULT_DECLARED' || Boolean(oddsData?.gameResult);
 
-                  {/* Middle Magenta/Pink Orbit */}
-                  <div
-                    style={{
-                      position: 'absolute',
-                      width: '146px',
-                      height: '146px',
-                      borderRadius: '50%',
-                      border: '2.5px solid #ec4899',
-                      boxShadow: '0 0 16px rgba(236, 72, 153, 0.45)',
-                      transform: 'rotate(25deg)'
-                    }}
-                  >
-                    <div style={{ position: 'absolute', bottom: '12px', left: '24px', width: '9px', height: '9px', backgroundColor: '#e2e8f0', borderRadius: '2px', border: '1px solid #94a3b8', transform: 'rotate(-15deg)' }} />
-                  </div>
+              if (!isDeclared || !liveWinner) return null;
 
-                  {/* Inner Yellow Orbit */}
-                  <div
-                    style={{
-                      position: 'absolute',
-                      width: '116px',
-                      height: '116px',
-                      borderRadius: '50%',
-                      border: '2px solid #eab308',
-                      boxShadow: '0 0 12px rgba(234, 179, 8, 0.4)',
-                      transform: 'rotate(-35deg)'
-                    }}
-                  >
-                    <div style={{ position: 'absolute', bottom: '10px', right: '22px', width: '8px', height: '8px', backgroundColor: '#e2e8f0', borderRadius: '2px', border: '1px solid #94a3b8' }} />
-                  </div>
-
-                  {/* Glowing Purple Core Aura */}
-                  <div
-                    style={{
-                      position: 'absolute',
-                      width: '86px',
-                      height: '86px',
-                      borderRadius: '50%',
-                      background: 'radial-gradient(circle, #9333ea 0%, #ec4899 65%, transparent 100%)',
-                      opacity: 0.9,
-                      boxShadow: '0 0 25px rgba(168, 85, 247, 0.7)'
-                    }}
-                  />
-
-                  {/* 3D Casino Dice SVG */}
-                  <div style={{ position: 'relative', zIndex: 3, marginTop: '-14px' }}>
-                    <svg width="68" height="68" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M50 15 L82 32 L50 49 L18 32 Z" fill="#ffffff" stroke="#cbd5e1" strokeWidth="2" strokeLinejoin="round"/>
-                      <circle cx="34" cy="28" r="3.2" fill="#0f172a"/>
-                      <circle cx="50" cy="32" r="3.2" fill="#0f172a"/>
-                      <circle cx="66" cy="36" r="3.2" fill="#0f172a"/>
-                      <path d="M18 32 L50 49 L50 85 L18 68 Z" fill="#e2e8f0" stroke="#cbd5e1" strokeWidth="2" strokeLinejoin="round"/>
-                      <circle cx="34" cy="54" r="3.2" fill="#0f172a"/>
-                      <circle cx="34" cy="68" r="3.2" fill="#0f172a"/>
-                      <path d="M50 49 L82 32 L82 68 L50 85 Z" fill="#cbd5e1" stroke="#94a3b8" strokeWidth="2" strokeLinejoin="round"/>
-                      <circle cx="62" cy="52" r="3.2" fill="#0f172a"/>
-                      <circle cx="70" cy="48" r="3.2" fill="#0f172a"/>
-                      <circle cx="62" cy="68" r="3.2" fill="#0f172a"/>
-                      <circle cx="70" cy="64" r="3.2" fill="#0f172a"/>
-                    </svg>
-                  </div>
-
-                  {/* Iconic Orange Winner Badge */}
-                  <div
-                    style={{
-                      position: 'absolute',
-                      bottom: '22px',
-                      zIndex: 6,
-                      background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
-                      borderRadius: '22px 6px 22px 6px',
-                      padding: '7px 22px',
-                      boxShadow: '0 4px 18px rgba(234, 88, 12, 0.75)',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      border: '1px solid rgba(255, 255, 255, 0.3)',
-                      whiteSpace: 'nowrap'
-                    }}
-                  >
-                    <span
+              return (
+                <div
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    backgroundColor: 'rgba(3, 2, 8, 0.82)',
+                    backdropFilter: 'blur(3px)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 8,
+                    pointerEvents: 'none'
+                  }}
+                >
+                  <div style={{ position: 'relative', width: '220px', height: '180px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {/* Outer Blue Orbit */}
+                    <div
                       style={{
-                        color: '#000000',
-                        fontWeight: 900,
-                        fontSize: '16px',
-                        letterSpacing: '0.6px',
-                        textTransform: 'uppercase',
-                        fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+                        position: 'absolute',
+                        width: '180px',
+                        height: '180px',
+                        borderRadius: '50%',
+                        border: '2.5px solid #3b82f6',
+                        boxShadow: '0 0 16px rgba(59, 130, 246, 0.45)',
+                        transform: 'rotate(-15deg)'
                       }}
                     >
-                      {String(oddsData?.gameResult || 'PLAYER A')
-                        .replace(/_/g, ' ')
-                        .replace(/\bWIN\b|\bWON\b/gi, '')
-                        .trim()} WIN
-                    </span>
+                      <div style={{ position: 'absolute', top: '16px', right: '28px', width: '9px', height: '9px', backgroundColor: '#e2e8f0', borderRadius: '2px', border: '1px solid #94a3b8', transform: 'rotate(25deg)' }} />
+                    </div>
+
+                    {/* Middle Magenta/Pink Orbit */}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        width: '146px',
+                        height: '146px',
+                        borderRadius: '50%',
+                        border: '2.5px solid #ec4899',
+                        boxShadow: '0 0 16px rgba(236, 72, 153, 0.45)',
+                        transform: 'rotate(25deg)'
+                      }}
+                    >
+                      <div style={{ position: 'absolute', bottom: '12px', left: '24px', width: '9px', height: '9px', backgroundColor: '#e2e8f0', borderRadius: '2px', border: '1px solid #94a3b8', transform: 'rotate(-15deg)' }} />
+                    </div>
+
+                    {/* Inner Yellow Orbit */}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        width: '116px',
+                        height: '116px',
+                        borderRadius: '50%',
+                        border: '2px solid #eab308',
+                        boxShadow: '0 0 12px rgba(234, 179, 8, 0.4)',
+                        transform: 'rotate(-35deg)'
+                      }}
+                    >
+                      <div style={{ position: 'absolute', bottom: '10px', right: '22px', width: '8px', height: '8px', backgroundColor: '#e2e8f0', borderRadius: '2px', border: '1px solid #94a3b8' }} />
+                    </div>
+
+                    {/* Glowing Purple Core Aura */}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        width: '86px',
+                        height: '86px',
+                        borderRadius: '50%',
+                        background: 'radial-gradient(circle, #9333ea 0%, #ec4899 65%, transparent 100%)',
+                        opacity: 0.9,
+                        boxShadow: '0 0 25px rgba(168, 85, 247, 0.7)'
+                      }}
+                    />
+
+                    {/* 3D Casino Dice SVG */}
+                    <div style={{ position: 'relative', zIndex: 3, marginTop: '-14px' }}>
+                      <svg width="68" height="68" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M50 15 L82 32 L50 49 L18 32 Z" fill="#ffffff" stroke="#cbd5e1" strokeWidth="2" strokeLinejoin="round"/>
+                        <circle cx="34" cy="28" r="3.2" fill="#0f172a"/>
+                        <circle cx="50" cy="32" r="3.2" fill="#0f172a"/>
+                        <circle cx="66" cy="36" r="3.2" fill="#0f172a"/>
+                        <path d="M18 32 L50 49 L50 85 L18 68 Z" fill="#e2e8f0" stroke="#cbd5e1" strokeWidth="2" strokeLinejoin="round"/>
+                        <circle cx="34" cy="54" r="3.2" fill="#0f172a"/>
+                        <circle cx="34" cy="68" r="3.2" fill="#0f172a"/>
+                        <path d="M50 49 L82 32 L82 68 L50 85 Z" fill="#cbd5e1" stroke="#94a3b8" strokeWidth="2" strokeLinejoin="round"/>
+                        <circle cx="62" cy="52" r="3.2" fill="#0f172a"/>
+                        <circle cx="70" cy="48" r="3.2" fill="#0f172a"/>
+                        <circle cx="62" cy="68" r="3.2" fill="#0f172a"/>
+                        <circle cx="70" cy="64" r="3.2" fill="#0f172a"/>
+                      </svg>
+                    </div>
+
+                    {/* Iconic Orange Winner Badge */}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        bottom: '22px',
+                        zIndex: 6,
+                        background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+                        borderRadius: '22px 6px 22px 6px',
+                        padding: '7px 22px',
+                        boxShadow: '0 4px 18px rgba(234, 88, 12, 0.75)',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        border: '1px solid rgba(255, 255, 255, 0.3)',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      <span
+                        style={{
+                          color: '#000000',
+                          fontWeight: 900,
+                          fontSize: '16px',
+                          letterSpacing: '0.6px',
+                          textTransform: 'uppercase',
+                          fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+                        }}
+                      >
+                        {liveWinner} WIN
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ) : isTableSuspended ? (
+              );
+            })()}
+
+            {/* Suspended Lock Overlay (when betting is paused / cards being scanned) */}
+            {isTableSuspended && !getLiveDeclaredWinner() && (
               <div
                 style={{
                   position: 'absolute',
@@ -899,7 +976,7 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
                   This session has been closed
                 </div>
               </div>
-            ) : null}
+            )}
 
             {/* Top-Right: Circular Countdown Timer Wheel */}
             {!isTableSuspended && timeLeft > 0 && (

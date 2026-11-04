@@ -1,5 +1,5 @@
 import axios from "axios";
-import { httpsAgent } from "../config/hosts.js";
+import { httpsAgent, refreshHostIps } from "../config/hosts.js";
 import { getDemoToken, proxyRequest } from "./authService.js";
 
 let ioClient = null;
@@ -22,6 +22,26 @@ export const activeCasinoSubscribers = new Set([
 export const casinoOddsCache = new Map();
 export const casinoLatestResultCache = new Map();
 export const casinoResultsHistoryCache = new Map();
+export function resolveWinnerLabel(winner, runnerName, eventName = "") {
+  const ev = (eventName || "").toUpperCase();
+  if (runnerName) {
+    const clean = runnerName.replace(/\(.*?\)/g, "").trim();
+    if (clean) return clean;
+  }
+  const w = String(winner || "").trim().toUpperCase();
+  if (w === "A" || w === "PLAYER_A") return "PLAYER A";
+  if (w === "B" || w === "PLAYER_B") return "PLAYER B";
+  if (w === "D" || w === "DRAGON") return "DRAGON";
+  if (w === "T" || w === "TIGER") return "TIGER";
+  if (w === "L" || w === "LOW") {
+    return ev.includes("LION") || ev.includes("DTL") ? "LION" : "LOW CARD";
+  }
+  if (w === "H" || w === "HIGH") return "HIGH CARD";
+  if (w === "7") return "LUCKY 7";
+  if (w === "TIE") return "TIE";
+  return w ? String(winner).replace(/_/g, " ").trim() : "WINNER";
+}
+
 let casinoSocket = null;
 let casinoSocketConnecting = false;
 let casinoHeartbeatInterval = null;
@@ -119,8 +139,8 @@ export function getDefaultCardsForTable(eventId = "", eventName = "") {
   };
 }
 
-export async function ensureNiceCasinoSocket() {
-  if (casinoSocket && casinoSocket.connected) {
+export async function ensureNiceCasinoSocket(forceReconnect = false) {
+  if (!forceReconnect && casinoSocket && casinoSocket.connected) {
     return casinoSocket;
   }
   if (casinoSocketConnecting) {
@@ -133,7 +153,21 @@ export async function ensureNiceCasinoSocket() {
   casinoSocketConnecting = true;
 
   try {
-    const token = await getDemoToken();
+    if (casinoSocket && (!casinoSocket.connected || forceReconnect)) {
+      try {
+        casinoSocket.removeAllListeners();
+        casinoSocket.disconnect();
+      } catch (e) {}
+      casinoSocket = null;
+    }
+
+    if (forceReconnect) {
+      // Auto-detect fresh IPs directly from Google/Cloudflare DNS
+      await refreshHostIps("casino.nice444.com");
+      await refreshHostIps("nice444.com");
+    }
+
+    const token = await getDemoToken(forceReconnect);
     if (!token) {
       casinoSocketConnecting = false;
       return null;
@@ -149,62 +183,62 @@ export async function ensureNiceCasinoSocket() {
       }
     }
 
-    if (!casinoSocket && ioClient) {
-      casinoSocket = ioClient("https://casino.nice444.com", {
-        path: "/universecasino",
-        transports: ["websocket", "polling"],
-        transportOptions: {
-          websocket: { agent: httpsAgent },
-          polling: { agent: httpsAgent },
-        },
-        extraHeaders: {
-          Origin: "https://casino.nice444.com",
-          Referer: "https://casino.nice444.com/",
-          "User-Agent":
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-        },
-        reconnection: true,
-        reconnectionDelay: 1000,
-        reconnectionAttempts: Infinity,
-        auth: { token, uType: "usr" },
-      });
+    casinoSocket = ioClient("https://casino.nice444.com", {
+      path: "/universecasino",
+      transports: ["websocket", "polling"],
+      transportOptions: {
+        websocket: { agent: httpsAgent },
+        polling: { agent: httpsAgent },
+      },
+      extraHeaders: {
+        Origin: "https://casino.nice444.com",
+        Referer: "https://casino.nice444.com/",
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+      },
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionAttempts: Infinity,
+      auth: { token, uType: "usr" },
+    });
 
-      const resubscribeAll = () => {
-        if (!casinoSocket || !casinoSocket.connected) return;
-        for (const gId of activeCasinoSubscribers) {
-          casinoSocket.emit("SCSN", { eventId: String(gId) });
-        }
-      };
-
-      casinoSocket.on("connect", () => {
-        console.log("Connected to Real Nice444 Casino Socket (/universecasino)");
-        resubscribeAll();
-      });
-
-      casinoSocket.on("disconnect", async (reason) => {
-        console.warn("[Nice444 Socket] Disconnected:", reason);
-        if (reason === "io server disconnect" || reason === "transport close") {
-          try {
-            const freshToken = await getDemoToken(true);
-            if (casinoSocket && freshToken) {
-              casinoSocket.auth = { token: freshToken, uType: "usr" };
-              casinoSocket.connect();
-            }
-          } catch (e) {}
-        }
-      });
-
-      if (!casinoHeartbeatInterval) {
-        casinoHeartbeatInterval = setInterval(resubscribeAll, 6000);
+    const resubscribeAll = () => {
+      if (!casinoSocket || !casinoSocket.connected) return;
+      for (const gId of activeCasinoSubscribers) {
+        casinoSocket.emit("SCSN", { eventId: String(gId) });
       }
+    };
 
-      if (!casinoWatchdogInterval) {
-        casinoWatchdogInterval = setInterval(() => {
-          if (!casinoSocket || !casinoSocket.connected) {
-            ensureNiceCasinoSocket().catch(() => {});
-          }
-        }, 5000);
-      }
+    casinoSocket.on("connect", () => {
+      console.log("Connected to Real Nice444 Casino Socket (/universecasino)");
+      resubscribeAll();
+    });
+
+    casinoSocket.on("disconnect", async (reason) => {
+      console.warn("[Nice444 Socket] Disconnected:", reason);
+      // Auto-refresh dynamic DNS IP pool immediately in case provider changed server IP
+      refreshHostIps("casino.nice444.com").catch(() => {});
+      setTimeout(() => {
+        ensureNiceCasinoSocket(true).catch(() => {});
+      }, 1000);
+    });
+
+    casinoSocket.on("connect_error", (err) => {
+      console.warn("Nice444 Casino socket error:", err.message);
+      refreshHostIps("casino.nice444.com").catch(() => {});
+    });
+
+    if (!casinoHeartbeatInterval) {
+      casinoHeartbeatInterval = setInterval(resubscribeAll, 5000);
+    }
+
+    if (!casinoWatchdogInterval) {
+      casinoWatchdogInterval = setInterval(() => {
+        if (!casinoSocket || !casinoSocket.connected) {
+          ensureNiceCasinoSocket(true).catch(() => {});
+        }
+      }, 4000);
+    }
 
       const handleCasinoPacket = (raw) => {
         try {
@@ -423,14 +457,23 @@ export async function ensureNiceCasinoSocket() {
             roundStatus === "RESULT_DECLARED" ||
             payload?.roundStatus === "RESULT_DECLARED"
           ) {
-            const declaredWinner = gameResult || payload?.gameResult || packet?.gameResult;
+            let declaredWinner =
+              gameResult ||
+              payload?.gameResult ||
+              packet?.gameResult ||
+              payload?.winner ||
+              packet?.winner;
+
             if (declaredWinner) {
+              const resolved = resolveWinnerLabel(declaredWinner, null, merged.eventName);
+              merged.winner = resolved;
+              merged.gameResult = resolved;
               const resultPayload = {
                 eventId,
                 eventName: merged.eventName,
                 roundId,
-                winner: String(declaredWinner).replace(/_/g, " ").trim(),
-                gameResult: declaredWinner,
+                winner: resolved,
+                gameResult: resolved,
                 status: "RESULT_DECLARED",
                 roundStatus: "RESULT_DECLARED",
                 cardsArr: JSON.parse(JSON.stringify(currentCards)),
@@ -445,6 +488,17 @@ export async function ensureNiceCasinoSocket() {
                 if (history.length > 50) history.pop();
                 casinoResultsHistoryCache.set(eventId, history);
               }
+            } else {
+              // Asynchronously query actual winner if socket payload omitted it
+              getDedicatedCasinoResult(eventId).then((resObj) => {
+                if (resObj?.data?.winner) {
+                  const live = casinoOddsCache.get(eventId);
+                  if (live && String(live.roundId) === String(roundId)) {
+                    live.winner = resObj.data.winner;
+                    live.gameResult = resObj.data.winner;
+                  }
+                }
+              }).catch(() => {});
             }
           }
         } catch (err) {
@@ -458,7 +512,6 @@ export async function ensureNiceCasinoSocket() {
       casinoSocket.on("connect_error", (err) => {
         console.warn("Nice444 Casino socket error:", err.message);
       });
-    }
 
     // Await actual socket connection (up to 3 seconds)
     for (let i = 0; i < 30; i++) {
@@ -495,7 +548,15 @@ export async function getScrapedCasinoLiveOdds(gameId) {
     }
   }
 
-  if (cached && cached.roundId) {
+  const now = Date.now();
+  const isStale = Boolean(cached && (now - (cached.lastUpdated || 0) > 12000));
+
+  if (isStale) {
+    // Socket was silent for > 12s on VPS or local - trigger clean re-handshake
+    ensureNiceCasinoSocket(true).catch(() => {});
+  }
+
+  if (cached && cached.roundId && !isStale) {
     const elapsed = Math.floor(
       (Date.now() - (cached.leftSecReceivedAt || cached.lastUpdated || Date.now())) / 1000,
     );
@@ -636,22 +697,25 @@ export async function getDedicatedCasinoResult(gameId) {
 
   // 2. Check if current live odds in RAM has a declared winner
   const liveOdds = casinoOddsCache.get(gId);
-  if (liveOdds && (liveOdds.gameResult || liveOdds.roundStatus === "RESULT_DECLARED")) {
-    const winner = liveOdds.gameResult || "DECLARED";
-    const res = {
-      eventId: gId,
-      eventName: liveOdds.eventName,
-      roundId: liveOdds.roundId,
-      winner: String(winner).replace(/_/g, " ").trim(),
-      gameResult: winner,
-      status: "RESULT_DECLARED",
-      roundStatus: "RESULT_DECLARED",
-      cardsArr: liveOdds.cardsArr,
-      timestamp: Date.now(),
-      declaredAt: new Date().toISOString(),
-    };
-    casinoLatestResultCache.set(gId, res);
-    return { success: true, data: res, source: "live_odds_cache" };
+  if (liveOdds && (liveOdds.gameResult || liveOdds.winner || liveOdds.roundStatus === "RESULT_DECLARED")) {
+    const rawWinner = liveOdds.winner || liveOdds.gameResult;
+    if (rawWinner) {
+      const resolved = resolveWinnerLabel(rawWinner, null, liveOdds.eventName);
+      const res = {
+        eventId: gId,
+        eventName: liveOdds.eventName,
+        roundId: liveOdds.roundId,
+        winner: resolved,
+        gameResult: resolved,
+        status: "RESULT_DECLARED",
+        roundStatus: "RESULT_DECLARED",
+        cardsArr: liveOdds.cardsArr,
+        timestamp: Date.now(),
+        declaredAt: new Date().toISOString(),
+      };
+      casinoLatestResultCache.set(gId, res);
+      return { success: true, data: res, source: "live_odds_cache" };
+    }
   }
 
   // 3. Upstream results API fallback
@@ -674,13 +738,18 @@ export async function getDedicatedCasinoResult(gameId) {
     const resultsData = upstreamRes.data?.data || [];
     const first = resultsData[0];
     if (first) {
-      const winner = first.winner || first.gameResult || "DECLARED";
+      const mainMkt = first.results?.find((m) => m.marketName === "WINNER" || m.index === 0);
+      const winRunner = mainMkt?.runners?.find((rn) => rn.result === "WINNER");
+      const runnerName = winRunner && mainMkt?.runnersName ? mainMkt.runnersName[winRunner.selectionId] : null;
+
+      const resolved = resolveWinnerLabel(first.winner || first.gameResult, runnerName, first.eventName);
+
       const formatted = {
         eventId: gId,
         eventName: first.eventName,
         roundId: first.roundId,
-        winner: String(winner).replace(/_/g, " "),
-        gameResult: winner,
+        winner: resolved,
+        gameResult: resolved,
         status: "RESULT_DECLARED",
         roundStatus: "RESULT_DECLARED",
         cardsArr: first.cards || getDefaultCardsForTable(gId, first.eventName),
