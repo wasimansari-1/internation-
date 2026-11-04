@@ -50,6 +50,11 @@ export default function App() {
     } catch (e) {}
   };
 
+  // Dedicated Full-Page Senior Enterprise View for Admin/Gateway (White & Fade Blue, No Consumer Header)
+  if (activeTab === 'GATEWAY') {
+    return <ApiManagementDashboard onSwitchTab={switchTab} />;
+  }
+
   return (
     <div style={{
       minHeight: '100vh',
