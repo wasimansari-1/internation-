@@ -35,6 +35,8 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
   const containerRef = useRef(null);
   const targetEndRef = useRef(0);
   const lastRoundIdRef = useRef(null);
+  const lastResultsFetchRoundRef = useRef(null);
+  const lastDedicatedFetchRoundRef = useRef(null);
 
   // 1. Fetch Decrypted Recent Results
   const fetchRecentResults = async () => {
@@ -123,17 +125,26 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
           const isResultRound = data.roundStatus === 'RESULT_DECLARED' || data.gameResult;
           if (
             (data.roundId && data.roundId !== lastFetchedRoundId) ||
-            isResultRound ||
-            now - lastResultsFetchTime > 15000
+            (isResultRound && lastResultsFetchRoundRef.current !== data.roundId) ||
+            now - lastResultsFetchTime > 20000
           ) {
             if (data.roundId && data.roundId !== lastFetchedRoundId) {
               lastFetchedRoundId = data.roundId;
+            }
+            if (isResultRound) {
+              lastResultsFetchRoundRef.current = data.roundId;
             }
             lastResultsFetchTime = now;
             fetchRecentResults();
           }
 
-          if (isResultRound && !data.winner && !data.gameResult) {
+          if (
+            isResultRound &&
+            !data.winner &&
+            !data.gameResult &&
+            lastDedicatedFetchRoundRef.current !== data.roundId
+          ) {
+            lastDedicatedFetchRoundRef.current = data.roundId;
             axios
               .get(`/api/casino/result/${gameId}?_t=${Date.now()}`)
               .then((res) => {
@@ -351,9 +362,9 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
       return String(raw).replace(/_/g, ' ').replace(/\bWIN\b|\bWON\b/gi, '').trim();
     }
 
-    // 2. Check latest results item from results list
+    // 2. Check latest results item from results list ONLY IF roundId matches current round!
     const latestResult = results?.[0];
-    if (latestResult) {
+    if (latestResult && String(latestResult.roundId) === String(oddsData?.roundId)) {
       const mainMkt = latestResult.results?.find((m) => m.marketName === 'WINNER' || m.index === 0);
       const winRunner = mainMkt?.runners?.find((rn) => rn.result === 'WINNER');
       const runnerName = winRunner && mainMkt?.runnersName ? mainMkt.runnersName[winRunner.selectionId] : null;
@@ -653,20 +664,22 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
             }}
           >
             {/* Live TV Video Dealer Feed from Nice444 Stream */}
-            <iframe
-              src={watchUrl || `/api/casino/stream-proxy/${gameId}`}
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                height: '100%',
-                border: 'none',
-                zIndex: 2,
-              }}
-              title="Nice444 Live Dealer Stream"
-              allow="autoplay; fullscreen"
-            />
+            {watchUrl && (
+              <iframe
+                src={watchUrl}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: '100%',
+                  border: 'none',
+                  zIndex: 2,
+                }}
+                title="Nice444 Live Dealer Stream"
+                allow="autoplay; fullscreen"
+              />
+            )}
 
             {/* Backdrop Center - Universe Casino Logo when stream is connecting */}
             <div

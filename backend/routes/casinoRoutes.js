@@ -167,40 +167,64 @@ router.post("/launch-url", async (req, res) => {
   }
 });
 
+const RESIDENTIAL_IPS = [
+  "103.21.124.5",
+  "49.36.142.88",
+  "152.57.12.1",
+  "103.251.167.20",
+  "122.161.49.200",
+];
+
+async function fetchUpstreamWatchUrl(gameId, incomingIp) {
+  let token = await getDemoToken();
+  const candidateIps = [incomingIp, ...RESIDENTIAL_IPS].filter(Boolean);
+
+  for (const ip of candidateIps) {
+    try {
+      const res = await axios.post(
+        "https://casino.nice444.com/casinoapp/exchange/users/streaming/casinoGameWatchLink",
+        { streamId: String(gameId), timestamp: Date.now() },
+        {
+          headers: {
+            Origin: "https://casino.nice444.com",
+            Referer: "https://casino.nice444.com/",
+            Authorization: `Bearer ${token}`,
+            "X-Forwarded-For": ip,
+            "X-Real-IP": ip,
+            "CF-Connecting-IP": ip,
+            "User-Agent":
+              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+          },
+          timeout: 4500,
+        },
+      );
+      if (res.data?.data?.url) {
+        return res.data.data.url;
+      }
+    } catch (e) {
+      if (e.response?.status === 401 || e.response?.status === 403) {
+        token = await getDemoToken(true);
+      }
+      continue;
+    }
+  }
+  return null;
+}
+
 router.get("/watch-link/:gameId", async (req, res) => {
   const { gameId } = req.params;
   const clientIp =
     req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
     req.headers["x-real-ip"] ||
     req.headers["cf-connecting-ip"] ||
-    "49.36.142.88";
+    "103.21.124.5";
 
   try {
-    const token = await getDemoToken();
-    const upstreamRes = await axios.post(
-      "https://casino.nice444.com/casinoapp/exchange/users/streaming/casinoGameWatchLink",
-      { streamId: String(gameId), timestamp: Date.now() },
-      {
-        headers: {
-          Origin: "https://casino.nice444.com",
-          Referer: "https://casino.nice444.com/",
-          Authorization: `Bearer ${token}`,
-          "X-Forwarded-For": clientIp,
-          "X-Real-IP": clientIp,
-          "CF-Connecting-IP": clientIp,
-          "User-Agent":
-            req.headers["user-agent"] ||
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-        },
-        timeout: 6000,
-      },
-    );
-    if (upstreamRes.data?.data?.url) {
-      return res.json({ success: true, url: upstreamRes.data.data.url });
+    const url = await fetchUpstreamWatchUrl(gameId, clientIp);
+    if (url) {
+      return res.json({ success: true, url });
     }
-  } catch (err) {
-    // If upstream returns 422 or network error, return local stream proxy fallback seamlessly
-  }
+  } catch (err) {}
   return res.json({ success: true, url: `/api/casino/stream-proxy/${gameId}` });
 });
 
@@ -210,48 +234,19 @@ router.get("/stream-proxy/:gameId", async (req, res) => {
     req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
     req.headers["x-real-ip"] ||
     req.headers["cf-connecting-ip"] ||
-    "49.36.142.88";
+    "103.21.124.5";
 
   try {
-    let token = await getDemoToken();
-    let upstreamRes;
-    const requestHeaders = {
-      Origin: "https://casino.nice444.com",
-      Referer: "https://casino.nice444.com/",
-      Authorization: `Bearer ${token}`,
-      "X-Forwarded-For": clientIp,
-      "X-Real-IP": clientIp,
-      "CF-Connecting-IP": clientIp,
-      "User-Agent":
-        req.headers["user-agent"] ||
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-    };
-
-    try {
-      upstreamRes = await axios.post(
-        "https://casino.nice444.com/casinoapp/exchange/users/streaming/casinoGameWatchLink",
-        { streamId: String(gameId), timestamp: Date.now() },
-        {
-          headers: requestHeaders,
-          timeout: 6000,
-        },
-      );
-    } catch (authErr) {
-      token = await getDemoToken(true);
-      requestHeaders.Authorization = `Bearer ${token}`;
-      upstreamRes = await axios.post(
-        "https://casino.nice444.com/casinoapp/exchange/users/streaming/casinoGameWatchLink",
-        { streamId: String(gameId), timestamp: Date.now() },
-        {
-          headers: requestHeaders,
-          timeout: 6000,
-        },
-      );
-    }
-
-    const streamUrl = upstreamRes.data?.data?.url;
+    const streamUrl = await fetchUpstreamWatchUrl(gameId, clientIp);
     if (!streamUrl) {
-      return res.status(404).send("Stream URL not found");
+      return res.status(200).send(`
+        <!DOCTYPE html><html><body style="background:#050508;color:#94a3b8;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-family:sans-serif;">
+          <div style="text-align:center;">
+            <p style="font-size:12px;font-weight:700;letter-spacing:0.5px;color:#38bdf8;">SYNCING DEALER STREAM...</p>
+            <script>setTimeout(function(){ window.location.reload(); }, 2500);</script>
+          </div>
+        </body></html>
+      `);
     }
 
     const pageRes = await axios.get(streamUrl, {
@@ -393,7 +388,14 @@ router.get("/stream-proxy/:gameId", async (req, res) => {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     return res.send(html);
   } catch (err) {
-    return res.status(500).send(`Failed to proxy stream: ${err.message}`);
+    return res.status(200).send(`
+      <!DOCTYPE html><html><body style="background:#050508;color:#94a3b8;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-family:sans-serif;">
+        <div style="text-align:center;">
+          <p style="font-size:12px;font-weight:700;letter-spacing:0.5px;color:#38bdf8;">RECONNECTING DEALER STREAM...</p>
+          <script>setTimeout(function(){ window.location.reload(); }, 2500);</script>
+        </div>
+      </body></html>
+    `);
   }
 });
 

@@ -139,21 +139,25 @@ export function getDefaultCardsForTable(eventId = "", eventName = "") {
   };
 }
 
+let lastSocketConnectAttempt = 0;
+
 export async function ensureNiceCasinoSocket(forceReconnect = false) {
   if (!forceReconnect && casinoSocket && casinoSocket.connected) {
     return casinoSocket;
   }
-  if (casinoSocketConnecting) {
-    for (let i = 0; i < 25; i++) {
+  const now = Date.now();
+  if (casinoSocketConnecting || now - lastSocketConnectAttempt < 5000) {
+    for (let i = 0; i < 20; i++) {
       if (casinoSocket && casinoSocket.connected) return casinoSocket;
       await new Promise((r) => setTimeout(r, 100));
     }
     return casinoSocket;
   }
   casinoSocketConnecting = true;
+  lastSocketConnectAttempt = now;
 
   try {
-    if (casinoSocket && (!casinoSocket.connected || forceReconnect)) {
+    if (casinoSocket) {
       try {
         casinoSocket.removeAllListeners();
         casinoSocket.disconnect();
@@ -197,8 +201,10 @@ export async function ensureNiceCasinoSocket(forceReconnect = false) {
           "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
       },
       reconnection: true,
-      reconnectionDelay: 1000,
+      reconnectionDelay: 2000,
+      reconnectionDelayMax: 5000,
       reconnectionAttempts: Infinity,
+      timeout: 10000,
       auth: { token, uType: "usr" },
     });
 
@@ -216,11 +222,14 @@ export async function ensureNiceCasinoSocket(forceReconnect = false) {
 
     casinoSocket.on("disconnect", async (reason) => {
       console.warn("[Nice444 Socket] Disconnected:", reason);
-      // Auto-refresh dynamic DNS IP pool immediately in case provider changed server IP
-      refreshHostIps("casino.nice444.com").catch(() => {});
-      setTimeout(() => {
-        ensureNiceCasinoSocket(true).catch(() => {});
-      }, 1000);
+      // Socket.IO handles automatic reconnection natively; do not destroy client immediately
+      if (reason === "io server disconnect") {
+        setTimeout(() => {
+          if (!casinoSocket || !casinoSocket.connected) {
+            ensureNiceCasinoSocket(true).catch(() => {});
+          }
+        }, 5000);
+      }
     });
 
     casinoSocket.on("connect_error", (err) => {
@@ -229,15 +238,18 @@ export async function ensureNiceCasinoSocket(forceReconnect = false) {
     });
 
     if (!casinoHeartbeatInterval) {
-      casinoHeartbeatInterval = setInterval(resubscribeAll, 5000);
+      casinoHeartbeatInterval = setInterval(resubscribeAll, 8000);
     }
 
     if (!casinoWatchdogInterval) {
       casinoWatchdogInterval = setInterval(() => {
         if (!casinoSocket || !casinoSocket.connected) {
-          ensureNiceCasinoSocket(true).catch(() => {});
+          const timeSince = Date.now() - lastSocketConnectAttempt;
+          if (timeSince > 12000) {
+            ensureNiceCasinoSocket(true).catch(() => {});
+          }
         }
-      }, 4000);
+      }, 8000);
     }
 
       const handleCasinoPacket = (raw) => {
@@ -549,22 +561,39 @@ export async function getScrapedCasinoLiveOdds(gameId) {
   }
 
   const now = Date.now();
-  const isStale = Boolean(cached && (now - (cached.lastUpdated || 0) > 12000));
+  const timeSinceLastUpdate = now - (cached?.lastUpdated || 0);
 
-  if (isStale) {
-    // Socket was silent for > 12s on VPS or local - trigger clean re-handshake
-    ensureNiceCasinoSocket(true).catch(() => {});
+  if (cached && timeSinceLastUpdate > 25000) {
+    // Background refresh socket if silent for > 25 seconds
+    ensureNiceCasinoSocket().catch(() => {});
   }
 
-  if (cached && cached.roundId && !isStale) {
+  // If we have cached live round data in RAM, ALWAYS prioritize it over completed historical results!
+  if (cached && cached.roundId) {
     const elapsed = Math.floor(
-      (Date.now() - (cached.leftSecReceivedAt || cached.lastUpdated || Date.now())) / 1000,
+      (now - (cached.leftSecReceivedAt || cached.lastUpdated || now)) / 1000,
     );
     const isSuspended =
       cached.roundStatus === "RESULT_DECLARED" ||
       cached.roundStatus === "CARD_SCAN" ||
       cached.roundStatus === "SUSPEND" ||
       cached.status === "SUSPEND";
+
+    const isDeclared =
+      cached.roundStatus === "RESULT_DECLARED" || Boolean(cached.gameResult);
+
+    // Auto-advance out of declared result screen after 7 seconds so UI never gets stuck
+    if (isDeclared && elapsed > 7) {
+      return {
+        ...cached,
+        roundStatus: "PLACE_THE_BET",
+        status: "ONLINE",
+        winner: null,
+        gameResult: null,
+        cardsArr: getDefaultCardsForTable(gId, cached.eventName),
+        leftSec: Math.max(0, 45 - (elapsed - 7)),
+      };
+    }
 
     const liveLeftSec = isSuspended
       ? 0
