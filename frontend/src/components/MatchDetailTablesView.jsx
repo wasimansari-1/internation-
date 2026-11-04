@@ -15,7 +15,7 @@ const formatSize = (size) => {
     const val = num / 1000;
     return val % 1 === 0 ? `${val}K` : `${val.toFixed(1)}K`;
   }
-  return `${Math.round(num)}`;
+  return num % 1 === 0 ? `${num}` : `${num.toFixed(1)}`;
 };
 
 const MemoizedLiveTvPlayer = React.memo(function MemoizedLiveTvPlayer({
@@ -435,27 +435,41 @@ export default function MatchDetailTablesView({ event, onBack }) {
     };
   }, [event]);
 
-  // Fancy filter logic matching Screenshot 1 sub-tabs
-  const filteredFancy = fancyMarkets.filter((f) => {
-    if (fancySubTab === 'ALL') return true;
-    const name = (f.marketName || f.sessionName || '').toLowerCase();
-    if (fancySubTab === 'Ball by Ball') {
-      return name.includes('ball') || name.includes('0.') || name.includes('1.') || name.includes('2.');
-    }
-    if (fancySubTab === 'Line Market') {
-      return name.includes('line') || name.includes('over runs') || name.includes('over run');
-    }
-    if (fancySubTab === 'Meter') {
-      return name.includes('meter') || name.includes('wicket') || name.includes('fall');
-    }
-    if (fancySubTab === 'Khado') {
-      return name.includes('khado') || name.includes('boundary') || name.includes('four') || name.includes('six');
-    }
-    if (fancySubTab === 'Fancy') {
-      return !name.includes('ball') && !name.includes('meter') && !name.includes('khado');
-    }
-    return true;
-  });
+  // Fancy filter logic matching Screenshot 1 sub-tabs (excludes closed & 0-rate dead markets, sorted by sequence)
+  const filteredFancy = fancyMarkets
+    .filter((f) => {
+      const isClosed =
+        f.isClosed === 1 ||
+        f.status === 'CLOSED' ||
+        f.status === 'SETTLED' ||
+        f.status === 'VOID';
+      if (isClosed) return false;
+      const isSusp = f.isSuspended || f.status === 'SUSPENDED' || f.status === 'BALLRUN';
+      const hasRates =
+        (f.yes?.price !== null && f.yes?.price !== undefined && f.yes.price > 0) ||
+        (f.no?.price !== null && f.no?.price !== undefined && f.no.price > 0);
+      if (!hasRates && !isSusp) return false;
+
+      if (fancySubTab === 'ALL') return true;
+      const name = (f.marketName || f.sessionName || '').toLowerCase();
+      if (fancySubTab === 'Ball by Ball') {
+        return name.includes('ball') || name.includes('0.') || name.includes('1.') || name.includes('2.');
+      }
+      if (fancySubTab === 'Line Market') {
+        return name.includes('line') || name.includes('over runs') || name.includes('over run');
+      }
+      if (fancySubTab === 'Meter') {
+        return name.includes('meter') || name.includes('wicket') || name.includes('fall');
+      }
+      if (fancySubTab === 'Khado') {
+        return name.includes('khado') || name.includes('boundary') || name.includes('four') || name.includes('six');
+      }
+      if (fancySubTab === 'Fancy') {
+        return !name.includes('ball') && !name.includes('meter') && !name.includes('khado');
+      }
+      return true;
+    })
+    .sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
 
   // Sportsbook filter logic matching Screenshot 2 sub-tabs
   const filteredSportsbook = sportsbook.filter((sb) => {
@@ -621,19 +635,21 @@ export default function MatchDetailTablesView({ event, onBack }) {
           style={{
             backgroundColor: '#fef3c7',
             color: '#b45309',
-            padding: '6px 12px',
+            padding: '5px 12px',
             fontSize: '11px',
             fontWeight: 700,
             borderBottom: '1px solid #fde68a',
             display: 'flex',
             alignItems: 'center',
-            gap: '6px',
+            gap: '8px',
             overflow: 'hidden',
             whiteSpace: 'nowrap'
           }}
         >
-          <span>📢</span>
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{news}</span>
+          <span style={{ fontSize: '13px' }}>📢</span>
+          <marquee scrollamount="4" style={{ flex: 1, overflow: 'hidden' }}>
+            {news}
+          </marquee>
         </div>
       )}
 
@@ -830,60 +846,85 @@ export default function MatchDetailTablesView({ event, onBack }) {
                         {r.name}
                       </div>
 
-                      {/* Back */}
-                      <button
-                        onClick={() => !isSuspended && setSelectedBet({ side: 'BACK', runner: r.name, rate: r.back?.price, size: r.back?.size })}
-                        className={isFlashBack ? 'flash-back' : ''}
-                        disabled={isSuspended}
-                        style={{
-                          background: isFlashBack ? '#fde047' : '#72bbef',
-                          border: 'none',
-                          borderRight: '1px solid #ffffff',
-                          padding: '4px 0',
-                          textAlign: 'center',
-                          cursor: isSuspended ? 'default' : 'pointer',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          height: '42px',
-                          transition: 'background-color 0.1s'
-                        }}
-                      >
-                        <span style={{ fontSize: '13px', fontWeight: 800, color: '#000' }}>
-                          {isSuspended || r.back?.price === null ? '-' : r.back?.price}
-                        </span>
-                        <span style={{ fontSize: '9px', color: '#334155' }}>
-                          {formatSize(r.back?.size)}
-                        </span>
-                      </button>
+                      <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: '64px 64px' }}>
+                        {/* Back */}
+                        <button
+                          onClick={() => !isSuspended && setSelectedBet({ side: 'BACK', runner: r.name, rate: r.back?.price, size: r.back?.size })}
+                          className={isFlashBack ? 'flash-back' : ''}
+                          disabled={isSuspended}
+                          style={{
+                            background: isFlashBack ? '#fde047' : '#72bbef',
+                            border: 'none',
+                            borderRight: '1px solid #ffffff',
+                            padding: '4px 0',
+                            textAlign: 'center',
+                            cursor: isSuspended ? 'default' : 'pointer',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            height: '42px',
+                            transition: 'background-color 0.1s'
+                          }}
+                        >
+                          <span style={{ fontSize: '13px', fontWeight: 800, color: '#000' }}>
+                            {r.back?.price !== null && r.back?.price !== undefined ? r.back.price : '-'}
+                          </span>
+                          <span style={{ fontSize: '9px', color: '#334155' }}>
+                            {formatSize(r.back?.size)}
+                          </span>
+                        </button>
 
-                      {/* Lay */}
-                      <button
-                        onClick={() => !isSuspended && setSelectedBet({ side: 'LAY', runner: r.name, rate: r.lay?.price, size: r.lay?.size })}
-                        className={isFlashLay ? 'flash-lay' : ''}
-                        disabled={isSuspended}
-                        style={{
-                          background: isFlashLay ? '#f43f5e' : '#faa9ba',
-                          border: 'none',
-                          padding: '4px 0',
-                          textAlign: 'center',
-                          cursor: isSuspended ? 'default' : 'pointer',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          height: '42px',
-                          transition: 'background-color 0.1s'
-                        }}
-                      >
-                        <span style={{ fontSize: '13px', fontWeight: 800, color: '#000' }}>
-                          {isSuspended || r.lay?.price === null ? '-' : r.lay?.price}
-                        </span>
-                        <span style={{ fontSize: '9px', color: '#334155' }}>
-                          {formatSize(r.lay?.size)}
-                        </span>
-                      </button>
+                        {/* Lay */}
+                        <button
+                          onClick={() => !isSuspended && setSelectedBet({ side: 'LAY', runner: r.name, rate: r.lay?.price, size: r.lay?.size })}
+                          className={isFlashLay ? 'flash-lay' : ''}
+                          disabled={isSuspended}
+                          style={{
+                            background: isFlashLay ? '#f43f5e' : '#faa9ba',
+                            border: 'none',
+                            padding: '4px 0',
+                            textAlign: 'center',
+                            cursor: isSuspended ? 'default' : 'pointer',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            height: '42px',
+                            transition: 'background-color 0.1s'
+                          }}
+                        >
+                          <span style={{ fontSize: '13px', fontWeight: 800, color: '#000' }}>
+                            {r.lay?.price !== null && r.lay?.price !== undefined ? r.lay.price : '-'}
+                          </span>
+                          <span style={{ fontSize: '9px', color: '#334155' }}>
+                            {formatSize(r.lay?.size)}
+                          </span>
+                        </button>
+
+                        {/* Suspended Watermark */}
+                        {isSuspended && (
+                          <div
+                            style={{
+                              position: 'absolute',
+                              inset: 0,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              backgroundColor: 'rgba(255, 255, 255, 0.45)',
+                              color: '#0f172a',
+                              fontWeight: 900,
+                              fontSize: '11px',
+                              letterSpacing: '0.4px',
+                              pointerEvents: 'none',
+                              zIndex: 2,
+                              textShadow: '0 0 2px rgba(255,255,255,0.8)'
+                            }}
+                          >
+                            Suspended
+                          </div>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -957,9 +998,7 @@ export default function MatchDetailTablesView({ event, onBack }) {
             const isFlashLay = flashLaySet.has(`bm_l_${r.selectionId}`);
             const isSuspended =
               r.isSuspended ||
-              r.status === 'SUSPENDED' ||
-              r.back?.price === null ||
-              isNaN(Number(r.back?.price));
+              r.status === 'SUSPENDED';
 
             return (
               <div
@@ -976,60 +1015,85 @@ export default function MatchDetailTablesView({ event, onBack }) {
                   {r.name}
                 </div>
 
-                {/* Back */}
-                <button
-                  onClick={() => !isSuspended && setSelectedBet({ side: 'BACK', runner: r.name, rate: r.back?.price, size: r.back?.size })}
-                  className={isFlashBack ? 'flash-back' : ''}
-                  disabled={isSuspended}
-                  style={{
-                    background: isFlashBack ? '#fde047' : '#72bbef',
-                    border: 'none',
-                    borderRight: '1px solid #ffffff',
-                    padding: '4px 0',
-                    textAlign: 'center',
-                    cursor: isSuspended ? 'default' : 'pointer',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    height: '42px',
-                    transition: 'background-color 0.1s'
-                  }}
-                >
-                  <span style={{ fontSize: '13px', fontWeight: 800, color: '#000' }}>
-                    {isSuspended || r.back?.price === null ? '0' : r.back?.price}
-                  </span>
-                  <span style={{ fontSize: '9px', color: '#334155' }}>
-                    {formatSize(r.back?.size)}
-                  </span>
-                </button>
+                <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: '64px 64px' }}>
+                  {/* Back */}
+                  <button
+                    onClick={() => !isSuspended && setSelectedBet({ side: 'BACK', runner: r.name, rate: r.back?.price, size: r.back?.size })}
+                    className={isFlashBack ? 'flash-back' : ''}
+                    disabled={isSuspended}
+                    style={{
+                      background: isFlashBack ? '#fde047' : '#72bbef',
+                      border: 'none',
+                      borderRight: '1px solid #ffffff',
+                      padding: '4px 0',
+                      textAlign: 'center',
+                      cursor: isSuspended ? 'default' : 'pointer',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      height: '42px',
+                      transition: 'background-color 0.1s'
+                    }}
+                  >
+                    <span style={{ fontSize: '13px', fontWeight: 800, color: '#000' }}>
+                      {r.back?.price !== null && r.back?.price !== undefined ? r.back.price : '0'}
+                    </span>
+                    <span style={{ fontSize: '9px', color: '#334155' }}>
+                      {formatSize(r.back?.size)}
+                    </span>
+                  </button>
 
-                {/* Lay */}
-                <button
-                  onClick={() => !isSuspended && setSelectedBet({ side: 'LAY', runner: r.name, rate: r.lay?.price, size: r.lay?.size })}
-                  className={isFlashLay ? 'flash-lay' : ''}
-                  disabled={isSuspended}
-                  style={{
-                    background: isFlashLay ? '#f43f5e' : '#faa9ba',
-                    border: 'none',
-                    padding: '4px 0',
-                    textAlign: 'center',
-                    cursor: isSuspended ? 'default' : 'pointer',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    height: '42px',
-                    transition: 'background-color 0.1s'
-                  }}
-                >
-                  <span style={{ fontSize: '13px', fontWeight: 800, color: '#000' }}>
-                    {isSuspended || r.lay?.price === null ? '0' : r.lay?.price}
-                  </span>
-                  <span style={{ fontSize: '9px', color: '#334155' }}>
-                    {formatSize(r.lay?.size)}
-                  </span>
-                </button>
+                  {/* Lay */}
+                  <button
+                    onClick={() => !isSuspended && setSelectedBet({ side: 'LAY', runner: r.name, rate: r.lay?.price, size: r.lay?.size })}
+                    className={isFlashLay ? 'flash-lay' : ''}
+                    disabled={isSuspended}
+                    style={{
+                      background: isFlashLay ? '#f43f5e' : '#faa9ba',
+                      border: 'none',
+                      padding: '4px 0',
+                      textAlign: 'center',
+                      cursor: isSuspended ? 'default' : 'pointer',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      height: '42px',
+                      transition: 'background-color 0.1s'
+                    }}
+                  >
+                    <span style={{ fontSize: '13px', fontWeight: 800, color: '#000' }}>
+                      {r.lay?.price !== null && r.lay?.price !== undefined ? r.lay.price : '0'}
+                    </span>
+                    <span style={{ fontSize: '9px', color: '#334155' }}>
+                      {formatSize(r.lay?.size)}
+                    </span>
+                  </button>
+
+                  {/* Suspended Watermark */}
+                  {isSuspended && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: 'rgba(255, 255, 255, 0.45)',
+                        color: '#0f172a',
+                        fontWeight: 900,
+                        fontSize: '11px',
+                        letterSpacing: '0.4px',
+                        pointerEvents: 'none',
+                        zIndex: 2,
+                        textShadow: '0 0 2px rgba(255,255,255,0.8)'
+                      }}
+                    >
+                      Suspended
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -1219,62 +1283,85 @@ export default function MatchDetailTablesView({ event, onBack }) {
                       <span style={{ fontSize: '12px', color: '#94a3b8', cursor: 'pointer', marginLeft: '6px' }}>ⓘ</span>
                     </div>
 
-                    {/* NO (Pink) */}
-                    <button
-                      onClick={() => !isSuspended && setSelectedBet({ side: 'NO', runner: marketName, rate: noPrice, size: noSize })}
-                      className={isFlashNo ? 'flash-lay' : ''}
-                      disabled={isSuspended}
-                      style={{
-                        background: isFlashNo ? '#f43f5e' : '#faa9ba',
-                        border: 'none',
-                        borderRight: '1px solid #ffffff',
-                        padding: '4px 0',
-                        textAlign: 'center',
-                        cursor: isSuspended ? 'default' : 'pointer',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        height: '42px',
-                        opacity: isSuspended ? 0.6 : 1,
-                        transition: 'background-color 0.1s'
-                      }}
-                    >
-                      <span style={{ fontSize: '13px', fontWeight: 800, color: '#000' }}>
-                        {isSuspended ? '-' : noPrice}
-                      </span>
-                      <span style={{ fontSize: '9px', color: '#334155' }}>
-                        {isSuspended ? '' : noSize}
-                      </span>
-                    </button>
+                    <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: '64px 64px' }}>
+                      {/* NO (Pink) */}
+                      <button
+                        onClick={() => !isSuspended && setSelectedBet({ side: 'NO', runner: marketName, rate: noPrice, size: noSize })}
+                        className={isFlashNo ? 'flash-lay' : ''}
+                        disabled={isSuspended}
+                        style={{
+                          background: isFlashNo ? '#f43f5e' : '#faa9ba',
+                          border: 'none',
+                          borderRight: '1px solid #ffffff',
+                          padding: '4px 0',
+                          textAlign: 'center',
+                          cursor: isSuspended ? 'default' : 'pointer',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          height: '42px',
+                          transition: 'background-color 0.1s'
+                        }}
+                      >
+                        <span style={{ fontSize: '13px', fontWeight: 800, color: '#000' }}>
+                          {noPrice}
+                        </span>
+                        <span style={{ fontSize: '9px', color: '#334155' }}>
+                          {formatSize(noSize)}
+                        </span>
+                      </button>
 
-                    {/* YES (Blue) */}
-                    <button
-                      onClick={() => !isSuspended && setSelectedBet({ side: 'YES', runner: marketName, rate: yesPrice, size: yesSize })}
-                      className={isFlashYes ? 'flash-back' : ''}
-                      disabled={isSuspended}
-                      style={{
-                        background: isFlashYes ? '#fde047' : '#72bbef',
-                        border: 'none',
-                        padding: '4px 0',
-                        textAlign: 'center',
-                        cursor: isSuspended ? 'default' : 'pointer',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        height: '42px',
-                        opacity: isSuspended ? 0.6 : 1,
-                        transition: 'background-color 0.1s'
-                      }}
-                    >
-                      <span style={{ fontSize: '13px', fontWeight: 800, color: '#000' }}>
-                        {isSuspended ? '-' : yesPrice}
-                      </span>
-                      <span style={{ fontSize: '9px', color: '#334155' }}>
-                        {isSuspended ? '' : yesSize}
-                      </span>
-                    </button>
+                      {/* YES (Blue) */}
+                      <button
+                        onClick={() => !isSuspended && setSelectedBet({ side: 'YES', runner: marketName, rate: yesPrice, size: yesSize })}
+                        className={isFlashYes ? 'flash-back' : ''}
+                        disabled={isSuspended}
+                        style={{
+                          background: isFlashYes ? '#fde047' : '#72bbef',
+                          border: 'none',
+                          padding: '4px 0',
+                          textAlign: 'center',
+                          cursor: isSuspended ? 'default' : 'pointer',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          height: '42px',
+                          transition: 'background-color 0.1s'
+                        }}
+                      >
+                        <span style={{ fontSize: '13px', fontWeight: 800, color: '#000' }}>
+                          {yesPrice}
+                        </span>
+                        <span style={{ fontSize: '9px', color: '#334155' }}>
+                          {formatSize(yesSize)}
+                        </span>
+                      </button>
+
+                      {/* Suspended Watermark */}
+                      {isSuspended && (
+                        <div
+                          style={{
+                            position: 'absolute',
+                            inset: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            backgroundColor: 'rgba(255, 255, 255, 0.45)',
+                            color: '#0f172a',
+                            fontWeight: 900,
+                            fontSize: '11px',
+                            letterSpacing: '0.4px',
+                            pointerEvents: 'none',
+                            zIndex: 2,
+                            textShadow: '0 0 2px rgba(255,255,255,0.8)'
+                          }}
+                        >
+                          Suspended
+                        </div>
+                      )}
+                    </div>
                   </div>
                 );
               })
@@ -1576,6 +1663,32 @@ export default function MatchDetailTablesView({ event, onBack }) {
           >
             Close
           </button>
+        </div>
+      )}
+
+      {/* Bottom Floating News Marquee (Nice444 style) */}
+      {news && (
+        <div
+          style={{
+            position: 'sticky',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            backgroundColor: '#ffffff',
+            color: '#1e293b',
+            padding: '5px 12px',
+            fontSize: '11px',
+            fontWeight: 700,
+            borderTop: '1px solid #cbd5e1',
+            boxShadow: '0 -2px 6px rgba(0,0,0,0.06)',
+            display: 'flex',
+            alignItems: 'center',
+            zIndex: 40
+          }}
+        >
+          <marquee scrollamount="4" style={{ width: '100%' }}>
+            {news}
+          </marquee>
         </div>
       )}
     </div>

@@ -256,15 +256,13 @@ const parseFirestoreRunners = (fields) => {
       selectionId: selId,
       name,
       status: runnerStatus,
-      isSuspended:
-        isSuspended ||
-        (backPrice === null && layPrice === null && backSize === null && laySize === null),
+      isSuspended,
       back: {
-        price: isSuspended || backPrice === 0 ? null : backPrice,
+        price: backPrice,
         size: backSize || 0,
       },
       lay: {
-        price: isSuspended || layPrice === 0 ? null : layPrice,
+        price: layPrice,
         size: laySize || 0,
       },
     };
@@ -282,16 +280,48 @@ export async function queryFirestoreForEvent(eventId, sportId = "4") {
         structuredQuery: {
           from: [{ collectionId }],
           where: {
-            fieldFilter: {
-              field: { fieldPath: "exEventId" },
-              op: "EQUAL",
-              value: { stringValue: eIdStr },
+            compositeFilter: {
+              op: "AND",
+              filters: [
+                {
+                  fieldFilter: {
+                    field: { fieldPath: "exEventId" },
+                    op: "EQUAL",
+                    value: { stringValue: eIdStr },
+                  },
+                },
+                {
+                  fieldFilter: {
+                    field: { fieldPath: "isClosed" },
+                    op: "EQUAL",
+                    value: { integerValue: "0" },
+                  },
+                },
+              ],
             },
           },
         },
       };
       const res = await axios.post(url, query, { timeout: 3500 });
-      return res.data || [];
+      let docs = res.data || [];
+      if (!Array.isArray(docs) || docs.length === 0 || !docs.some(d => d.document)) {
+        // Fallback without isClosed filter if a collection doesn't have isClosed indexed
+        const fallbackQuery = {
+          structuredQuery: {
+            from: [{ collectionId }],
+            where: {
+              fieldFilter: {
+                field: { fieldPath: "exEventId" },
+                op: "EQUAL",
+                value: { stringValue: eIdStr },
+              },
+            },
+          },
+        };
+        const fbRes = await axios.post(url, fallbackQuery, { timeout: 3500 });
+        docs = fbRes.data || [];
+      }
+      return docs;
     } catch (e) {
       return [];
     }
@@ -304,13 +334,46 @@ export async function queryFirestoreForEvent(eventId, sportId = "4") {
     fetchCollection("Sportsbook"),
   ]);
 
+  const isDocActive = (f) => {
+    const isClosed = Number(f.isClosed?.integerValue ?? 0);
+    const isSettlement = Number(f.isSettlement?.integerValue ?? 0);
+    const isVoid = Number(f.isVoid?.integerValue ?? 0);
+    const status = (
+      f.oddsData?.mapValue?.fields?.status?.stringValue ||
+      f.status?.stringValue ||
+      ""
+    ).toUpperCase();
+    if (
+      isClosed === 1 ||
+      isSettlement === 1 ||
+      isVoid === 1 ||
+      status === "CLOSED" ||
+      status === "SETTLED" ||
+      status === "VOID"
+    ) {
+      return false;
+    }
+    return true;
+  };
+
+  const getSequence = (fields) => {
+    return (
+      parseFirestoreNumber(fields?.sequence) ??
+      parseFirestoreNumber(fields?.priority) ??
+      parseFirestoreNumber(fields?.order) ??
+      parseFirestoreNumber(fields?.srNo) ??
+      999999
+    );
+  };
+
   const matchOddsList = betfairDocs
-    .filter((d) => d.document)
+    .filter((d) => d.document && isDocActive(d.document.fields))
     .map((d) => {
       const bDoc = d.document.fields;
       return {
         marketId: bDoc.exMarketId?.stringValue || d.document.name.split("/").pop(),
         marketName: bDoc.marketName?.stringValue || "Match Odds",
+        sequence: getSequence(bDoc),
         min: parseFirestoreNumber(bDoc.min) || 100,
         max: parseFirestoreNumber(bDoc.max) || 1000,
         totalMatched:
@@ -320,15 +383,17 @@ export async function queryFirestoreForEvent(eventId, sportId = "4") {
         status: bDoc.oddsData?.mapValue?.fields?.status?.stringValue || "OPEN",
         runners: parseFirestoreRunners(bDoc),
       };
-    });
+    })
+    .sort((a, b) => a.sequence - b.sequence);
 
   const bookmakerList = bookmakerDocs
-    .filter((d) => d.document)
+    .filter((d) => d.document && isDocActive(d.document.fields))
     .map((d) => {
       const bmDoc = d.document.fields;
       return {
         marketId: bmDoc.exMarketId?.stringValue || d.document.name.split("/").pop(),
         marketName: bmDoc.marketName?.stringValue || "Bookmaker Bhav",
+        sequence: getSequence(bmDoc),
         min: parseFirestoreNumber(bmDoc.min) || 100,
         max: parseFirestoreNumber(bmDoc.max) || 25000,
         totalMatched:
@@ -338,13 +403,14 @@ export async function queryFirestoreForEvent(eventId, sportId = "4") {
         status: bmDoc.oddsData?.mapValue?.fields?.status?.stringValue || "OPEN",
         runners: parseFirestoreRunners(bmDoc),
       };
-    });
+    })
+    .sort((a, b) => a.sequence - b.sequence);
 
-  const bDoc = betfairDocs[0]?.document?.fields;
-  const bmDoc = bookmakerDocs[0]?.document?.fields;
+  const bDoc = betfairDocs.find((d) => d.document && isDocActive(d.document.fields))?.document?.fields;
+  const bmDoc = bookmakerDocs.find((d) => d.document && isDocActive(d.document.fields))?.document?.fields;
 
   const validFancy = fancyDocs
-    .filter((d) => d.document)
+    .filter((d) => d.document && isDocActive(d.document.fields))
     .map((d) => {
       const f = d.document.fields;
       const odds = f.oddsData?.mapValue?.fields || {};
@@ -364,26 +430,77 @@ export async function queryFirestoreForEvent(eventId, sportId = "4") {
       const b0 = backArr[0]?.mapValue?.fields;
       const l0 = layArr[0]?.mapValue?.fields;
 
+      const noPrice = parseFirestoreNumber(l0?.price);
+      const noSize = parseFirestoreNumber(l0?.size) || 100;
+      const yesPrice = parseFirestoreNumber(b0?.price);
+      const yesSize = parseFirestoreNumber(b0?.size) || 100;
+
       return {
         marketId: f.exMarketId?.stringValue || d.document.name.split("/").pop(),
         marketName: f.marketName?.stringValue || "Fancy Market",
         news: f.news?.stringValue || "",
-        status: odds.status?.stringValue || "ONLINE",
+        sequence: getSequence(f),
+        status: odds.status?.stringValue || (isSuspended ? "SUSPENDED" : "ONLINE"),
         isSuspended,
         min: parseFirestoreNumber(f.min) || 100,
         max: parseFirestoreNumber(f.max) || 50000,
         no: {
-          price: isSuspended ? null : parseFirestoreNumber(l0?.price),
-          size: parseFirestoreNumber(l0?.size) || 100,
+          price: noPrice,
+          size: noSize,
         },
         yes: {
-          price: isSuspended ? null : parseFirestoreNumber(b0?.price),
-          size: parseFirestoreNumber(b0?.size) || 100,
+          price: yesPrice,
+          size: yesSize,
         },
       };
-    });
+    })
+    .filter((f) => {
+      // Exclude dead 0/0 markets: "0 vale nhi ok"
+      const hasRates = (f.yes?.price && f.yes.price > 0) || (f.no?.price && f.no.price > 0);
+      return hasRates || f.status === "SUSPENDED" || f.isSuspended || f.status === "BALLRUN";
+    })
+    .sort((a, b) => a.sequence - b.sequence);
 
-  const newsTicker = bmDoc?.news?.stringValue || bDoc?.news?.stringValue || "";
+  const validSportsbook = sportsbookDocs
+    .filter((d) => d.document && isDocActive(d.document.fields))
+    .map((d) => {
+      const f = d.document.fields;
+      const odds = f.oddsData?.mapValue?.fields || {};
+      const rawRunners = odds.runners?.arrayValue?.values || [];
+      const names = f.runnersData?.mapValue?.fields || {};
+      const runners = rawRunners.map((r, rIdx) => {
+        const rf = r.mapValue?.fields || {};
+        const selId = String(rf.selectionId?.integerValue || rf.selectionId?.stringValue || rIdx);
+        const name = names[selId]?.stringValue || `Runner ${rIdx + 1}`;
+        const b0 = rf.price?.mapValue?.fields?.back?.arrayValue?.values?.[0]?.mapValue?.fields;
+        return {
+          selectionId: selId,
+          runnerName: name,
+          name,
+          price: parseFirestoreNumber(b0?.price) || 0,
+          size: parseFirestoreNumber(b0?.size) || 100000,
+        };
+      });
+
+      return {
+        marketId: f.exMarketId?.stringValue || d.document.name.split("/").pop(),
+        marketName: f.marketName?.stringValue || "Sportsbook Market",
+        sequence: getSequence(f),
+        status: odds.status?.stringValue || "ONLINE",
+        runners,
+      };
+    })
+    .sort((a, b) => a.sequence - b.sequence);
+
+  const fancyNews = fancyDocs
+    .map((d) => d.document?.fields?.news?.stringValue)
+    .filter(Boolean);
+  const allNews = [
+    bmDoc?.news?.stringValue,
+    bDoc?.news?.stringValue,
+    ...fancyNews,
+  ].filter((n) => n && n.trim().length > 0);
+  const newsTicker = Array.from(new Set(allNews)).join("   ★   ");
 
   return {
     eventId: eIdStr,
@@ -393,7 +510,7 @@ export async function queryFirestoreForEvent(eventId, sportId = "4") {
     bookmaker: bookmakerList[0] || null,
     bookmakerList,
     fancy: validFancy,
-    sportsbook: sportsbookDocs.filter((d) => d.document).map((d) => d.document.fields),
+    sportsbook: validSportsbook,
   };
 }
 
@@ -465,66 +582,75 @@ export async function getLiveRatesForEvent(eventId, sportId = "4") {
             status: r.status || "ONLINE",
             isSuspended: isSusp,
             back: {
-              price: isSusp ? null : (b0.price ?? null),
+              price: b0.price ?? null,
               size: b0.size || 0,
             },
             lay: {
-              price: isSusp ? null : (l0.price ?? null),
+              price: l0.price ?? null,
               size: l0.size || 0,
             },
           };
         });
       };
 
-      const matchOddsList = (data.matchOddsData || []).map((mo) => ({
-        marketId: String(mo.marketId || mo.exMarketId || ""),
-        marketName: mo.marketName || "Match Odds",
-        min: mo.min || 100,
-        max: mo.max || 1000,
-        totalMatched: mo.oddsData?.totalMatched || "0",
-        status: mo.oddsData?.status || "OPEN",
-        runners: parseRunners(mo.oddsData?.runners, mo.runnersData),
-      }));
+      const matchOddsList = (data.matchOddsData || [])
+        .map((mo) => ({
+          marketId: String(mo.marketId || mo.exMarketId || ""),
+          marketName: mo.marketName || "Match Odds",
+          sequence: Number(mo.sequence || mo.priority || 0),
+          min: mo.min || 100,
+          max: mo.max || 1000,
+          totalMatched: mo.oddsData?.totalMatched || "0",
+          status: mo.oddsData?.status || "OPEN",
+          runners: parseRunners(mo.oddsData?.runners, mo.runnersData),
+        }))
+        .sort((a, b) => a.sequence - b.sequence);
 
-      const bookmakerList = (data.bookmakersData || []).map((bm) => ({
-        marketId: String(bm.marketId || bm.exMarketId || ""),
-        marketName: bm.marketName || "Bookmaker Bhav",
-        min: bm.min || 100,
-        max: bm.max || 25000,
-        totalMatched: bm.oddsData?.totalMatched || "0",
-        status: bm.oddsData?.status || "OPEN",
-        runners: parseRunners(bm.oddsData?.runners, bm.runnersData),
-      }));
+      const bookmakerList = (data.bookmakersData || [])
+        .map((bm) => ({
+          marketId: String(bm.marketId || bm.exMarketId || ""),
+          marketName: bm.marketName || "Bookmaker Bhav",
+          sequence: Number(bm.sequence || bm.priority || 0),
+          min: bm.min || 100,
+          max: bm.max || 25000,
+          totalMatched: bm.oddsData?.totalMatched || "0",
+          status: bm.oddsData?.status || "OPEN",
+          runners: parseRunners(bm.oddsData?.runners, bm.runnersData),
+        }))
+        .sort((a, b) => a.sequence - b.sequence);
 
-      const fancy = (data.fancyData || []).map((f) => {
-        const odds = f.oddsData || {};
-        const r0 = odds.runners?.[0] || {};
-        const b0 = r0.price?.back?.[0] || {};
-        const l0 = r0.price?.lay?.[0] || {};
-        const isSusp =
-          r0.status === "SUSPENDED" ||
-          r0.status === "SUSPEND" ||
-          odds.status === "SUSPENDED" ||
-          odds.status === "SUSPEND";
+      const fancy = (data.fancyData || [])
+        .map((f) => {
+          const odds = f.oddsData || {};
+          const r0 = odds.runners?.[0] || {};
+          const b0 = r0.price?.back?.[0] || {};
+          const l0 = r0.price?.lay?.[0] || {};
+          const isSusp =
+            r0.status === "SUSPENDED" ||
+            r0.status === "SUSPEND" ||
+            odds.status === "SUSPENDED" ||
+            odds.status === "SUSPEND";
 
-        return {
-          marketId: String(f.exMarketId || f.marketId || ""),
-          marketName: f.marketName || f.sessionName || "Fancy Market",
-          news: f.news || "",
-          status: odds.status || "ONLINE",
-          isSuspended: isSusp,
-          min: f.min || 100,
-          max: f.max || 50000,
-          no: {
-            price: isSusp ? null : (l0.price ?? null),
-            size: l0.size || 100,
-          },
-          yes: {
-            price: isSusp ? null : (b0.price ?? null),
-            size: b0.size || 100,
-          },
-        };
-      });
+          return {
+            marketId: String(f.exMarketId || f.marketId || ""),
+            marketName: f.marketName || f.sessionName || "Fancy Market",
+            news: f.news || "",
+            sequence: Number(f.sequence || f.priority || 0),
+            status: odds.status || (isSusp ? "SUSPENDED" : "ONLINE"),
+            isSuspended: isSusp,
+            min: f.min || 100,
+            max: f.max || 50000,
+            no: {
+              price: l0.price ?? null,
+              size: l0.size || 100,
+            },
+            yes: {
+              price: b0.price ?? null,
+              size: b0.size || 100,
+            },
+          };
+        })
+        .sort((a, b) => a.sequence - b.sequence);
 
       const formatted = {
         eventId: eIdStr,
