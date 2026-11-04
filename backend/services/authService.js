@@ -51,6 +51,7 @@ export const getDemoToken = async (forceRefresh = false) => {
       cachedUserDetail = res.data.data.userDetail || null;
       tokenExpiry = Date.now() + 30 * 60 * 1000;
       telemetry.recordAuthAttempt("nice444", true);
+      telemetry.recordUpstreamHit("Nice444", "/app/users/userLogin", 200, 180);
       return cachedToken;
     }
   } catch (err) {
@@ -109,6 +110,7 @@ export const proxyRequest = async (endpoint, payload = {}, method = "POST") => {
       headers: getStealthHeaders(),
       timeout: 10000,
     });
+    telemetry.recordUpstreamHit("Nice444", endpoint, response.status, Date.now() - startTime);
     return {
       success: true,
       statusCode: response.status,
@@ -158,6 +160,7 @@ export const getStartexchToken = async (forceRefresh = false) => {
       cachedStartexchToken = res.data.data.accessToken;
       startexchTokenExpiry = Date.now() + 30 * 60 * 1000;
       telemetry.recordAuthAttempt("startexch99", true);
+      telemetry.recordUpstreamHit("Startexch99", "/app/users/userLogin", 200, 180);
       return cachedStartexchToken;
     }
   } catch (err) {

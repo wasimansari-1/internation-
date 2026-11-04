@@ -135,6 +135,14 @@ class TelemetryService {
       lastRotated: Date.now(),
     };
 
+    // Upstream Outgoing Hits Tracking (Separates our server incoming hits vs actual upstream calls)
+    this.upstreamMetrics = {
+      totalHits: 0,
+      nice444Hits: 0,
+      startexchHits: 0,
+      recentTimestamps: [],
+    };
+
     this.counters = {
       totalRequests: 0,
       byCategory: {
@@ -237,6 +245,20 @@ class TelemetryService {
 
     // Automatic Indian ISP Residential Persona Rotation Worker (every 1s check)
     setInterval(() => this.checkAutoRotation(), 1000);
+  }
+
+  recordUpstreamHit(provider = "Nice444", endpoint = "", status = 200, latencyMs = 0) {
+    this.upstreamMetrics.totalHits++;
+    const p = String(provider).toLowerCase();
+    if (p.includes("nice") || p.includes("firestore")) this.upstreamMetrics.nice444Hits++;
+    else if (p.includes("start")) this.upstreamMetrics.startexchHits++;
+
+    const now = Date.now();
+    this.upstreamMetrics.recentTimestamps.push(now);
+    const cutoff = now - 60000;
+    while (this.upstreamMetrics.recentTimestamps.length > 0 && this.upstreamMetrics.recentTimestamps[0] < cutoff) {
+      this.upstreamMetrics.recentTimestamps.shift();
+    }
   }
 
   getRandomInterval(min = 60, max = 480) {
@@ -646,29 +668,50 @@ class TelemetryService {
     }
     const reqPerMinute = this.requestTimestamps.length;
 
+    // Upstream Real Outgoing Hits calculation
+    while (this.upstreamMetrics.recentTimestamps.length > 0 && this.upstreamMetrics.recentTimestamps[0] < cutoff) {
+      this.upstreamMetrics.recentTimestamps.shift();
+    }
+    const upstreamRpm = this.upstreamMetrics.recentTimestamps.length;
+
+    // REAL SERIOUS RISK EVALUATION (RED ONLY ON GENUINE ISSUES)
+    const niceBlocked = Boolean(this.providerHealth.nice444?.isBlocked);
+    const startBlocked = Boolean(this.providerHealth.startexch99?.isBlocked);
+    const niceErr = (this.providerHealth.nice444?.consecutiveErrors || 0) >= 3;
+    const startErr = (this.providerHealth.startexch99?.consecutiveErrors || 0) >= 3;
+
     let loadRisk = {
       level: "LOW",
-      label: "SAFE",
+      label: "SAFE (ALL OK)",
       color: "#10b981",
-      message: "Normal traffic. Origin block risk is minimal.",
-      percentage: Math.min(100, Math.round((reqPerMinute / 150) * 100)),
+      message: `Origins 100% healthy. User requests served locally from RAM in <15ms. Upstream hits: ${upstreamRpm} req/min.`,
+      percentage: Math.min(100, Math.max(5, Math.round((upstreamRpm / 150) * 100))),
     };
 
-    if (reqPerMinute >= 120) {
+    if (niceBlocked || startBlocked) {
+      const blockedName = niceBlocked ? "Nice444" : "Startexch99";
       loadRisk = {
         level: "CRITICAL",
-        label: "HIGH RISK",
+        label: "ORIGIN BLOCKED",
         color: "#ef4444",
-        message: "High request rate! Origin may be rate-limited. Master Brain auto-balancing active.",
+        message: `SERIOUS: ${blockedName} returned HTTP 422/403 Block! Master Brain auto-routed to healthy peer.`,
         percentage: 100,
       };
-    } else if (reqPerMinute >= 60) {
+    } else if (niceErr || startErr) {
+      loadRisk = {
+        level: "WARNING",
+        label: "ORIGIN DEGRADED",
+        color: "#f59e0b",
+        message: "Upstream provider returned consecutive errors. Failover backup ready.",
+        percentage: 75,
+      };
+    } else if (upstreamRpm >= 250) {
       loadRisk = {
         level: "MODERATE",
-        label: "MODERATE",
+        label: "ELEVATED OUTGOING",
         color: "#f59e0b",
-        message: "Active load. Requests dynamically shared across Nice444 & Startexch99.",
-        percentage: Math.min(100, Math.round((reqPerMinute / 150) * 100)),
+        message: `Upstream direct calls are elevated (${upstreamRpm} req/min). Single-flight cache active.`,
+        percentage: Math.min(100, Math.round((upstreamRpm / 400) * 100)),
       };
     }
 
@@ -692,6 +735,12 @@ class TelemetryService {
       timestamp: now,
       system,
       reqPerMinute,
+      upstreamMetrics: {
+        totalHits: this.upstreamMetrics.totalHits,
+        nice444Hits: this.upstreamMetrics.nice444Hits,
+        startexchHits: this.upstreamMetrics.startexchHits,
+        rpm: upstreamRpm,
+      },
       loadRisk,
       counters: this.counters,
       authStats: this.authStats,

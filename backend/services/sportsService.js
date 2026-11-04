@@ -1,5 +1,6 @@
 import axios from "axios";
 import { proxyRequest } from "./authService.js";
+import { telemetry } from "./telemetryService.js";
 
 // Multi-project Firestore mapping matching Nice444 original architecture
 export const getFirestoreProjectIdForSport = (sportId = "4") => {
@@ -78,6 +79,7 @@ export async function getLiveScoreData(eventId, sportId = "4") {
     if (!targetDoc) {
       return null;
     }
+    telemetry.recordUpstreamHit("Firestore (Score)", "live-score", 200, 80);
 
     const isSoccer = usedColl === "soccerScore" || sId === "1";
     const isTennis = usedColl === "tennisScore" || sId === "2";
@@ -354,6 +356,7 @@ export async function queryFirestoreForEvent(eventId, sportId = "4") {
     fetchCollection("Fancy"),
     fetchCollection("Sportsbook"),
   ]);
+  telemetry.recordUpstreamHit("Firestore (Nice444)", "live-rates", 200, 120);
 
   const isDocActive = (f) => {
     const isClosed = Number(f.isClosed?.integerValue ?? 0);

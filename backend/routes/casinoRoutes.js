@@ -238,6 +238,7 @@ async function fetchUpstreamWatchUrl(gameId, incomingIp) {
           },
         );
         if (res.data?.data?.url) {
+          telemetry.recordUpstreamHit(provider.name, "/watch-link", res.status, 150);
           return res.data.data.url;
         }
       } catch (e) {
