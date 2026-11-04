@@ -1,6 +1,6 @@
 import express from "express";
 import axios from "axios";
-import { getDemoToken, proxyRequest } from "../services/authService.js";
+import { getDemoToken, getStartexchToken, proxyRequest } from "../services/authService.js";
 import {
   getScrapedCasinoLiveOdds,
   getCasinoTableList,
@@ -157,6 +157,13 @@ router.post("/launch-game", async (req, res) => {
 router.post("/launch-url", async (req, res) => {
   const { eventId } = req.body;
   try {
+    const startexchToken = await getStartexchToken();
+    if (startexchToken) {
+      return res.json({
+        success: true,
+        launchUrl: `https://casino.startexch99.com/authentication/${startexchToken}/${eventId}`,
+      });
+    }
     const token = await getDemoToken();
     return res.json({
       success: true,
@@ -175,37 +182,70 @@ const RESIDENTIAL_IPS = [
   "122.161.49.200",
 ];
 
+let streamProviderCounter = 0;
+
 async function fetchUpstreamWatchUrl(gameId, incomingIp) {
-  let token = await getDemoToken();
+  streamProviderCounter++;
+  // Alternates 50/50: Startexch99 <-> Nice444 to avoid overloading or blocking any single provider
+  const providers =
+    streamProviderCounter % 2 === 0
+      ? [
+          {
+            name: "Startexch99",
+            domain: "https://casino.startexch99.com",
+            getToken: () => getStartexchToken(),
+          },
+          {
+            name: "Nice444",
+            domain: "https://casino.nice444.com",
+            getToken: () => getDemoToken(),
+          },
+        ]
+      : [
+          {
+            name: "Nice444",
+            domain: "https://casino.nice444.com",
+            getToken: () => getDemoToken(),
+          },
+          {
+            name: "Startexch99",
+            domain: "https://casino.startexch99.com",
+            getToken: () => getStartexchToken(),
+          },
+        ];
+
   const candidateIps = [incomingIp, ...RESIDENTIAL_IPS].filter(Boolean);
 
-  for (const ip of candidateIps) {
-    try {
-      const res = await axios.post(
-        "https://casino.nice444.com/casinoapp/exchange/users/streaming/casinoGameWatchLink",
-        { streamId: String(gameId), timestamp: Date.now() },
-        {
-          headers: {
-            Origin: "https://casino.nice444.com",
-            Referer: "https://casino.nice444.com/",
-            Authorization: `Bearer ${token}`,
-            "X-Forwarded-For": ip,
-            "X-Real-IP": ip,
-            "CF-Connecting-IP": ip,
-            "User-Agent":
-              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+  for (const provider of providers) {
+    let token = await provider.getToken();
+    for (const ip of candidateIps) {
+      try {
+        const res = await axios.post(
+          `${provider.domain}/casinoapp/exchange/users/streaming/casinoGameWatchLink`,
+          { streamId: String(gameId), timestamp: Date.now() },
+          {
+            headers: {
+              Origin: provider.domain,
+              Referer: `${provider.domain}/`,
+              Authorization: `Bearer ${token}`,
+              "X-Forwarded-For": ip,
+              "X-Real-IP": ip,
+              "CF-Connecting-IP": ip,
+              "User-Agent":
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+            },
+            timeout: 4000,
           },
-          timeout: 4500,
-        },
-      );
-      if (res.data?.data?.url) {
-        return res.data.data.url;
+        );
+        if (res.data?.data?.url) {
+          return res.data.data.url;
+        }
+      } catch (e) {
+        if (e.response?.status === 401 || e.response?.status === 403) {
+          token = await provider.getToken(true);
+        }
+        continue;
       }
-    } catch (e) {
-      if (e.response?.status === 401 || e.response?.status === 403) {
-        token = await getDemoToken(true);
-      }
-      continue;
     }
   }
   return null;
@@ -399,28 +439,48 @@ router.get("/stream-proxy/:gameId", async (req, res) => {
   }
 });
 
+let resultsProviderCounter = 0;
+
 router.get("/results/:gameId", async (req, res) => {
   const { gameId } = req.params;
-  try {
-    const token = await getDemoToken();
-    const upstreamRes = await axios.post(
-      "https://casino.nice444.com/casinoapp/users/casino/casinoEventResults",
-      { eventId: String(gameId) },
-      {
-        headers: {
-          Origin: "https://casino.nice444.com",
-          Referer: "https://casino.nice444.com/",
-          Authorization: `Bearer ${token}`,
-          "User-Agent":
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+  resultsProviderCounter++;
+  const providers =
+    resultsProviderCounter % 2 === 0
+      ? [
+          { domain: "https://casino.startexch99.com", getToken: getStartexchToken },
+          { domain: "https://casino.nice444.com", getToken: getDemoToken },
+        ]
+      : [
+          { domain: "https://casino.nice444.com", getToken: getDemoToken },
+          { domain: "https://casino.startexch99.com", getToken: getStartexchToken },
+        ];
+
+  for (const p of providers) {
+    try {
+      const token = await p.getToken();
+      const upstreamRes = await axios.post(
+        `${p.domain}/casinoapp/users/casino/casinoEventResults`,
+        { eventId: String(gameId) },
+        {
+          headers: {
+            Origin: p.domain,
+            Referer: `${p.domain}/`,
+            Authorization: `Bearer ${token}`,
+            "User-Agent":
+              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+          },
+          timeout: 4500,
         },
-        timeout: 7000,
-      },
-    );
-    return res.json({ success: true, data: upstreamRes.data?.data || [] });
-  } catch (err) {
-    return res.status(500).json({ success: false, error: err.message, data: [] });
+      );
+      if (Array.isArray(upstreamRes.data?.data) && upstreamRes.data.data.length > 0) {
+        return res.json({ success: true, data: upstreamRes.data.data });
+      }
+    } catch (err) {
+      continue;
+    }
   }
+
+  return res.json({ success: true, data: [] });
 });
 
 // Dedicated ultra-fast result API (instant response as soon as round ends)

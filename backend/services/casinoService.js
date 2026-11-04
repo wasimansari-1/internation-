@@ -1,6 +1,6 @@
 import axios from "axios";
 import { httpsAgent, refreshHostIps } from "../config/hosts.js";
-import { getDemoToken, proxyRequest } from "./authService.js";
+import { getDemoToken, getStartexchToken, proxyRequest } from "./authService.js";
 
 let ioClient = null;
 try {
@@ -43,6 +43,7 @@ export function resolveWinnerLabel(winner, runnerName, eventName = "") {
 }
 
 let casinoSocket = null;
+let startexchSocket = null;
 let casinoSocketConnecting = false;
 let casinoHeartbeatInterval = null;
 let casinoWatchdogInterval = null;
@@ -142,16 +143,25 @@ export function getDefaultCardsForTable(eventId = "", eventName = "") {
 let lastSocketConnectAttempt = 0;
 
 export async function ensureNiceCasinoSocket(forceReconnect = false) {
-  if (!forceReconnect && casinoSocket && casinoSocket.connected) {
-    return casinoSocket;
+  if (
+    !forceReconnect &&
+    ((casinoSocket && casinoSocket.connected) ||
+      (startexchSocket && startexchSocket.connected))
+  ) {
+    return casinoSocket?.connected ? casinoSocket : startexchSocket;
   }
   const now = Date.now();
   if (casinoSocketConnecting || now - lastSocketConnectAttempt < 5000) {
     for (let i = 0; i < 20; i++) {
-      if (casinoSocket && casinoSocket.connected) return casinoSocket;
+      if (
+        (casinoSocket && casinoSocket.connected) ||
+        (startexchSocket && startexchSocket.connected)
+      ) {
+        return casinoSocket?.connected ? casinoSocket : startexchSocket;
+      }
       await new Promise((r) => setTimeout(r, 100));
     }
-    return casinoSocket;
+    return casinoSocket?.connected ? casinoSocket : startexchSocket;
   }
   casinoSocketConnecting = true;
   lastSocketConnectAttempt = now;
@@ -164,15 +174,27 @@ export async function ensureNiceCasinoSocket(forceReconnect = false) {
       } catch (e) {}
       casinoSocket = null;
     }
-
-    if (forceReconnect) {
-      // Auto-detect fresh IPs directly from Google/Cloudflare DNS
-      await refreshHostIps("casino.nice444.com");
-      await refreshHostIps("nice444.com");
+    if (startexchSocket) {
+      try {
+        startexchSocket.removeAllListeners();
+        startexchSocket.disconnect();
+      } catch (e) {}
+      startexchSocket = null;
     }
 
-    const token = await getDemoToken(forceReconnect);
-    if (!token) {
+    if (forceReconnect) {
+      await refreshHostIps("casino.nice444.com");
+      await refreshHostIps("nice444.com");
+      await refreshHostIps("casino.startexch99.com");
+      await refreshHostIps("startexch99.com");
+    }
+
+    const [niceToken, startexchToken] = await Promise.all([
+      getDemoToken(forceReconnect),
+      getStartexchToken(forceReconnect),
+    ]);
+
+    if (!niceToken && !startexchToken) {
       casinoSocketConnecting = false;
       return null;
     }
@@ -187,55 +209,106 @@ export async function ensureNiceCasinoSocket(forceReconnect = false) {
       }
     }
 
-    casinoSocket = ioClient("https://casino.nice444.com", {
-      path: "/universecasino",
-      transports: ["websocket", "polling"],
-      transportOptions: {
-        websocket: { agent: httpsAgent },
-        polling: { agent: httpsAgent },
-      },
-      extraHeaders: {
-        Origin: "https://casino.nice444.com",
-        Referer: "https://casino.nice444.com/",
-        "User-Agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-      },
-      reconnection: true,
-      reconnectionDelay: 2000,
-      reconnectionDelayMax: 5000,
-      reconnectionAttempts: Infinity,
-      timeout: 10000,
-      auth: { token, uType: "usr" },
-    });
-
     const resubscribeAll = () => {
-      if (!casinoSocket || !casinoSocket.connected) return;
       for (const gId of activeCasinoSubscribers) {
-        casinoSocket.emit("SCSN", { eventId: String(gId) });
+        if (casinoSocket && casinoSocket.connected) {
+          casinoSocket.emit("SCSN", { eventId: String(gId) });
+        }
+        if (startexchSocket && startexchSocket.connected) {
+          startexchSocket.emit("SCSN", { eventId: String(gId) });
+        }
       }
     };
 
-    casinoSocket.on("connect", () => {
-      console.log("Connected to Real Nice444 Casino Socket (/universecasino)");
-      resubscribeAll();
-    });
+    // 1. Initialize Nice444 Socket
+    if (niceToken) {
+      casinoSocket = ioClient("https://casino.nice444.com", {
+        path: "/universecasino",
+        transports: ["websocket", "polling"],
+        transportOptions: {
+          websocket: { agent: httpsAgent },
+          polling: { agent: httpsAgent },
+        },
+        extraHeaders: {
+          Origin: "https://casino.nice444.com",
+          Referer: "https://casino.nice444.com/",
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        },
+        reconnection: true,
+        reconnectionDelay: 2000,
+        reconnectionDelayMax: 5000,
+        reconnectionAttempts: Infinity,
+        timeout: 10000,
+        auth: { token: niceToken, uType: "usr" },
+      });
 
-    casinoSocket.on("disconnect", async (reason) => {
-      console.warn("[Nice444 Socket] Disconnected:", reason);
-      // Socket.IO handles automatic reconnection natively; do not destroy client immediately
-      if (reason === "io server disconnect") {
-        setTimeout(() => {
-          if (!casinoSocket || !casinoSocket.connected) {
-            ensureNiceCasinoSocket(true).catch(() => {});
-          }
-        }, 5000);
-      }
-    });
+      casinoSocket.on("connect", () => {
+        console.log("Connected to Real Nice444 Casino Socket (/universecasino)");
+        resubscribeAll();
+      });
 
-    casinoSocket.on("connect_error", (err) => {
-      console.warn("Nice444 Casino socket error:", err.message);
-      refreshHostIps("casino.nice444.com").catch(() => {});
-    });
+      casinoSocket.on("disconnect", async (reason) => {
+        console.warn("[Nice444 Socket] Disconnected:", reason);
+        if (reason === "io server disconnect") {
+          setTimeout(() => {
+            if (!casinoSocket || !casinoSocket.connected) {
+              ensureNiceCasinoSocket(true).catch(() => {});
+            }
+          }, 5000);
+        }
+      });
+
+      casinoSocket.on("connect_error", (err) => {
+        console.warn("Nice444 Casino socket error:", err.message);
+        refreshHostIps("casino.nice444.com").catch(() => {});
+      });
+    }
+
+    // 2. Initialize Startexch99 Socket (Dual Load Balanced Active Redundancy)
+    if (startexchToken) {
+      startexchSocket = ioClient("https://casino.startexch99.com", {
+        path: "/universecasino",
+        transports: ["websocket", "polling"],
+        transportOptions: {
+          websocket: { agent: httpsAgent },
+          polling: { agent: httpsAgent },
+        },
+        extraHeaders: {
+          Origin: "https://casino.startexch99.com",
+          Referer: "https://casino.startexch99.com/",
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        },
+        reconnection: true,
+        reconnectionDelay: 2000,
+        reconnectionDelayMax: 5000,
+        reconnectionAttempts: Infinity,
+        timeout: 10000,
+        auth: { token: startexchToken, uType: "usr" },
+      });
+
+      startexchSocket.on("connect", () => {
+        console.log("Connected to Real Startexch99 Casino Socket (/universecasino)");
+        resubscribeAll();
+      });
+
+      startexchSocket.on("disconnect", async (reason) => {
+        console.warn("[Startexch99 Socket] Disconnected:", reason);
+        if (reason === "io server disconnect") {
+          setTimeout(() => {
+            if (!startexchSocket || !startexchSocket.connected) {
+              ensureNiceCasinoSocket(true).catch(() => {});
+            }
+          }, 5000);
+        }
+      });
+
+      startexchSocket.on("connect_error", (err) => {
+        console.warn("Startexch99 Casino socket error:", err.message);
+        refreshHostIps("casino.startexch99.com").catch(() => {});
+      });
+    }
 
     if (!casinoHeartbeatInterval) {
       casinoHeartbeatInterval = setInterval(resubscribeAll, 8000);
@@ -243,9 +316,11 @@ export async function ensureNiceCasinoSocket(forceReconnect = false) {
 
     if (!casinoWatchdogInterval) {
       casinoWatchdogInterval = setInterval(() => {
-        if (!casinoSocket || !casinoSocket.connected) {
+        const niceDown = !casinoSocket || !casinoSocket.connected;
+        const startDown = !startexchSocket || !startexchSocket.connected;
+        if (niceDown && startDown) {
           const timeSince = Date.now() - lastSocketConnectAttempt;
-          if (timeSince > 12000) {
+          if (timeSince > 10000) {
             ensureNiceCasinoSocket(true).catch(() => {});
           }
         }
@@ -518,23 +593,37 @@ export async function ensureNiceCasinoSocket(forceReconnect = false) {
         }
       };
 
-      casinoSocket.on("casino_odds", handleCasinoPacket);
-      casinoSocket.on("message", handleCasinoPacket);
+      if (casinoSocket) {
+        casinoSocket.on("casino_odds", handleCasinoPacket);
+        casinoSocket.on("message", handleCasinoPacket);
+        casinoSocket.on("connect_error", (err) => {
+          console.warn("Nice444 Casino socket error:", err.message);
+        });
+      }
 
-      casinoSocket.on("connect_error", (err) => {
-        console.warn("Nice444 Casino socket error:", err.message);
-      });
+      if (startexchSocket) {
+        startexchSocket.on("casino_odds", handleCasinoPacket);
+        startexchSocket.on("message", handleCasinoPacket);
+        startexchSocket.on("connect_error", (err) => {
+          console.warn("Startexch99 Casino socket error:", err.message);
+        });
+      }
 
     // Await actual socket connection (up to 3 seconds)
     for (let i = 0; i < 30; i++) {
-      if (casinoSocket && casinoSocket.connected) break;
+      if (
+        (casinoSocket && casinoSocket.connected) ||
+        (startexchSocket && startexchSocket.connected)
+      ) {
+        break;
+      }
       await new Promise((r) => setTimeout(r, 100));
     }
   } finally {
     casinoSocketConnecting = false;
   }
 
-  return casinoSocket;
+  return casinoSocket?.connected ? casinoSocket : startexchSocket;
 }
 
 // Pre-connect casino socket
@@ -545,9 +634,14 @@ setTimeout(() => {
 export async function getScrapedCasinoLiveOdds(gameId) {
   const gId = String(gameId);
   activeCasinoSubscribers.add(gId);
-  const cs = await ensureNiceCasinoSocket();
-  if (cs && cs.connected) {
-    cs.emit("SCSN", { eventId: gId });
+  if (casinoSocket && casinoSocket.connected) {
+    casinoSocket.emit("SCSN", { eventId: gId });
+  }
+  if (startexchSocket && startexchSocket.connected) {
+    startexchSocket.emit("SCSN", { eventId: gId });
+  }
+  if (!casinoSocket?.connected && !startexchSocket?.connected) {
+    ensureNiceCasinoSocket().catch(() => {});
   }
 
   // If cache is empty, wait up to 400ms for incoming socket packet

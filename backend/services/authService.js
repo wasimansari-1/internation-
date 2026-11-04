@@ -113,3 +113,43 @@ export const proxyRequest = async (endpoint, payload = {}, method = "POST") => {
   }
 };
 
+// Startexch99 Integration (Dual-Provider Load Balancing)
+export const STARTEXCH_BASE = "https://startexch99.com";
+export const STARTEXCH_CASINO_BASE = "https://casino.startexch99.com";
+
+let cachedStartexchToken = null;
+let startexchTokenExpiry = 0;
+
+export const getStartexchToken = async (forceRefresh = false) => {
+  if (!forceRefresh && cachedStartexchToken && Date.now() < startexchTokenExpiry) {
+    return cachedStartexchToken;
+  }
+  try {
+    const res = await axios.post(
+      `${STARTEXCH_BASE}/app/users/userLogin`,
+      {
+        userName: "smdemo",
+        password: "Asdf12345",
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+          Origin: STARTEXCH_BASE,
+          Referer: `${STARTEXCH_BASE}/`,
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        },
+        timeout: 8000,
+      },
+    );
+    if (res.data?.data?.accessToken) {
+      cachedStartexchToken = res.data.data.accessToken;
+      startexchTokenExpiry = Date.now() + 30 * 60 * 1000;
+      return cachedStartexchToken;
+    }
+  } catch (err) {
+    console.error("Error getting Startexch99 demo token:", err.message);
+  }
+  return cachedStartexchToken;
+};
+
