@@ -98,18 +98,73 @@ router.get("/all-events", async (req, res) => {
   });
 });
 
-router.post("/markets-event-list", async (req, res) => {
-  const { eventId, sportId } = req.body;
+async function getEventMarketsHandler(req, res) {
+  const sportId = String(
+    req.params.sportId || req.body?.sportId || req.query?.sportId || "4",
+  );
+  const eventId = String(
+    req.params.eventId || req.body?.eventId || req.query?.eventId || "",
+  );
+
+  if (!eventId) {
+    return res.status(400).json({
+      success: false,
+      message: "eventId is required",
+      data: null,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
   const result = await proxyRequest(
     "/api/exchange/markets/getMarketsEventList",
     {
-      eventId,
-      sportId: sportId || "4",
+      eventId: String(eventId),
+      sportId: String(sportId),
       key: "2",
     },
   );
-  res.status(result.statusCode).json(result);
-});
+
+  if (!result || !result.success) {
+    return res.status(result?.statusCode || 500).json({
+      success: false,
+      message: result?.error || "Failed to fetch markets",
+      data: null,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  const rawData = result.data?.data || {};
+  const meta = result.data?.meta || {
+    message: "Market List",
+    status_code: 200,
+    status: true,
+  };
+
+  const responsePayload = {
+    success: true,
+    message: "Markets fetched successfully",
+    data: {
+      data: {
+        fancyData: rawData.fancyData || [],
+        matchOddsData: rawData.matchOddsData || [],
+        bookmakersData: rawData.bookmakersData || [],
+        sportsbookData: rawData.sportsbookData || [],
+        binaryData: rawData.binaryData || [],
+        lotteryData: rawData.lotteryData || [],
+        isScore: Boolean(rawData.isScore ?? false),
+      },
+      meta: meta,
+    },
+    timestamp: new Date().toISOString(),
+  };
+
+  return res.status(200).json(responsePayload);
+}
+
+router.post("/markets-event-list", getEventMarketsHandler);
+router.get("/:sportId/:eventId/markets", getEventMarketsHandler);
+router.get("/markets/:eventId", getEventMarketsHandler);
+router.get("/:eventId/markets", getEventMarketsHandler);
 
 router.post("/fancy-markets", async (req, res) => {
   const { eventId } = req.body;

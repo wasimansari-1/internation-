@@ -48,6 +48,7 @@ app.use((req, res, next) => {
 
 // Mount modular sub-routers
 app.use("/api/sports", sportsRouter);
+app.use("/ori/api/sports", sportsRouter);
 app.use("/api/casino", casinoRouter);
 app.use("/api/stream", streamRouter);
 
