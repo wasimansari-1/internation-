@@ -773,9 +773,6 @@ router.get("/scoreboard-frame/:eventId", async (req, res) => {
   res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
   res.send(html);
 });
-  res.setHeader("Content-Type", "text/html");
-  res.send(html);
-});
 
 router.get("/live-rates/:eventId", async (req, res) => {
   const { eventId } = req.params;
