@@ -356,7 +356,6 @@ export async function ensureNiceCasinoSocket(forceReconnect = false) {
         }
         refreshHostIps("casino.startexch99.com").catch(() => {});
       });
-      });
     }
 
     if (!casinoHeartbeatInterval) {
