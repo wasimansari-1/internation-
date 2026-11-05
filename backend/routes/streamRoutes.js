@@ -8,6 +8,7 @@ import {
   upstreamStreamBreaker,
   fetchSportsWatchLink,
   fetchDirectHlsStream,
+  fetchStreamPageContent,
   nativeHttpsAgent,
 } from "../services/streamService.js";
 
@@ -361,98 +362,15 @@ router.get("/sports-tv-proxy/:eventId", async (req, res) => {
       throw notFoundErr;
     }
 
-    const fetchStreamPage = async (streamUrl) => {
-      try {
-        const originUrl = result.provider === "Startexch99" ? "https://startexch99.com" : "https://nice444.com";
-        const pageRes = await axios.get(streamUrl, {
-          headers: {
-            Origin: originUrl,
-            Referer: `${originUrl}/`,
-            "User-Agent":
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-            "Accept-Language": "en-IN,en;q=0.9,hi;q=0.8",
-            "Sec-Ch-Ua": '"Chromium";v="131", "Not_A Brand";v="24", "Google Chrome";v="131"',
-            "Sec-Ch-Ua-Mobile": "?0",
-            "Sec-Ch-Ua-Platform": '"Windows"',
-            "Sec-Fetch-Dest": "iframe",
-            "Sec-Fetch-Mode": "navigate",
-            "Sec-Fetch-Site": "cross-site",
-            "Upgrade-Insecure-Requests": "1",
-            "X-Forwarded-For": clientIp,
-            "X-Real-IP": clientIp,
-            "CF-Connecting-IP": clientIp,
-            "True-Client-IP": clientIp,
-          },
-          httpsAgent: nativeHttpsAgent,
-          timeout: 8000,
-        });
-        if (
-          typeof pageRes.data === "string" &&
-          (pageRes.data.includes("not valid here") ||
-            pageRes.data.includes("replaced this one") ||
-            pageRes.data.includes("Not allowed") ||
-            pageRes.data.includes("Link already used") ||
-            pageRes.data.includes("Link expired") ||
-            pageRes.data.includes("Domain not whitelisted"))
-        ) {
-          const staleErr = new Error(
-            "Stale watch link received from upstream provider",
-          );
-          staleErr.status = 410;
-          throw staleErr;
-        }
-        return pageRes.data;
-      } catch (getErr) {
-        const status = getErr.response?.status || getErr.status || 500;
-        const bodySnippet =
-          typeof getErr.response?.data === "string"
-            ? getErr.response.data.slice(0, 120)
-            : "";
-        const pageErr = new Error(
-          `fetchStreamPage failed with status ${status}: ${bodySnippet || getErr.message}`,
-        );
-        pageErr.status = status;
-        throw pageErr;
-      }
-    };
-
+    const originUrl = result.provider === "Startexch99" ? "https://startexch99.com" : "https://nice444.com";
     let html;
     try {
-      html = await fetchStreamPage(result.url);
+      html = await fetchStreamPageContent(result.url, originUrl);
     } catch (fetchErr) {
-      if (fetchErr.status === 403) {
-        // Auto-reconnecting screen with zero manual clicks required
-        const autoConnectingHtml = `
-          <!DOCTYPE html><html><head><meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Live Sports TV</title>
-          <style>
-            * { box-sizing: border-box; margin: 0; padding: 0; }
-            body { background: #000; color: #fff; font-family: system-ui, -apple-system, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; overflow: hidden; text-align: center; }
-            .spinner { width: 32px; height: 32px; border: 3px solid rgba(255,255,255,0.15); border-top-color: #ef4444; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 12px; }
-            @keyframes spin { to { transform: rotate(360deg); } }
-            .title { font-size: 13px; font-weight: 700; color: #f1f5f9; letter-spacing: 0.3px; }
-            .sub { font-size: 11px; color: #64748b; margin-top: 4px; }
-          </style>
-          </head><body>
-            <div class="spinner"></div>
-            <div class="title">⚡ Connecting Live Broadcast Feed...</div>
-            <div class="sub">Direct high-definition stream initializing</div>
-            <script>
-              setTimeout(function() {
-                window.location.href = window.location.pathname + '?sportId=${sportId}&fresh=1&t=' + Date.now();
-              }, 2500);
-            </script>
-          </body></html>
-        `;
-        return autoConnectingHtml;
-      }
-      sportsStreamCache.delete(String(eventId));
-      if (result.streamId) sportsStreamCache.delete(String(result.streamId));
-      result = await fetchSportsWatchLink(eventId, sportId, clientIp, true);
-      if (!result.url) throw fetchErr;
-      html = await fetchStreamPage(result.url);
+      console.warn("[StreamProxy] fetchStreamPageContent failed:", fetchErr.message);
+      const staleErr = new Error("Failed to load stream page from upstream provider");
+      staleErr.status = 502;
+      throw staleErr;
     }
 
     html = html.replace(
