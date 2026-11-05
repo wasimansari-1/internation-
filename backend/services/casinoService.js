@@ -765,8 +765,8 @@ export async function getScrapedCasinoLiveOdds(gameId) {
       return {
         marketId: m.marketId || `${latest.roundId || Date.now()}_${mIdx}`,
         marketName: mName,
-        min: 100,
-        max: 500000,
+        min: m.min ?? m.minBet ?? m.minStake ?? null,
+        max: m.max ?? m.maxBet ?? m.maxStake ?? null,
         runners,
         runnersName: m.runnersName || {},
       };
