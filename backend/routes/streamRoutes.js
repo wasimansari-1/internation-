@@ -606,32 +606,27 @@ router.get("/sports-tv-proxy/:eventId", async (req, res) => {
     res.removeHeader("X-Frame-Options");
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Content-Type", "text/html; charset=utf-8");
-    const status = err.status || 500;
-    const isRestricted = status === 403;
-    const isOffline = status === 404;
 
     return res.status(200).send(`
       <!DOCTYPE html><html><head><meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Live Sports TV</title>
       <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body{background:#000;color:#94a3b8;font-family:system-ui,-apple-system,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center;padding:16px;}
-        .spinner { width: 30px; height: 30px; border: 3px solid rgba(255,255,255,0.15); border-top-color: #ef4444; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 12px; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .msg{max-width:380px;width:100%;display:flex;flex-direction:column;align-items:center;}
-        .title{font-size:13px;font-weight:700;color:#f3f4f6;margin-bottom:4px;}
-        .desc{font-size:11px;color:#64748b;}
+        body{background:#000000;color:#94a3b8;font-family:system-ui,-apple-system,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center;padding:16px;}
+        .icon{font-size:28px;margin-bottom:8px;}
+        .msg{max-width:340px;width:100%;display:flex;flex-direction:column;align-items:center;}
+        .title{font-size:14px;font-weight:700;color:#f1f5f9;margin-bottom:6px;}
+        .desc{font-size:12px;color:#64748b;margin-bottom:14px;line-height:1.4;}
+        .btn-retry{display:inline-flex;align-items:center;gap:6px;background:#1e293b;border:1px solid #334155;color:#93c5fd;font-size:11px;font-weight:700;padding:6px 14px;border-radius:6px;cursor:pointer;text-decoration:none;transition:all 0.15s;}
+        .btn-retry:hover{background:#334155;color:#fff;}
       </style></head><body>
         <div class="msg">
-          <div class="spinner"></div>
-          <div class="title">⚡ Connecting Live Broadcast...</div>
-          <div class="desc">${isOffline ? "Checking for match broadcast stream..." : "Loading live sports video feed..."}</div>
+          <div class="icon">📺</div>
+          <div class="title">Live Stream Not Available</div>
+          <div class="desc">No active video broadcast for this match (Match inactive or stream ended).</div>
+          <button class="btn-retry" onclick="window.location.reload();">🔄 Retry Check</button>
         </div>
-        <script>
-          setTimeout(function() {
-            window.location.href = window.location.pathname + '?sportId=${sportId}&fresh=1&t=' + Date.now();
-          }, 3000);
-        </script>
       </body></html>
     `);
   }
