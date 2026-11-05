@@ -248,19 +248,43 @@ export async function ensureNiceCasinoSocket(forceReconnect = false) {
         resubscribeAll();
       });
 
-      casinoSocket.on("disconnect", (reason) => {
+      casinoSocket.on("disconnect", async (reason) => {
         console.warn("[Nice444 Socket] Disconnected:", reason);
-        if (reason === "io server disconnect") {
+        if (reason === "io server disconnect" || reason === "transport error") {
+          try {
+            const freshToken = await getDemoToken(true);
+            if (freshToken && casinoSocket) {
+              casinoSocket.auth = { token: freshToken, uType: "usr" };
+            }
+          } catch (e) {}
           setTimeout(() => {
             if (casinoSocket && !casinoSocket.connected) {
               casinoSocket.connect();
             }
-          }, 8000);
+          }, 4000);
         }
       });
 
-      casinoSocket.on("connect_error", (err) => {
+      casinoSocket.on("connect_error", async (err) => {
         console.warn("Nice444 Casino socket error:", err.message);
+        if (
+          err.message &&
+          (err.message.includes("TOKEN") ||
+            err.message.includes("AUTH") ||
+            err.message === "INVALID_TOKEN")
+        ) {
+          try {
+            const freshToken = await getDemoToken(true);
+            if (freshToken && casinoSocket) {
+              casinoSocket.auth = { token: freshToken, uType: "usr" };
+              setTimeout(() => {
+                if (casinoSocket && !casinoSocket.connected) {
+                  casinoSocket.connect();
+                }
+              }, 1000);
+            }
+          } catch (e) {}
+        }
         refreshHostIps("casino.nice444.com").catch(() => {});
       });
     }
@@ -293,21 +317,45 @@ export async function ensureNiceCasinoSocket(forceReconnect = false) {
         resubscribeAll();
       });
 
-      startexchSocket.on("disconnect", (reason) => {
+      startexchSocket.on("disconnect", async (reason) => {
         console.warn("[Startexch99 Socket] Disconnected:", reason);
-        if (reason === "io server disconnect") {
-          // Do NOT destroy or affect Nice444 socket!
+        if (reason === "io server disconnect" || reason === "transport error") {
+          try {
+            const freshToken = await getStartexchToken(true);
+            if (freshToken && startexchSocket) {
+              startexchSocket.auth = { token: freshToken, uType: "usr" };
+            }
+          } catch (e) {}
           setTimeout(() => {
             if (startexchSocket && !startexchSocket.connected) {
               startexchSocket.connect();
             }
-          }, 15000);
+          }, 5000);
         }
       });
 
-      startexchSocket.on("connect_error", (err) => {
+      startexchSocket.on("connect_error", async (err) => {
         console.warn("Startexch99 Casino socket error:", err.message);
+        if (
+          err.message &&
+          (err.message.includes("TOKEN") ||
+            err.message.includes("AUTH") ||
+            err.message === "INVALID_TOKEN")
+        ) {
+          try {
+            const freshToken = await getStartexchToken(true);
+            if (freshToken && startexchSocket) {
+              startexchSocket.auth = { token: freshToken, uType: "usr" };
+              setTimeout(() => {
+                if (startexchSocket && !startexchSocket.connected) {
+                  startexchSocket.connect();
+                }
+              }, 1000);
+            }
+          } catch (e) {}
+        }
         refreshHostIps("casino.startexch99.com").catch(() => {});
+      });
       });
     }
 
@@ -663,13 +711,13 @@ export async function getScrapedCasinoLiveOdds(gameId) {
   const now = Date.now();
   const timeSinceLastUpdate = now - (cached?.lastUpdated || 0);
 
-  if (cached && timeSinceLastUpdate > 25000) {
-    // Background refresh socket if silent for > 25 seconds
-    ensureNiceCasinoSocket().catch(() => {});
+  if (cached && timeSinceLastUpdate > 15000) {
+    // Force reconnect socket with fresh token if silent for > 15 seconds
+    ensureNiceCasinoSocket(true).catch(() => {});
   }
 
-  // If we have cached live round data in RAM, ALWAYS prioritize it over completed historical results!
-  if (cached && cached.roundId) {
+  // Use fast live socket cache only if fresh (< 20 seconds). If older, fall through to fresh REST fetch!
+  if (cached && cached.roundId && timeSinceLastUpdate < 20000) {
     const elapsed = Math.floor(
       (now - (cached.leftSecReceivedAt || cached.lastUpdated || now)) / 1000,
     );
