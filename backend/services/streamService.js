@@ -67,13 +67,23 @@ export const resolveBetfairStreamId = async (rawId, sportId = "4") => {
       {
         eventId: strId,
         sportId: String(sportId || "4"),
+        key: "2",
       },
     );
+    const rawData = marketRes.data?.data?.data || marketRes.data?.data || {};
     const betfairId =
-      marketRes.data?.data?.matchOddsData?.[0]?.eventId ||
-      marketRes.data?.data?.data?.matchOddsData?.[0]?.eventId;
-    if (betfairId) return String(betfairId);
-  } catch (e) {}
+      rawData.matchOddsData?.[0]?.eventId ||
+      rawData.bookmakersData?.[0]?.eventId ||
+      rawData.fancyData?.[0]?.eventId ||
+      rawData.streamId ||
+      rawData.eventId;
+    if (betfairId) {
+      console.log(`[StreamService] Resolved Betfair stream ID: ${rawId} -> ${betfairId}`);
+      return String(betfairId);
+    }
+  } catch (e) {
+    console.warn(`[StreamService] Failed to resolve Betfair ID for ${strId}:`, e.message);
+  }
   return strId;
 };
 
