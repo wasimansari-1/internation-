@@ -250,6 +250,12 @@ const parseFirestoreNumber = (f) => {
 // Formats live market rate sizes identically to upstream original exchange (116.11, 2.1K, 72.28, 107.91, 0)
 export const formatDisplaySize = (size) => {
   if (size === null || size === undefined || size === "") return "0";
+  if (
+    typeof size === "string" &&
+    (size.endsWith("K") || size.endsWith("M") || size.endsWith("k") || size.endsWith("m"))
+  ) {
+    return size.toUpperCase();
+  }
   const num = Number(size);
   if (isNaN(num) || num <= 0) return "0";
   if (num >= 1000000) {
