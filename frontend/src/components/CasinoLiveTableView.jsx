@@ -261,8 +261,9 @@ export default function CasinoLiveTableView({ onBackToLobby }) {
         {showLiveTv && (
           <div style={{ marginBottom: '14px', borderRadius: '8px', overflow: 'hidden', border: '1px solid #38bdf8' }}>
             <iframe
-              src="https://casino.nice444.com/authentication/demo/99.0010"
+              src={`/api/casino/stream-proxy/${eventId || '99.0010'}`}
               style={{ width: '100%', height: '180px', border: 'none' }}
+              allow="autoplay; fullscreen; encrypted-media"
               title="Dealer Stream"
             />
           </div>

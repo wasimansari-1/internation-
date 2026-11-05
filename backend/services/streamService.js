@@ -311,7 +311,7 @@ export const fetchDirectHlsStream = async (rawId, sportId = "4", forceRefresh = 
             "User-Agent":
               "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
           },
-          httpsAgent: nativeHttpsAgent,
+          httpsAgent: httpsAgent,
           timeout: 6000,
         },
       );
@@ -336,7 +336,7 @@ export const fetchDirectHlsStream = async (rawId, sportId = "4", forceRefresh = 
             "User-Agent":
               "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
           },
-          httpsAgent: nativeHttpsAgent,
+          httpsAgent: httpsAgent,
           timeout: 6000,
         },
       );
@@ -380,6 +380,8 @@ export const fetchDirectHlsStream = async (rawId, sportId = "4", forceRefresh = 
     pingUrl: cfg.pingUrl,
     streamId,
     watchUrl,
+    state: pingData.state || "live",
+    startsAt: pingData.startsAt || 0,
     expiresAt: Date.now() + 50000,
   };
   sportsStreamCache.set(cacheKey, result);
