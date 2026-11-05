@@ -74,25 +74,6 @@ const MemoizedLiveTvPlayer = React.memo(function MemoizedLiveTvPlayer({
         }}
       >
         <button
-          onClick={handlePopout}
-          style={{
-            background: 'rgba(37, 99, 235, 0.9)',
-            color: '#ffffff',
-            border: '1px solid rgba(255,255,255,0.3)',
-            borderRadius: '4px',
-            padding: '3px 8px',
-            fontSize: '10px',
-            fontWeight: 700,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '3px'
-          }}
-          title="Open in HD Floating Window"
-        >
-          ⚡ HD Popout
-        </button>
-        <button
           onClick={handleRefresh}
           style={{
             background: 'rgba(0,0,0,0.65)',

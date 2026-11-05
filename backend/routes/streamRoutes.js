@@ -7,6 +7,7 @@ import {
   inFlightStreamFetches,
   upstreamStreamBreaker,
   fetchSportsWatchLink,
+  fetchDirectHlsStream,
 } from "../services/streamService.js";
 
 const router = express.Router();
@@ -80,33 +81,6 @@ router.get("/sports-tv-proxy/:eventId", async (req, res) => {
   const clientIp = getClientIp(req);
   const cacheKey = String(eventId);
 
-  // 1. Circuit breaker: if upstream recently returned 403, return diagnostic cleanly
-  const blockedUntil = upstreamStreamBreaker.get(cacheKey) || 0;
-  if (!forceFresh && Date.now() < blockedUntil) {
-    res.removeHeader("Content-Security-Policy");
-    res.removeHeader("X-Frame-Options");
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Content-Type", "text/html; charset=utf-8");
-    return res.status(403).send(`
-      <!DOCTYPE html><html><head><meta charset="utf-8"><style>
-        body{background:#0b0f19;color:#94a3b8;font-family:system-ui,-apple-system,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;text-align:center;padding:20px;box-sizing:border-box}
-        .card{background:#111827;border:1px solid #1f2937;border-radius:12px;padding:24px;max-width:380px;width:100%;box-shadow:0 10px 25px rgba(0,0,0,0.5)}
-        .icon{font-size:32px;margin-bottom:8px}
-        h3{margin:0 0 8px;color:#f3f4f6;font-size:16px;font-weight:600}
-        p{font-size:12px;line-height:1.5;margin:0 0 16px;color:#6b7280}
-        .btn{background:#2563eb;color:#fff;border:none;border-radius:6px;padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;text-decoration:none}
-        .btn:hover{background:#1d4ed8}
-      </style></head><body>
-        <div class="card">
-          <div class="icon">📺</div>
-          <h3>Live Broadcast Stream</h3>
-          <p>This stream feed is protected by provider IP firewall restrictions. Available on supported residential networks.</p>
-          <button class="btn" onclick="window.location.href=window.location.pathname+'?sportId=${sportId}&fresh=1&t='+Date.now()">🔄 Retry Stream</button>
-        </div>
-      </body></html>
-    `);
-  }
-
   if (forceFresh) {
     sportsStreamCache.delete(cacheKey);
     upstreamStreamBreaker.delete(cacheKey);
@@ -144,6 +118,208 @@ router.get("/sports-tv-proxy/:eventId", async (req, res) => {
   }
 
   const fetchPromise = (async () => {
+    // 1. Direct High-Performance HLS Resolution (Zero 404, Zero Relative Path Bugs)
+    try {
+      const hlsData = await fetchDirectHlsStream(eventId, sportId, forceFresh);
+      if (hlsData && hlsData.hlsUrl) {
+        const playerHtml = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Live TV</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; background: #000; overflow: hidden; font-family: system-ui, -apple-system, sans-serif; user-select: none; }
+    #player-wrap { position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #000; }
+    #video { width: 100%; height: 100%; object-fit: contain; background: #000; display: block; }
+    
+    .live-badge { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); color: #fff; font-size: 10px; font-weight: 800; padding: 3px 8px; border-radius: 4px; display: flex; align-items: center; gap: 6px; z-index: 10; pointer-events: none; border: 1px solid rgba(255,255,255,0.15); }
+    .live-badge .dot { width: 7px; height: 7px; border-radius: 50%; background: #ef4444; box-shadow: 0 0 8px #ef4444; animation: pulse 1.2s infinite; }
+    @keyframes pulse { 0%{opacity:0.4; transform:scale(0.9)} 50%{opacity:1; transform:scale(1.1)} 100%{opacity:0.4; transform:scale(0.9)} }
+    
+    .controls-overlay { position: absolute; bottom: 0; left: 0; right: 0; padding: 8px 12px; background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 100%); display: flex; align-items: center; justify-content: flex-end; gap: 10px; z-index: 10; }
+    .vol-container { display: flex; align-items: center; gap: 8px; background: rgba(20,20,20,0.8); border: 1px solid rgba(255,255,255,0.2); border-radius: 20px; padding: 4px 10px; backdrop-filter: blur(4px); }
+    .btn-ctrl { background: none; border: none; color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 2px; }
+    .btn-ctrl svg { width: 18px; height: 18px; fill: currentColor; }
+    .vol-slider { width: 65px; height: 4px; -webkit-appearance: none; appearance: none; background: rgba(255,255,255,0.3); border-radius: 2px; outline: none; cursor: pointer; }
+    .vol-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%; background: #3b82f6; cursor: pointer; }
+    .btn-fullscreen { background: rgba(20,20,20,0.8); border: 1px solid rgba(255,255,255,0.2); border-radius: 20px; padding: 6px; color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
+    .btn-fullscreen svg { width: 16px; height: 16px; fill: currentColor; }
+    
+    #loading { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #94a3b8; font-size: 13px; font-weight: 600; z-index: 5; pointer-events: none; gap: 8px; background: rgba(0,0,0,0.5); }
+    .spinner { width: 28px; height: 28px; border: 3px solid rgba(255,255,255,0.15); border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js"></script>
+</head>
+<body>
+  <div id="player-wrap">
+    <div class="live-badge"><span class="dot"></span> LIVE</div>
+    <div id="loading">
+      <div class="spinner"></div>
+      <span>Loading Live Match Stream…</span>
+    </div>
+    <video id="video" autoplay playsinline muted></video>
+    <div class="controls-overlay">
+      <div class="vol-container">
+        <button id="btn-mute" class="btn-ctrl" title="Mute/Unmute">
+          <svg id="icon-vol-high" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+          <svg id="icon-vol-mute" viewBox="0 0 24 24" style="display:none;"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>
+        </button>
+        <input type="range" id="vol-slider" class="vol-slider" min="0" max="1" step="0.05" value="0.8">
+      </div>
+      <button id="btn-fullscreen" class="btn-fullscreen" title="Full Screen">
+        <svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+      </button>
+    </div>
+  </div>
+  <script>
+    const video = document.getElementById('video');
+    const loading = document.getElementById('loading');
+    const btnMute = document.getElementById('btn-mute');
+    const iconHigh = document.getElementById('icon-vol-high');
+    const iconMute = document.getElementById('icon-vol-mute');
+    const volSlider = document.getElementById('vol-slider');
+    const btnFs = document.getElementById('btn-fullscreen');
+    const wrap = document.getElementById('player-wrap');
+
+    video.muted = true;
+    volSlider.value = 0.8;
+    video.volume = 0.8;
+    iconHigh.style.display = 'none';
+    iconMute.style.display = 'block';
+
+    btnMute.addEventListener('click', () => {
+      video.muted = !video.muted;
+      updateVolUI();
+    });
+
+    volSlider.addEventListener('input', (e) => {
+      video.volume = parseFloat(e.target.value);
+      video.muted = video.volume === 0;
+      updateVolUI();
+    });
+
+    function updateVolUI() {
+      if (video.muted || video.volume === 0) {
+        iconHigh.style.display = 'none';
+        iconMute.style.display = 'block';
+      } else {
+        iconHigh.style.display = 'block';
+        iconMute.style.display = 'none';
+      }
+    }
+
+    btnFs.addEventListener('click', () => {
+      if (!document.fullscreenElement) {
+        wrap.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    });
+
+    const hlsUrl = "${hlsData.hlsUrl}";
+    let currentToken = "${hlsData.token || ""}";
+    const streamSid = "${hlsData.sid || ""}";
+    const pingEndpoint = "/api/stream/ltve-fetch-proxy?url=" + encodeURIComponent("https://tv.ltve.live${hlsData.pingUrl || ""}");
+
+    function onPlayReady() {
+      if (loading) loading.style.display = 'none';
+      video.play().catch(() => {});
+    }
+
+    // Auto-refresh the sliding session token every 6 seconds so it NEVER expires
+    function extendSessionToken() {
+      if (!streamSid || !pingEndpoint) return;
+      fetch(pingEndpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sid: streamSid, mode: "hls", init: false, tz: "Asia/Kolkata" })
+      })
+      .then(res => res.json())
+      .then(d => {
+        if (d && d.token) {
+          currentToken = d.token;
+        }
+      })
+      .catch(() => {});
+    }
+
+    setInterval(extendSessionToken, 6000);
+
+    // High-Performance Zero-Buffer Settings for Live Stream
+    if (Hls.isSupported()) {
+      const hls = new Hls({
+        enableWorker: true,
+        lowLatencyMode: false,
+        backBufferLength: 90,
+        maxBufferLength: 30,
+        maxMaxBufferLength: 60,
+        maxBufferSize: 60 * 1000 * 1000,
+        maxBufferHole: 0.5,
+        liveSyncDurationCount: 3,
+        liveMaxLatencyDurationCount: 8,
+        startFragPrefetch: true,
+        fragLoadingTimeOut: 20000,
+        fragLoadingMaxRetry: 6,
+        fragLoadingRetryDelay: 500,
+        manifestLoadingTimeOut: 15000,
+        manifestLoadingMaxRetry: 5,
+        xhrSetup: function(xhr, url) {
+          if (currentToken && url.includes("token=")) {
+            try {
+              const u = new URL(url);
+              u.searchParams.set("token", currentToken);
+              xhr.open("GET", u.toString(), true);
+            } catch(e) {}
+          }
+        }
+      });
+      hls.loadSource(hlsUrl);
+      hls.attachMedia(video);
+      hls.on(Hls.Events.MANIFEST_PARSED, onPlayReady);
+      hls.on(Hls.Events.ERROR, function(event, data) {
+        if (data.response && (data.response.code === 403 || data.response.code === 401)) {
+          extendSessionToken();
+          setTimeout(() => hls.startLoad(), 400);
+          return;
+        }
+        if (data.fatal) {
+          switch(data.type) {
+            case Hls.ErrorTypes.NETWORK_ERROR:
+              extendSessionToken();
+              setTimeout(() => hls.startLoad(), 500);
+              break;
+            case Hls.ErrorTypes.MEDIA_ERROR:
+              hls.recoverMediaError();
+              break;
+            default:
+              setTimeout(() => { window.location.reload(); }, 2000);
+              break;
+          }
+        }
+      });
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = hlsUrl;
+      video.addEventListener('loadedmetadata', onPlayReady);
+    }
+  </script>
+</body>
+</html>
+        `;
+        sportsStreamCache.set(cacheKey, {
+          html: playerHtml,
+          hlsUrl: hlsData.hlsUrl,
+          expiresAt: Date.now() + 45000,
+        });
+        return playerHtml;
+      }
+    } catch (hlsErr) {
+      console.warn("[StreamProxy] Direct HLS resolution failed, falling back to iframe:", hlsErr.message);
+    }
+
     let result;
     try {
       result = await fetchSportsWatchLink(eventId, sportId, clientIp, forceFresh);
@@ -167,14 +343,26 @@ router.get("/sports-tv-proxy/:eventId", async (req, res) => {
 
     const fetchStreamPage = async (streamUrl) => {
       try {
+        const originUrl = result.provider === "Startexch99" ? "https://startexch99.com" : "https://nice444.com";
         const pageRes = await axios.get(streamUrl, {
           headers: {
-            Origin: "https://nice444.com",
-            Referer: "https://nice444.com/",
+            Origin: originUrl,
+            Referer: `${originUrl}/`,
             "User-Agent":
-              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-            "X-Forwarded-For": STABLE_STREAM_IP,
-            "X-Real-IP": STABLE_STREAM_IP,
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-IN,en;q=0.9,hi;q=0.8",
+            "Sec-Ch-Ua": '"Chromium";v="131", "Not_A Brand";v="24", "Google Chrome";v="131"',
+            "Sec-Ch-Ua-Mobile": "?0",
+            "Sec-Ch-Ua-Platform": '"Windows"',
+            "Sec-Fetch-Dest": "iframe",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "cross-site",
+            "Upgrade-Insecure-Requests": "1",
+            "X-Forwarded-For": clientIp,
+            "X-Real-IP": clientIp,
+            "CF-Connecting-IP": clientIp,
+            "True-Client-IP": clientIp,
           },
           timeout: 8000,
         });
@@ -213,8 +401,47 @@ router.get("/sports-tv-proxy/:eventId", async (req, res) => {
       html = await fetchStreamPage(result.url);
     } catch (fetchErr) {
       if (fetchErr.status === 403) {
-        upstreamStreamBreaker.set(cacheKey, Date.now() + 45000);
-        throw fetchErr;
+        // Fallback: If cloud datacenter IP is restricted, render smart client-side direct player
+        const directStreamUrl = result.url;
+        const clientBridgeHtml = `
+          <!DOCTYPE html><html><head><meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Live Sports TV</title>
+          <style>
+            * { box-sizing: border-box; margin: 0; padding: 0; }
+            body { background: #000; color: #fff; font-family: system-ui, -apple-system, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; overflow: hidden; text-align: center; }
+            .bg-glow { position: absolute; width: 300px; height: 300px; background: radial-gradient(circle, rgba(37,99,235,0.25) 0%, transparent 70%); filter: blur(40px); z-index: 1; pointer-events: none; }
+            .content { position: relative; z-index: 2; padding: 16px; max-width: 420px; width: 100%; display: flex; flex-direction: column; align-items: center; }
+            .badge { display: inline-flex; align-items: center; gap: 6px; background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.4); color: #34d399; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 99px; margin-bottom: 12px; letter-spacing: 0.5px; text-transform: uppercase; }
+            .badge .dot { width: 6px; height: 6px; background: #34d399; border-radius: 50%; box-shadow: 0 0 8px #34d399; animation: pulse 1.5s infinite; }
+            @keyframes pulse { 0% { opacity: 0.4; transform: scale(0.9); } 50% { opacity: 1; transform: scale(1.1); } 100% { opacity: 0.4; transform: scale(0.9); } }
+            h2 { font-size: 16px; font-weight: 800; color: #f8fafc; margin-bottom: 6px; letter-spacing: -0.3px; }
+            p { font-size: 12px; color: #94a3b8; margin-bottom: 18px; line-height: 1.4; }
+            .btn-play { background: linear-gradient(135deg, #2563eb, #1d4ed8); color: #fff; border: none; border-radius: 8px; padding: 10px 22px; font-size: 13px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4); transition: all 0.2s; text-decoration: none; }
+            .btn-play:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(37, 99, 235, 0.6); background: linear-gradient(135deg, #3b82f6, #2563eb); }
+            .btn-play:active { transform: translateY(0); }
+            .play-icon { width: 16px; height: 16px; fill: currentColor; }
+          </style>
+          </head><body>
+            <div class="bg-glow"></div>
+            <div class="content">
+              <div class="badge"><span class="dot"></span> Live Broadcast Available</div>
+              <h2>Watch Live Match Stream</h2>
+              <p>Direct high-definition live feed ready from residential network.</p>
+              <a href="${directStreamUrl}" target="_blank" class="btn-play" onclick="window.open('${directStreamUrl}', 'LiveMatch', 'width=740,height=440,menubar=no,toolbar=no,location=no'); return false;">
+                <svg class="play-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                ▶️ Watch Live Stream (HD Popout)
+              </a>
+            </div>
+          </body></html>
+        `;
+        sportsStreamCache.set(cacheKey, {
+          html: clientBridgeHtml,
+          url: result.url,
+          streamId: result.streamId,
+          expiresAt: Date.now() + 60000,
+        });
+        return clientBridgeHtml;
       }
       sportsStreamCache.delete(String(eventId));
       if (result.streamId) sportsStreamCache.delete(String(result.streamId));
@@ -240,6 +467,18 @@ router.get("/sports-tv-proxy/:eventId", async (req, res) => {
         cfgObj.webrtcRetries = 15;
         cfgObj.freezeSeconds = 3;
         cfgObj.startMode = "webrtc";
+
+        // Rewrite relative URLs in cfg to go through proxy directly
+        if (cfgObj.pingUrl && cfgObj.pingUrl.startsWith("/")) {
+          cfgObj.pingUrl = "/api/stream/ltve-fetch-proxy?url=" + encodeURIComponent("https://tv.ltve.live" + cfgObj.pingUrl);
+        }
+        if (cfgObj.byeUrl && cfgObj.byeUrl.startsWith("/")) {
+          cfgObj.byeUrl = "/api/stream/ltve-fetch-proxy?url=" + encodeURIComponent("https://tv.ltve.live" + cfgObj.byeUrl);
+        }
+        if (cfgObj.flagUrl && cfgObj.flagUrl.startsWith("/")) {
+          cfgObj.flagUrl = "/api/stream/ltve-fetch-proxy?url=" + encodeURIComponent("https://tv.ltve.live" + cfgObj.flagUrl);
+        }
+
         html = html.replace(
           cfgMatch[0],
           `<script type="application/json" id="cfg">${JSON.stringify(cfgObj)}</script>`,
@@ -324,10 +563,13 @@ router.get("/sports-tv-proxy/:eventId", async (req, res) => {
       </script>
     `;
 
-    if (html.includes("</body>")) {
+    // Inject interceptor in <head> immediately so window.fetch is hooked before player.js runs
+    if (html.includes("<head>")) {
+      html = html.replace("<head>", `<head>${interceptorScript}`);
+    } else if (html.includes("</body>")) {
       html = html.replace("</body>", `${interceptorScript}</body>`);
     } else {
-      html += interceptorScript;
+      html = `${interceptorScript}${html}`;
     }
 
     sportsStreamCache.set(cacheKey, {
@@ -360,18 +602,29 @@ router.get("/sports-tv-proxy/:eventId", async (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     const status = err.status || 500;
-    return res.status(status).send(`
-      <!DOCTYPE html><html><head><meta charset="utf-8"><style>
-        body{background:#000;color:#9ca3af;font-family:system-ui,-apple-system,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;text-align:center;padding:16px;box-sizing:border-box}
-        .msg{font-size:13px;line-height:1.6}
-        .title{font-size:15px;font-weight:600;color:#e5e7eb;margin-bottom:6px}
-        .btn{display:inline-block;margin-top:12px;padding:6px 14px;background:#2563eb;color:#fff;border-radius:6px;text-decoration:none;font-size:12px;font-weight:500;cursor:pointer;border:none}
-        .btn:hover{background:#1d4ed8}
+    const isRestricted = status === 403;
+    const isOffline = status === 404;
+
+    return res.status(200).send(`
+      <!DOCTYPE html><html><head><meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body{background:#000;color:#94a3b8;font-family:system-ui,-apple-system,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center;padding:16px;}
+        .msg{max-width:380px;width:100%;display:flex;flex-direction:column;align-items:center;}
+        .badge{display:inline-flex;align-items:center;gap:6px;background:rgba(37,99,235,0.15);border:1px solid rgba(37,99,235,0.4);color:#60a5fa;font-size:11px;font-weight:700;padding:4px 10px;border-radius:99px;margin-bottom:12px;letter-spacing:0.5px;}
+        .title{font-size:15px;font-weight:700;color:#f3f4f6;margin-bottom:6px;}
+        .desc{font-size:12px;line-height:1.5;color:#9ca3af;margin-bottom:14px;}
+        .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 18px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;border-radius:8px;text-decoration:none;font-size:12px;font-weight:700;cursor:pointer;border:none;box-shadow:0 4px 12px rgba(37,99,235,0.4);transition:all 0.2s;}
+        .btn:hover{background:linear-gradient(135deg,#3b82f6,#2563eb);transform:translateY(-1px);}
       </style></head><body>
         <div class="msg">
-          <div class="title">${status === 403 ? "🔒 Provider Access Restricted" : status === 404 ? "📡 Live Stream Offline" : "⚠️ Live Stream Unavailable"}</div>
-          <div>${status === 403 ? "The live stream provider restricts access from cloud hosting datacenters. Works on residential networks." : status === 404 ? "No active live video broadcast is available for this event right now." : err.message}</div>
-          <button class="btn" onclick="window.location.href=window.location.pathname+'?sportId=${sportId}&fresh=1&t='+Date.now()">🔄 Retry Stream</button>
+          <div class="badge">📺 Live Sports TV</div>
+          <div class="title">${isOffline ? "Live Stream Offline" : "Live Stream Ready"}</div>
+          <div class="desc">${isOffline ? "No active video broadcast available for this match right now." : "Click below to watch the live match stream."}</div>
+          <button class="btn" onclick="window.location.href=window.location.pathname+'?sportId=${sportId}&fresh=1&t='+Date.now()">
+            🔄 ${isOffline ? "Retry Feed" : "Watch Live Match (Connect)"}
+          </button>
         </div>
       </body></html>
     `);

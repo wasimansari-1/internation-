@@ -18,6 +18,8 @@ import casinoRouter from "./routes/casinoRoutes.js";
 import streamRouter from "./routes/streamRoutes.js";
 import adminRouter from "./routes/adminRoutes.js";
 import { proxyRequest } from "./services/authService.js";
+import { getClientIp } from "./services/streamService.js";
+import axios from "axios";
 import { telemetry } from "./services/telemetryService.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -92,6 +94,44 @@ app.use("/ori/api/sports", sportsRouter);
 app.use("/api/casino", casinoRouter);
 app.use("/api/stream", streamRouter);
 app.use("/api/admin", adminRouter);
+
+// Universal proxy for /w/* (WebRTC stream signaling, ping, and player telemetry)
+app.all("/w/*", async (req, res) => {
+  try {
+    const targetUrl = `https://tv.ltve.live${req.originalUrl}`;
+    const clientIp = getClientIp(req);
+    const origin = "https://nice444.com";
+    const headers = {
+      "Content-Type": req.headers["content-type"] || "application/json",
+      Origin: origin,
+      Referer: `${origin}/`,
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+      "X-Forwarded-For": clientIp,
+      "X-Real-IP": clientIp,
+      "CF-Connecting-IP": clientIp,
+      "True-Client-IP": clientIp,
+    };
+    const response = await axios({
+      method: req.method,
+      url: targetUrl,
+      data: req.body,
+      headers,
+      timeout: 10000,
+    });
+    res.removeHeader("Content-Security-Policy");
+    res.removeHeader("X-Frame-Options");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE");
+    res.setHeader("Access-Control-Allow-Headers", "*");
+    return res.status(response.status).json(response.data);
+  } catch (err) {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    return res
+      .status(err.response?.status || 500)
+      .json(err.response?.data || { error: err.message });
+  }
+});
 
 // News ticker API
 app.get("/api/media/news", async (req, res) => {
