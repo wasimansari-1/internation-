@@ -163,7 +163,7 @@ class TelemetryService {
 
     this.authStats = {
       nice444: {
-        account: "demo52",
+        account: "demo52 / rio001 (50/50 Load Balanced)",
         domain: "https://nice444.com",
         casinoDomain: "https://casino.nice444.com",
         attempts: 0,

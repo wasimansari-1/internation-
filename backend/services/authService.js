@@ -5,33 +5,33 @@ import { telemetry } from "./telemetryService.js";
 axios.defaults.httpsAgent = httpsAgent;
 axios.defaults.httpAgent = httpAgent;
 
-let cachedToken = null;
-let cachedIntCasinoToken = null;
-let cachedUserDetail = null;
-let tokenExpiry = 0;
+// Multi-account load balancing pool for Nice444 (50% traffic sharing between demo52 and rio001)
+export const NICE444_ACCOUNTS = [
+  { userName: "demo52", password: "Asdf1234" },
+  { userName: "rio001", password: "Asdf1234" },
+];
+
+const nice444Sessions = NICE444_ACCOUNTS.map((acc) => ({
+  userName: acc.userName,
+  password: acc.password,
+  token: null,
+  intCasino: null,
+  userDetail: null,
+  tokenExpiry: 0,
+  failedAttempts: 0,
+}));
+
+let currentNiceAccountIndex = 0;
 let tokenRetryTimer = null;
 
-export const scheduleTokenRetry = () => {
-  if (tokenRetryTimer) return;
-  tokenRetryTimer = setTimeout(async () => {
-    tokenRetryTimer = null;
-    const t = await getDemoToken(true);
-    if (t) {
-      console.log("Nice444 session token successfully acquired on retry.");
-    }
-  }, 5000);
-};
-
-export const getDemoToken = async (forceRefresh = false) => {
-  if (!forceRefresh && cachedToken && Date.now() < tokenExpiry) {
-    return cachedToken;
-  }
+// Helper to log in a specific Nice444 user session
+async function loginNiceAccount(session) {
   try {
     const res = await axios.post(
       `${TARGET_BASE}/app/users/userLogin`,
       {
-        userName: "demo52",
-        password: "Asdf1234",
+        userName: session.userName,
+        password: session.password,
         ipInfo: {},
       },
       {
@@ -46,24 +46,78 @@ export const getDemoToken = async (forceRefresh = false) => {
       },
     );
     if (res.data?.data?.accessToken) {
-      cachedToken = res.data.data.accessToken;
-      cachedIntCasinoToken = res.data.data.intCasino || null;
-      cachedUserDetail = res.data.data.userDetail || null;
-      tokenExpiry = Date.now() + 30 * 60 * 1000;
+      session.token = res.data.data.accessToken;
+      session.intCasino = res.data.data.intCasino || null;
+      session.userDetail = res.data.data.userDetail || null;
+      session.tokenExpiry = Date.now() + 30 * 60 * 1000;
+      session.failedAttempts = 0;
       telemetry.recordAuthAttempt("nice444", true);
-      telemetry.recordUpstreamHit("Nice444", "/app/users/userLogin", 200, 180);
-      return cachedToken;
+      telemetry.recordUpstreamHit("Nice444", `/app/users/userLogin (${session.userName})`, 200, 180);
+      return session.token;
     }
   } catch (err) {
-    console.error("Error getting demo token:", err.message);
+    session.failedAttempts++;
+    console.error(`Error getting Nice444 token for ${session.userName}:`, err.message);
     telemetry.recordAuthAttempt("nice444", false, err.message);
-    scheduleTokenRetry();
   }
-  return cachedToken;
+  return null;
+}
+
+export const scheduleTokenRetry = () => {
+  if (tokenRetryTimer) return;
+  tokenRetryTimer = setTimeout(async () => {
+    tokenRetryTimer = null;
+    for (const session of nice444Sessions) {
+      if (!session.token || Date.now() >= session.tokenExpiry) {
+        await loginNiceAccount(session);
+      }
+    }
+  }, 5000);
 };
 
-export const getCachedIntCasinoToken = () => cachedIntCasinoToken;
-export const getCachedUserDetail = () => cachedUserDetail;
+// 50% Load balanced getDemoToken between demo52 and rio001
+export const getDemoToken = async (forceRefresh = false) => {
+  const primaryIdx = currentNiceAccountIndex % nice444Sessions.length;
+  currentNiceAccountIndex = (currentNiceAccountIndex + 1) % nice444Sessions.length;
+  const secondaryIdx = (primaryIdx + 1) % nice444Sessions.length;
+
+  const primary = nice444Sessions[primaryIdx];
+  const secondary = nice444Sessions[secondaryIdx];
+
+  // 1. If primary account has an active unexpired token and no forceRefresh
+  if (!forceRefresh && primary.token && Date.now() < primary.tokenExpiry) {
+    return primary.token;
+  }
+
+  // 2. Perform fresh login for primary account
+  const token = await loginNiceAccount(primary);
+  if (token) {
+    return token;
+  }
+
+  // 3. Fallback: If primary login failed, use secondary account immediately
+  if (!forceRefresh && secondary.token && Date.now() < secondary.tokenExpiry) {
+    return secondary.token;
+  }
+  const fallbackToken = await loginNiceAccount(secondary);
+  if (fallbackToken) {
+    return fallbackToken;
+  }
+
+  // Schedule retry if both fail
+  scheduleTokenRetry();
+  return primary.token || secondary.token || null;
+};
+
+export const getCachedIntCasinoToken = () => {
+  const active = nice444Sessions.find((s) => s.token && Date.now() < s.tokenExpiry) || nice444Sessions[0];
+  return active?.intCasino || null;
+};
+
+export const getCachedUserDetail = () => {
+  const active = nice444Sessions.find((s) => s.token && Date.now() < s.tokenExpiry) || nice444Sessions[0];
+  return active?.userDetail || null;
+};
 
 export const getStealthHeaders = (customHeaders = {}) => {
   const persona = telemetry?.getCurrentPersona ? telemetry.getCurrentPersona() : {
@@ -93,8 +147,19 @@ export const getStealthHeaders = (customHeaders = {}) => {
     ...customHeaders,
   };
 
-  if (cachedToken && !headers["Authorization"]) {
-    headers["Authorization"] = `Bearer ${cachedToken}`;
+  // Rotate between available tokens for 50/50 outbound traffic distribution
+  const validSessions = nice444Sessions.filter((s) => s.token && Date.now() < s.tokenExpiry);
+  let activeToken = null;
+  if (validSessions.length > 0) {
+    const session = validSessions[currentNiceAccountIndex % validSessions.length];
+    currentNiceAccountIndex = (currentNiceAccountIndex + 1) % validSessions.length;
+    activeToken = session.token;
+  } else {
+    activeToken = nice444Sessions[0]?.token || nice444Sessions[1]?.token || null;
+  }
+
+  if (activeToken && !headers["Authorization"]) {
+    headers["Authorization"] = `Bearer ${activeToken}`;
   }
   return headers;
 };
