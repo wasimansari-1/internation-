@@ -133,7 +133,6 @@ router.get("/sports-tv-proxy/:eventId", async (req, res) => {
     try {
       const hlsData = await fetchDirectHlsStream(eventId, sportId, forceFresh);
       if (hlsData && hlsData.hlsUrl) {
-        const isUpcoming = hlsData.state === "upcoming";
         const playerHtml = `
 <!DOCTYPE html>
 <html lang="en">
@@ -163,23 +162,15 @@ router.get("/sports-tv-proxy/:eventId", async (req, res) => {
     #loading { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #94a3b8; font-size: 13px; font-weight: 600; z-index: 5; pointer-events: none; gap: 8px; background: rgba(0,0,0,0.5); }
     .spinner { width: 28px; height: 28px; border: 3px solid rgba(255,255,255,0.15); border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
-
-    #notice { position: absolute; inset: 0; display: ${isUpcoming ? 'flex' : 'none'}; flex-direction: column; align-items: center; justify-content: center; color: #94a3b8; font-size: 13px; font-weight: 600; z-index: 15; gap: 10px; background: #000; padding: 20px; text-align: center; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js"></script>
 </head>
 <body>
   <div id="player-wrap">
     <div class="live-badge"><span class="dot"></span> LIVE</div>
-    <div id="notice">
-      <div style="font-size:32px;">📡</div>
-      <div style="font-size:15px;font-weight:700;color:#f8fafc;">Broadcast Starting Shortly</div>
-      <div style="font-size:12px;color:#64748b;max-width:280px;line-height:1.4;">Official match broadcast is scheduled. Stream activates when live feed commences.</div>
-      <div class="spinner" style="margin-top:6px;"></div>
-    </div>
     <div id="loading">
       <div class="spinner"></div>
-      <span>Connecting Live Match Stream…</span>
+      <span>Loading Live Match Stream…</span>
     </div>
     <video id="video" autoplay playsinline muted></video>
     <div class="controls-overlay">
@@ -198,7 +189,6 @@ router.get("/sports-tv-proxy/:eventId", async (req, res) => {
   <script>
     const video = document.getElementById('video');
     const loading = document.getElementById('loading');
-    const notice = document.getElementById('notice');
     const btnMute = document.getElementById('btn-mute');
     const iconHigh = document.getElementById('icon-vol-high');
     const iconMute = document.getElementById('icon-vol-mute');
@@ -245,15 +235,10 @@ router.get("/sports-tv-proxy/:eventId", async (req, res) => {
       }
     });
 
-    const isUpcoming = ${isUpcoming};
     const hlsUrl = "${hlsData.hlsUrl}";
     let hlsInstance = null;
 
     function playStream() {
-      if (isUpcoming) {
-        setTimeout(() => window.location.reload(), 15000);
-        return;
-      }
       if (Hls.isSupported()) {
         hlsInstance = new Hls({
           enableWorker: true,
@@ -269,7 +254,6 @@ router.get("/sports-tv-proxy/:eventId", async (req, res) => {
         hlsInstance.on(Hls.Events.MANIFEST_PARSED, function() {
           video.play().catch(() => {});
           loading.style.display = 'none';
-          if (notice) notice.style.display = 'none';
         });
         hlsInstance.on(Hls.Events.ERROR, function(event, data) {
           if (data.fatal) {
@@ -283,8 +267,8 @@ router.get("/sports-tv-proxy/:eventId", async (req, res) => {
                 hlsInstance.recoverMediaError();
                 break;
               default:
-                console.error("HLS unrecoverable error, reload in 4s");
-                setTimeout(() => window.location.reload(), 4000);
+                console.error("HLS unrecoverable error, reload");
+                setTimeout(() => window.location.reload(), 2500);
                 break;
             }
           }
@@ -294,14 +278,12 @@ router.get("/sports-tv-proxy/:eventId", async (req, res) => {
         video.addEventListener('loadedmetadata', function() {
           video.play().catch(() => {});
           loading.style.display = 'none';
-          if (notice) notice.style.display = 'none';
         });
       }
     }
 
     video.addEventListener('playing', () => {
       loading.style.display = 'none';
-      if (notice) notice.style.display = 'none';
     });
 
     video.addEventListener('waiting', () => {
@@ -334,59 +316,8 @@ router.get("/sports-tv-proxy/:eventId", async (req, res) => {
         return playerHtml;
       }
     } catch (hlsErr) {
-      console.warn("[StreamProxy] Strategy 1 (Direct HLS) failed, attempting Strategy 2:", hlsErr.message);
-    }
-
-    // Strategy 2: Reverse-proxied Stream Page with Referrer Spoofing
-    try {
-      const result = await fetchSportsWatchLink(eventId, sportId, clientIp, forceFresh);
-      if (result && result.url) {
-        const originUrl = result.provider === "Startexch99" ? "https://startexch99.com" : "https://nice444.com";
-        let html = await fetchStreamPageContent(result.url, originUrl);
-
-        // Rewrite relative player.js
-        html = html.replace('src="/player/player.js', 'src="https://tv.ltve.live/player/player.js');
-
-        // Rewrite cfg endpoints to proxy
-        const cfgMatch = html.match(/<script type="application\/json" id="cfg">([^<]+)<\/script>/);
-        if (cfgMatch) {
-          try {
-            const cfgObj = JSON.parse(cfgMatch[1]);
-            cfgObj.devtoolsGuard = false;
-            if (cfgObj.pingUrl && cfgObj.pingUrl.startsWith("/")) {
-              cfgObj.pingUrl = "/api/stream/ltve-fetch-proxy?url=" + encodeURIComponent("https://tv.ltve.live" + cfgObj.pingUrl);
-            }
-            if (cfgObj.byeUrl && cfgObj.byeUrl.startsWith("/")) {
-              cfgObj.byeUrl = "/api/stream/ltve-fetch-proxy?url=" + encodeURIComponent("https://tv.ltve.live" + cfgObj.byeUrl);
-            }
-            if (cfgObj.flagUrl && cfgObj.flagUrl.startsWith("/")) {
-              cfgObj.flagUrl = "/api/stream/ltve-fetch-proxy?url=" + encodeURIComponent("https://tv.ltve.live" + cfgObj.flagUrl);
-            }
-            html = html.replace(cfgMatch[0], `<script type="application/json" id="cfg">${JSON.stringify(cfgObj)}</script>`);
-          } catch (e) {}
-        }
-
-        // Inject document.referrer spoofing so client player.js thinks it is running on startexch99.com!
-        const referrerSpoofScript = `
-          <script>
-            try {
-              Object.defineProperty(document, 'referrer', { get: () => '${originUrl}/' });
-            } catch (e) {}
-          </script>
-        `;
-        html = html.replace("<head>", `<head>${referrerSpoofScript}`);
-
-        sportsStreamCache.set(cacheKey, {
-          html,
-          url: result.url,
-          streamId: result.streamId,
-          expiresAt: Date.now() + 60000,
-        });
-        return html;
-      }
-    } catch (strat2Err) {
-      console.warn("[StreamProxy] Strategy 2 failed:", strat2Err.message);
-      throw strat2Err;
+      console.warn("[StreamProxy] Direct HLS resolution failed:", hlsErr.message);
+      throw hlsErr;
     }
   })();
 

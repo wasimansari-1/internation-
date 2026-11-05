@@ -9,9 +9,6 @@ import {
 } from "../services/casinoService.js";
 import { casinoConfig } from "../config/casinoConfig.js";
 import { providerManager } from "../providers/index.js";
-import https from "https";
-
-const cleanHttpsAgent = new https.Agent({ keepAlive: false });
 
 const router = express.Router();
 
@@ -272,73 +269,14 @@ router.get("/watch-link/:gameId", async (req, res) => {
   return res.json({ success: true, url: `/api/casino/stream-proxy/${gameId}` });
 });
 
-function normalizeCasinoEventId(id) {
-  if (!id) return "99.0010";
-  const str = String(id).trim().toLowerCase();
-  if (str.startsWith("99.")) return str;
-  if (str.includes("teen") || str.includes("patti")) return "99.0010";
-  if (str.includes("lucky") || str.includes("7")) return "99.0030";
-  if (str.includes("dtl") || str.includes("lion")) return "99.0041";
-  if (str.includes("dragon") || str.includes("tiger")) return "99.0018";
-  if (str.includes("32")) return "99.0022";
-  if (str.includes("andar") || str.includes("bahar")) return "99.0025";
-  if (str.includes("baccarat")) return "99.0001";
-  return str;
-}
-
 router.get("/stream-proxy/:gameId", async (req, res) => {
   const { gameId } = req.params;
-  const normId = normalizeCasinoEventId(gameId);
   const clientIp =
     req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
     req.headers["x-real-ip"] ||
     req.headers["cf-connecting-ip"] ||
     "103.21.124.5";
 
-  // Strategy 1: Universal Universe/Univideo Bypass Engine (with Active Table Fallback)
-  const idsToTry = [normId, "99.0010", "99.0030"];
-  for (const tableId of [...new Set(idsToTry)]) {
-    try {
-      const univideoUrl = `https://univideo.series444.com/embed/casino?eventId=${tableId}&tv=true&muted=1`;
-      const uniRes = await axios.get(univideoUrl, {
-        headers: {
-          Referer: "https://universeapi.site/",
-          Origin: "https://universeapi.site",
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-          "Accept-Language": "en-US,en;q=0.9",
-        },
-        httpsAgent: cleanHttpsAgent,
-        timeout: 5000,
-      });
-
-      if (uniRes.status === 200 && typeof uniRes.data === "string" && uniRes.data.includes("<video")) {
-        let html = uniRes.data;
-
-        // Base tag for assets & stealth beacon disabler
-        html = html.replace("<head>", `<head>\n  <base href="https://univideo.series444.com/">\n  <script>try{navigator.sendBeacon=function(){return true;};}catch(e){}</script>`);
-
-        // Rewrite WebSocket connection directly to the active endpoint /uni/api/video/ws
-        html = html.replace(/ws = new WebSocket\([\s\S]*?\);/g, "ws = new WebSocket('wss://univideo.series444.com/uni/api/video/ws?table=' + encodeURIComponent(TABLE) + (ACCESS ? '&a=' + encodeURIComponent(ACCESS) : ''));");
-
-        // Neutralize bot detection & iframe checks safely (no regex syntax corruption)
-        html = html.replace(/var refuse = [^;]+;/g, "var refuse = false;");
-        html = html.replace(/IFRAME_MODE = "[^"]+"/g, 'IFRAME_MODE = "off"');
-        html = html.replace(/BOTS_MODE = "[^"]+"/g, 'BOTS_MODE = "off"');
-
-        res.removeHeader("Content-Security-Policy");
-        res.removeHeader("X-Frame-Options");
-        res.setHeader("Access-Control-Allow-Origin", "*");
-        res.setHeader("Content-Type", "text/html; charset=utf-8");
-        return res.send(html);
-      }
-    } catch (uniErr) {
-      continue;
-    }
-  }
-
-  // Strategy 2: Upstream Watch URL with Referrer Spoofing
   try {
     const streamUrl = await fetchUpstreamWatchUrl(gameId, clientIp);
     if (!streamUrl) {
