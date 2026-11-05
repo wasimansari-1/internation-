@@ -694,10 +694,10 @@ export default function MatchDetailTablesView({ event, onBack }) {
         </div>
 
         {mediaTab === 'score' ? (
-          <div style={{ width: '100%', background: '#000000' }}>
+          <div style={{ width: '100%', background: '#0b1120' }}>
             <iframe
               src={`/api/sports/scoreboard-frame/${event.exEventId || event._id}?sportId=${event.sportId || '4'}`}
-              style={{ width: '100%', height: '115px', border: 'none', display: 'block' }}
+              style={{ width: '100%', height: '138px', border: 'none', display: 'block' }}
               title="Universe Live Scoreboard"
             />
           </div>

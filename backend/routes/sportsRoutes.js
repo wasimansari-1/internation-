@@ -230,7 +230,10 @@ router.get("/score/:eventId", async (req, res) => {
       success: true,
       data: {
         eventId,
-        statusCommentry: "",
+        format: sportId === "1" ? "soccer" : sportId === "2" ? "tennis" : "t20",
+        isTestMatch: false,
+        statusCommentry: "Match In Play",
+        last6balls: [],
         team1Name: "Team 1",
         team2Name: "Team 2",
         teams: [],
@@ -243,138 +246,533 @@ router.get("/score/:eventId", async (req, res) => {
 router.get("/scoreboard-frame/:eventId", async (req, res) => {
   const { eventId } = req.params;
   const { sportId = "4" } = req.query;
-  const data = await getLiveScoreData(eventId, sportId);
+  const initialData = await getLiveScoreData(eventId, sportId);
 
-  const isSoccer = String(sportId) === "1";
-  const isTennis = String(sportId) === "2";
-
-  let colHeaders = ["SCORE", "OVS", "RR"];
-  if (isSoccer) {
-    colHeaders = ["GOAL", "HT", "CRN", "YEL", "RED"];
-  } else if (isTennis) {
-    colHeaders = ["SETS", "S1", "S2", "S3", "PTS"];
-  }
-
-  const t1 = data?.teams?.[0] || { name: data?.team1Name || "Team 1" };
-  const t2 = data?.teams?.[1] || { name: data?.team2Name || "Team 2" };
-
-  const getVals = (t) => {
-    if (isSoccer) return [t.score || "0", t.htscore || "0", t.corners || "0", t.yellowCard || "0", t.redCard || "0"];
-    if (isTennis) return [t.sets || "0", t.set1 || "0", t.set2 || "0", t.set3 || "0", t.pts || "0"];
-    return [t.score || "-", t.overs || "-", t.rr || "-"];
-  };
-
-  const t1Vals = getVals(t1);
-  const t2Vals = getVals(t2);
-  const commentary = data?.statusCommentry || "";
-
-  const t1Icon = isSoccer ? "⚽" : isTennis ? "🎾" : t1.isBatting ? "🏏" : "⚾";
-  const t2Icon = isSoccer ? "⚽" : isTennis ? "🎾" : t2.isBatting ? "🏏" : "⚾";
+  const initialJson = JSON.stringify(initialData || {
+    eventId,
+    format: sportId === "1" ? "soccer" : sportId === "2" ? "tennis" : "t20",
+    isTestMatch: false,
+    statusCommentry: "Connecting to live match feed...",
+    last6balls: [],
+    team1Name: "Team 1",
+    team2Name: "Team 2",
+    teams: [
+      { name: "Team 1", score: "-", overs: "-", rr: "-", fours: "-", sixes: "-", wides: "-", sets: "0", set1: "0", set2: "0", set3: "0", pts: "0", htscore: "0", corners: "0", yellowCard: "0", redCard: "0" },
+      { name: "Team 2", score: "-", overs: "-", rr: "-", fours: "-", sixes: "-", wides: "-", sets: "0", set1: "0", set2: "0", set3: "0", pts: "0", htscore: "0", corners: "0", yellowCard: "0", redCard: "0" }
+    ]
+  });
 
   const html = `<!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Live Scorecard</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #000000; color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; }
-    .scoreboard { padding: 6px 12px; background: #000000; border-bottom: 1px solid #1a1a1a; }
-    .header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 4px; border-bottom: 1px solid #1a1a1a; margin-bottom: 4px; font-size: 11px; font-weight: 800; color: #94a3b8; }
-    .powered { display: flex; align-items: center; gap: 4px; color: #0284c7; }
-    .cols { display: flex; gap: 14px; }
-    .col-item { width: 44px; text-align: right; }
-    .team-row { display: flex; justify-content: space-between; align-items: flex-start; padding: 4px 0; }
-    .team-left { display: flex; align-items: flex-start; gap: 8px; flex: 1; min-width: 0; }
-    .icon { font-size: 13px; width: 16px; text-align: center; margin-top: 1px; }
-    .team-name-box { display: flex; flex-direction: column; min-width: 0; }
-    .team-name { font-weight: 800; font-size: 12px; color: #ffffff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-transform: uppercase; }
-    .batsman { font-size: 10px; color: #94a3b8; font-weight: 600; margin-top: 2px; }
-    .stats { display: flex; gap: 14px; align-items: center; }
-    .stat-val { width: 44px; text-align: right; font-weight: 700; font-size: 11px; color: #e2e8f0; }
-    .stat-val.main { font-weight: 900; font-size: 13px; color: #ffffff; }
-    .footer { margin-top: 4px; padding-top: 4px; border-top: 1px solid #1a1a1a; font-size: 11px; color: #94a3b8; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    body {
+      background: #0f172a;
+      color: #ffffff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      overflow: hidden;
+      user-select: none;
+    }
+    .mc-sc {
+      width: 100%;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 7px 12px;
+      background: linear-gradient(180deg, #131b2e 0%, #0b1120 100%);
+      border-bottom: 2px solid #1e293b;
+    }
+    /* Top Bar */
+    .mc-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 5px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      font-size: 11px;
+      font-weight: 700;
+      color: #94a3b8;
+    }
+    .mc-brand {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      font-size: 10px;
+      color: #38bdf8;
+    }
+    .mc-pulse {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #22c55e;
+      box-shadow: 0 0 8px #22c55e;
+      animation: pulseAnim 1.4s infinite;
+      display: inline-block;
+    }
+    @keyframes pulseAnim {
+      0% { transform: scale(0.9); opacity: 0.8; }
+      50% { transform: scale(1.3); opacity: 1; }
+      100% { transform: scale(0.9); opacity: 0.8; }
+    }
+    .mc-headers {
+      display: flex;
+      gap: 10px;
+    }
+    .mc-col-hd {
+      min-width: 42px;
+      text-align: right;
+      font-size: 10.5px;
+      font-weight: 800;
+      color: #94a3b8;
+      letter-spacing: 0.5px;
+    }
+    /* Team Rows */
+    .mc-body {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      margin: 4px 0;
+    }
+    .mc-team-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      min-height: 28px;
+    }
+    .mc-team-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+      min-width: 0;
+      padding-right: 8px;
+    }
+    .mc-role-badge {
+      width: 20px;
+      height: 20px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+    .mc-role-badge.bat {
+      background: rgba(245, 158, 11, 0.15);
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      color: #fbbf24;
+    }
+    .mc-role-badge.ball {
+      background: rgba(148, 163, 184, 0.1);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      color: #94a3b8;
+    }
+    .mc-role-badge.server {
+      background: rgba(34, 197, 94, 0.2);
+      border: 1px solid rgba(34, 197, 94, 0.5);
+      color: #4ade80;
+      box-shadow: 0 0 6px rgba(34, 197, 94, 0.3);
+    }
+    .mc-role-badge.soccer {
+      background: rgba(56, 189, 248, 0.15);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      color: #38bdf8;
+    }
+    .mc-name-box {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+    .mc-team-name {
+      font-size: 12.5px;
+      font-weight: 800;
+      color: #f8fafc;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    .mc-subtext {
+      font-size: 9.5px;
+      color: #94a3b8;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 1px;
+    }
+    .mc-subtext.highlight {
+      color: #facc15;
+    }
+    /* Stats Row Right */
+    .mc-stats {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .mc-stat {
+      min-width: 42px;
+      text-align: right;
+      font-size: 11px;
+      font-weight: 700;
+      color: #cbd5e1;
+    }
+    .mc-stat.main {
+      font-size: 13.5px;
+      font-weight: 900;
+      color: #ffffff;
+      min-width: 48px;
+    }
+    .mc-stat.pts {
+      font-size: 13px;
+      font-weight: 900;
+      color: #4ade80;
+      background: rgba(34, 197, 94, 0.12);
+      padding: 1px 6px;
+      border-radius: 4px;
+      border: 1px solid rgba(34, 197, 94, 0.3);
+    }
+    .mc-stat.active-ings {
+      color: #fbbf24;
+      font-weight: 900;
+      background: rgba(245, 158, 11, 0.15);
+      padding: 1px 6px;
+      border-radius: 4px;
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+    /* Bottom Bar */
+    .mc-bottom {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 5px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      font-size: 10.5px;
+      gap: 10px;
+      min-height: 24px;
+    }
+    .mc-commentary {
+      color: #94a3b8;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 1;
+    }
+    .mc-balls {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    .mc-ball-lbl {
+      font-size: 9px;
+      font-weight: 800;
+      color: #64748b;
+      text-transform: uppercase;
+      margin-right: 2px;
+    }
+    .mc-ball {
+      width: 17px;
+      height: 17px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      font-weight: 800;
+      color: #ffffff;
+      background: #1e293b;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .mc-ball.dot {
+      background: #0f172a;
+      color: #64748b;
+      border-color: #334155;
+    }
+    .mc-ball.four {
+      background: #2563eb;
+      border-color: #3b82f6;
+    }
+    .mc-ball.six {
+      background: #7c3aed;
+      border-color: #8b5cf6;
+    }
+    .mc-ball.wicket {
+      background: #dc2626;
+      border-color: #ef4444;
+      animation: pulseWicket 1.5s infinite;
+    }
+    .mc-ball.extra {
+      background: #d97706;
+      border-color: #f59e0b;
+    }
+    @keyframes pulseWicket {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.1); }
+    }
+    .mc-btn-refresh {
+      background: none;
+      border: none;
+      color: #64748b;
+      cursor: pointer;
+      font-size: 11px;
+      display: flex;
+      align-items: center;
+      padding: 0 4px;
+      transition: color 0.15s;
+    }
+    .mc-btn-refresh:hover { color: #38bdf8; }
   </style>
 </head>
 <body>
-  <div class="scoreboard" id="sb">
-    <div class="header">
-      <div class="powered"><span>●</span> Powered By Universe Score</div>
-      <div class="cols">
-        ${colHeaders.map((c) => `<div class="col-item">${c}</div>`).join("")}
+  <div class="mc-sc" id="scoreboardContainer">
+    <!-- Top Header -->
+    <div class="mc-top">
+      <div class="mc-brand">
+        <span class="mc-pulse"></span>
+        <span>Powered By Universe Score</span>
+      </div>
+      <div class="mc-headers" id="colHeaders">
+        <!-- Rendered by JS -->
       </div>
     </div>
-    <div class="team-row">
-      <div class="team-left">
-        <span class="icon" id="t1Icon">${t1Icon}</span>
-        <div class="team-name-box">
-          <span class="team-name" id="t1Name">${t1.name}</span>
-          ${t1.batsman ? `<span class="batsman" id="t1Batsman">${t1.batsman}</span>` : `<span class="batsman" id="t1Batsman" style="display:none"></span>`}
+
+    <!-- Team Rows -->
+    <div class="mc-body">
+      <!-- Team 1 -->
+      <div class="mc-team-row" id="teamRow1">
+        <div class="mc-team-left">
+          <div class="mc-role-badge ball" id="t1Badge">⚾</div>
+          <div class="mc-name-box">
+            <span class="mc-team-name" id="t1Name">Team 1</span>
+            <span class="mc-subtext" id="t1Sub"></span>
+          </div>
+        </div>
+        <div class="mc-stats" id="t1Stats">
+          <!-- Rendered by JS -->
         </div>
       </div>
-      <div class="stats" id="t1Stats">
-        <div class="stat-val main">${t1Vals[0]}</div>
-        ${t1Vals.slice(1).map((v) => `<div class="stat-val">${v}</div>`).join("")}
-      </div>
-    </div>
-    <div class="team-row">
-      <div class="team-left">
-        <span class="icon" id="t2Icon">${t2Icon}</span>
-        <div class="team-name-box">
-          <span class="team-name" id="t2Name">${t2.name}</span>
-          ${t2.batsman ? `<span class="batsman" id="t2Batsman">${t2.batsman}</span>` : `<span class="batsman" id="t2Batsman" style="display:none"></span>`}
+
+      <!-- Team 2 -->
+      <div class="mc-team-row" id="teamRow2">
+        <div class="mc-team-left">
+          <div class="mc-role-badge bat" id="t2Badge">🏏</div>
+          <div class="mc-name-box">
+            <span class="mc-team-name" id="t2Name">Team 2</span>
+            <span class="mc-subtext" id="t2Sub"></span>
+          </div>
+        </div>
+        <div class="mc-stats" id="t2Stats">
+          <!-- Rendered by JS -->
         </div>
       </div>
-      <div class="stats" id="t2Stats">
-        <div class="stat-val main">${t2Vals[0]}</div>
-        ${t2Vals.slice(1).map((v) => `<div class="stat-val">${v}</div>`).join("")}
-      </div>
     </div>
-    <div class="footer" id="commentary">${commentary || "Match Live in Play"}</div>
+
+    <!-- Bottom Bar -->
+    <div class="mc-bottom">
+      <div class="mc-commentary" id="commentaryText">Match Live in Play</div>
+      <div class="mc-balls" id="ballsTimeline" style="display:none;">
+        <span class="mc-ball-lbl">Last Balls:</span>
+        <div style="display:flex; gap:3px;" id="ballsList"></div>
+      </div>
+      <button class="mc-btn-refresh" id="btnRefresh" title="Force Refresh">🔄</button>
+    </div>
   </div>
+
   <script>
-    const isSoccer = ${isSoccer};
-    const isTennis = ${isTennis};
-    function getVals(t) {
-      if (isSoccer) return [t.score || '0', t.htscore || '0', t.corners || '0', t.yellowCard || '0', t.redCard || '0'];
-      if (isTennis) return [t.sets || '0', t.set1 || '0', t.set2 || '0', t.set3 || '0', t.pts || '0'];
-      return [t.score || '-', t.overs || '-', t.rr || '-'];
-    }
-    setInterval(async () => {
-      try {
-        const res = await fetch('/api/sports/score/${eventId}?sportId=${sportId}');
-        const json = await res.json();
-        if (json.success && json.data) {
-          const d = json.data;
-          const t1 = d.teams?.[0] || {};
-          const t2 = d.teams?.[1] || {};
-          document.getElementById('t1Name').textContent = t1.name || d.team1Name;
-          document.getElementById('t2Name').textContent = t2.name || d.team2Name;
-          if (t1.batsman) {
-            const el = document.getElementById('t1Batsman');
-            el.textContent = t1.batsman;
-            el.style.display = 'block';
-          }
-          if (t2.batsman) {
-            const el = document.getElementById('t2Batsman');
-            el.textContent = t2.batsman;
-            el.style.display = 'block';
-          }
-          if (!isSoccer && !isTennis) {
-            document.getElementById('t1Icon').textContent = t1.isBatting ? '🏏' : '⚾';
-            document.getElementById('t2Icon').textContent = t2.isBatting ? '🏏' : '⚾';
-          }
-          const v1 = getVals(t1);
-          const v2 = getVals(t2);
-          document.getElementById('t1Stats').innerHTML = '<div class="stat-val main">' + v1[0] + '</div>' + v1.slice(1).map(v => '<div class="stat-val">' + v + '</div>').join('');
-          document.getElementById('t2Stats').innerHTML = '<div class="stat-val main">' + v2[0] + '</div>' + v2.slice(1).map(v => '<div class="stat-val">' + v + '</div>').join('');
-          if (d.statusCommentry) document.getElementById('commentary').textContent = d.statusCommentry;
+    const eventId = "${eventId}";
+    const sportId = "${sportId}";
+    let lastRenderedData = ${initialJson};
+
+    function renderScorecard(data) {
+      if (!data) return;
+      lastRenderedData = data;
+
+      const format = data.format || (sportId === "1" ? "soccer" : sportId === "2" ? "tennis" : data.isTestMatch ? "test" : "t20");
+      const isSoccer = format === "soccer";
+      const isTennis = format === "tennis";
+      const isTest = format === "test" || Boolean(data.isTestMatch);
+
+      const hdEl = document.getElementById("colHeaders");
+      let headersHtml = "";
+
+      if (isTest) {
+        headersHtml = '<div class="mc-col-hd" style="min-width:68px;">1st INN</div><div class="mc-col-hd" style="min-width:68px;">2nd INN</div>';
+      } else if (isSoccer) {
+        headersHtml = '<div class="mc-col-hd">GOAL</div><div class="mc-col-hd">HT</div><div class="mc-col-hd">CRN</div><div class="mc-col-hd">🟨</div><div class="mc-col-hd">🟥</div>';
+      } else if (isTennis) {
+        const hasSet4 = Boolean(data.teams?.[0]?.set4 || data.teams?.[1]?.set4);
+        const hasSet5 = Boolean(data.teams?.[0]?.set5 || data.teams?.[1]?.set5);
+        headersHtml = '<div class="mc-col-hd">SETS</div><div class="mc-col-hd">1</div><div class="mc-col-hd">2</div><div class="mc-col-hd">3</div>';
+        if (hasSet4) headersHtml += '<div class="mc-col-hd">4</div>';
+        if (hasSet5) headersHtml += '<div class="mc-col-hd">5</div>';
+        headersHtml += '<div class="mc-col-hd">PTS</div>';
+      } else {
+        // T20 / 50-over ODI Cricket
+        headersHtml = '<div class="mc-col-hd">SCORE</div><div class="mc-col-hd">OVS</div><div class="mc-col-hd">RR</div><div class="mc-col-hd">4s</div><div class="mc-col-hd">6s</div>';
+      }
+      hdEl.innerHTML = headersHtml;
+
+      const t1 = data.teams?.[0] || { name: data.team1Name || "Team 1" };
+      const t2 = data.teams?.[1] || { name: data.team2Name || "Team 2" };
+
+      // Update Names
+      document.getElementById("t1Name").textContent = t1.name || data.team1Name || "Team 1";
+      document.getElementById("t2Name").textContent = t2.name || data.team2Name || "Team 2";
+
+      // Badges
+      const b1 = document.getElementById("t1Badge");
+      const b2 = document.getElementById("t2Badge");
+      if (isSoccer) {
+        b1.className = "mc-role-badge soccer"; b1.textContent = "⚽";
+        b2.className = "mc-role-badge soccer"; b2.textContent = "⚽";
+      } else if (isTennis) {
+        b1.className = t1.isServing ? "mc-role-badge server" : "mc-role-badge ball";
+        b1.textContent = t1.isServing ? "🎾" : "·";
+        b2.className = t2.isServing ? "mc-role-badge server" : "mc-role-badge ball";
+        b2.textContent = t2.isServing ? "🎾" : "·";
+      } else {
+        b1.className = t1.isBatting ? "mc-role-badge bat" : "mc-role-badge ball";
+        b1.textContent = t1.isBatting ? "🏏" : "⚾";
+        b2.className = t2.isBatting ? "mc-role-badge bat" : "mc-role-badge ball";
+        b2.textContent = t2.isBatting ? "🏏" : "⚾";
+      }
+
+      // Subtexts (Batsman / Goals info)
+      const sub1 = document.getElementById("t1Sub");
+      const sub2 = document.getElementById("t2Sub");
+      if (isSoccer) {
+        sub1.textContent = t1.goalInfo ? "⚽ " + t1.goalInfo : "";
+        sub2.textContent = t2.goalInfo ? "⚽ " + t2.goalInfo : "";
+      } else if (!isTennis) {
+        sub1.textContent = t1.batsman || "";
+        sub1.className = t1.isBatting ? "mc-subtext highlight" : "mc-subtext";
+        sub2.textContent = t2.batsman || "";
+        sub2.className = t2.isBatting ? "mc-subtext highlight" : "mc-subtext";
+      } else {
+        sub1.textContent = "";
+        sub2.textContent = "";
+      }
+
+      // Render Stats Columns for each team
+      function renderStats(t) {
+        if (isTest) {
+          const f1 = t.firstIngs || "-";
+          const s1 = t.secondIngs || "-";
+          const isActive1 = t.isBatting && !t.secondIngs;
+          const isActive2 = t.isBatting && Boolean(t.secondIngs);
+          return '<div class="mc-stat main ' + (isActive1 ? 'active-ings' : '') + '" style="min-width:68px;">' + f1 + '</div>' +
+                 '<div class="mc-stat main ' + (isActive2 ? 'active-ings' : '') + '" style="min-width:68px;">' + s1 + '</div>';
         }
-      } catch (e) {}
-    }, 2000);
+        if (isSoccer) {
+          return '<div class="mc-stat main">' + (t.score || "0") + '</div>' +
+                 '<div class="mc-stat">' + (t.htscore || "0") + '</div>' +
+                 '<div class="mc-stat">' + (t.corners || "0") + '</div>' +
+                 '<div class="mc-stat" style="color:#facc15;">' + (t.yellowCard || "0") + '</div>' +
+                 '<div class="mc-stat" style="color:#ef4444;">' + (t.redCard || "0") + '</div>';
+        }
+        if (isTennis) {
+          const hasSet4 = Boolean(data.teams?.[0]?.set4 || data.teams?.[1]?.set4);
+          const hasSet5 = Boolean(data.teams?.[0]?.set5 || data.teams?.[1]?.set5);
+          let str = '<div class="mc-stat main">' + (t.sets || "0") + '</div>' +
+                    '<div class="mc-stat">' + (t.set1 || "0") + '</div>' +
+                    '<div class="mc-stat">' + (t.set2 || "0") + '</div>' +
+                    '<div class="mc-stat">' + (t.set3 || "0") + '</div>';
+          if (hasSet4) str += '<div class="mc-stat">' + (t.set4 || "-") + '</div>';
+          if (hasSet5) str += '<div class="mc-stat">' + (t.set5 || "-") + '</div>';
+          str += '<div class="mc-stat pts">' + (t.pts || "0") + '</div>';
+          return str;
+        }
+        // Cricket T20 / ODI
+        return '<div class="mc-stat main">' + (t.score || "-") + '</div>' +
+               '<div class="mc-stat">' + (t.overs || "-") + '</div>' +
+               '<div class="mc-stat">' + (t.rr || "-") + '</div>' +
+               '<div class="mc-stat">' + (t.fours || "-") + '</div>' +
+               '<div class="mc-stat">' + (t.sixes || "-") + '</div>';
+      }
+
+      document.getElementById("t1Stats").innerHTML = renderStats(t1);
+      document.getElementById("t2Stats").innerHTML = renderStats(t2);
+
+      // Commentary
+      const cText = document.getElementById("commentaryText");
+      if (data.statusCommentry) {
+        cText.textContent = data.statusCommentry;
+      }
+
+      // Last 6 Balls Timeline
+      const ballsEl = document.getElementById("ballsTimeline");
+      const ballsList = document.getElementById("ballsList");
+      if (Array.isArray(data.last6balls) && data.last6balls.length > 0) {
+        ballsEl.style.display = "flex";
+        ballsList.innerHTML = data.last6balls.map(b => {
+          const ball = String(b).trim();
+          let cls = "mc-ball";
+          if (ball === "•" || ball === "0" || ball === ".") cls += " dot";
+          else if (ball === "4") cls += " four";
+          else if (ball === "6") cls += " six";
+          else if (ball.toUpperCase().includes("W") && !ball.toUpperCase().includes("WD")) cls += " wicket";
+          else if (ball.toUpperCase().includes("WD") || ball.toUpperCase().includes("NB")) cls += " extra";
+          return '<span class="' + cls + '">' + ball + '</span>';
+        }).join("");
+      } else {
+        ballsEl.style.display = "none";
+      }
+    }
+
+    renderScorecard(lastRenderedData);
+
+    // Fast 1000ms Anti-Stuck Polling Engine with AbortController
+    let inFlight = false;
+    async function fetchLatestScore() {
+      if (inFlight) return;
+      inFlight = true;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1800);
+
+      try {
+        const res = await fetch('/api/sports/score/' + eventId + '?sportId=' + sportId + '&t=' + Date.now(), {
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        if (res.ok) {
+          const json = await res.json();
+          if (json && json.success && json.data) {
+            renderScorecard(json.data);
+          }
+        }
+      } catch (err) {
+        // Silent retry on next interval - never freeze DOM!
+      } finally {
+        inFlight = false;
+      }
+    }
+
+    // 1000ms live interval
+    const intervalTimer = setInterval(fetchLatestScore, 1000);
+
+    // Manual Refresh
+    document.getElementById("btnRefresh").addEventListener("click", () => {
+      fetchLatestScore();
+    });
   </script>
 </body>
 </html>`;
+
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  res.send(html);
+});
   res.setHeader("Content-Type", "text/html");
   res.send(html);
 });

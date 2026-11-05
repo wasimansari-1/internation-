@@ -20,12 +20,12 @@ const liveRatesCache = new Map();
 const inFlightRatesRequests = new Map();
 
 export async function getLiveScoreData(eventId, sportId = "4") {
-  const eIdStr = String(eventId || "");
+  const eIdStr = String(eventId || "").trim();
   if (!eIdStr) return null;
 
   const cacheKey = `${eIdStr}_${sportId}`;
   const cached = scoreCache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < 1000) {
+  if (cached && Date.now() - cached.timestamp < 800) {
     return cached.data;
   }
 
@@ -47,10 +47,41 @@ export async function getLiveScoreData(eventId, sportId = "4") {
     let targetDoc = null;
     let usedColl = primaryColl;
 
-    // Search primary collection first for fast sub-50ms response
-    for (const coll of allColls) {
-      for (const fieldPath of ["eventId", "exEventId"]) {
-        const query = {
+    // Fast parallel query across primary collection first
+    const primaryQueries = ["eventId", "exEventId"].map((fieldPath) => ({
+      structuredQuery: {
+        from: [{ collectionId: primaryColl }],
+        where: {
+          fieldFilter: {
+            field: { fieldPath },
+            op: "EQUAL",
+            value: { stringValue: eIdStr },
+          },
+        },
+        limit: 1,
+      },
+    }));
+
+    try {
+      const primaryResults = await Promise.all(
+        primaryQueries.map((q) =>
+          axios.post(url, q, { timeout: 1400 }).catch(() => null),
+        ),
+      );
+      for (const res of primaryResults) {
+        if (res?.data?.[0]?.document?.fields) {
+          targetDoc = res.data[0].document.fields;
+          usedColl = primaryColl;
+          break;
+        }
+      }
+    } catch (e) {}
+
+    // Fallback: search other collections if not found in primary
+    if (!targetDoc) {
+      const otherColls = allColls.filter((c) => c !== primaryColl);
+      for (const coll of otherColls) {
+        const otherQueries = ["eventId", "exEventId"].map((fieldPath) => ({
           structuredQuery: {
             from: [{ collectionId: coll }],
             where: {
@@ -62,21 +93,31 @@ export async function getLiveScoreData(eventId, sportId = "4") {
             },
             limit: 1,
           },
-        };
+        }));
 
         try {
-          const res = await axios.post(url, query, { timeout: 2000 });
-          if (res.data?.[0]?.document?.fields) {
-            targetDoc = res.data[0].document.fields;
-            usedColl = coll;
-            break;
+          const results = await Promise.all(
+            otherQueries.map((q) =>
+              axios.post(url, q, { timeout: 1200 }).catch(() => null),
+            ),
+          );
+          for (const res of results) {
+            if (res?.data?.[0]?.document?.fields) {
+              targetDoc = res.data[0].document.fields;
+              usedColl = coll;
+              break;
+            }
           }
         } catch (e) {}
+        if (targetDoc) break;
       }
-      if (targetDoc) break;
     }
 
     if (!targetDoc) {
+      // If we have stale cached data, keep serving it to prevent UI freeze
+      if (cached?.data) {
+        return cached.data;
+      }
       return null;
     }
     telemetry.recordUpstreamHit("Firestore (Score)", "live-score", 200, 80);
@@ -114,6 +155,18 @@ export async function getLiveScoreData(eventId, sportId = "4") {
       targetDoc.statusCommentry?.stringValue ||
       "";
 
+    // Parse Last 6 Balls exactly as Startexch does
+    let last6balls = [];
+    if (commentary && commentary.includes("Last 6 balls:")) {
+      let l = commentary.substring(commentary.indexOf("Last 6 balls:") + 13);
+      l = l.replace(/\u2022/g, "•");
+      if (l.includes("|")) {
+        l = l.split("|")[1].trim();
+      }
+      last6balls = l.trim().split(/\s+/).filter(Boolean);
+    }
+
+    let isTestMatch = false;
     let teams = [];
 
     // Parse modern scoreItems schema
@@ -129,6 +182,7 @@ export async function getLiveScoreData(eventId, sportId = "4") {
         const stats = {};
         let batsman = "";
         let isBatting = false;
+        let isServing = false;
 
         scoreData.forEach((sd) => {
           const sdf = sd.mapValue?.fields || {};
@@ -140,10 +194,14 @@ export async function getLiveScoreData(eventId, sportId = "4") {
           const val = sdf.value?.stringValue || "";
           if (key) stats[key] = val;
           if (val === "bat") isBatting = true;
+          if (key === "BAT-BALL" && val === "bat") isBatting = true;
+          if (key === "SERVER" && val === "*") isServing = true;
+          if (key === "1ST INNINGS" || key === "FIRSTINGS") {
+            isTestMatch = true;
+          }
           if (
+            key === "CURRENTBATSMAN" ||
             val.includes("*") ||
-            val.includes("Kohli") ||
-            val.includes("Gill") ||
             (val.includes(",") && val.length > 3)
           ) {
             batsman = val;
@@ -158,12 +216,14 @@ export async function getLiveScoreData(eventId, sportId = "4") {
             corners: stats["CORNER"] || stats["CORNERS"] || stats["CRN"] || "0",
             yellowCard: stats["YELLOW-CARD"] || stats["YELLOWCARD"] || stats["YEL"] || "0",
             redCard: stats["RED-CARD"] || stats["REDCARD"] || stats["RED"] || "0",
+            goalInfo: stats["GOALINFO"] || "",
             overs: stats["HTSCORE"] || stats["HT"] || "0",
             rr: stats["CORNER"] || "0",
             fours: stats["YELLOW-CARD"] || "0",
             sixes: stats["RED-CARD"] || "0",
             batsman: "",
             isBatting: false,
+            isServing: false,
           };
         }
 
@@ -171,17 +231,20 @@ export async function getLiveScoreData(eventId, sportId = "4") {
           return {
             name: teamName,
             sets: stats["SETS"] || stats["SET"] || "0",
-            set1: stats["SET1"] || stats["S1"] || "0",
-            set2: stats["SET2"] || stats["S2"] || "0",
-            set3: stats["SET3"] || stats["S3"] || "0",
-            pts: stats["POINT"] || stats["POINTS"] || stats["PTS"] || "0",
+            set1: stats["1"] || stats["SET1"] || stats["S1"] || "0",
+            set2: stats["2"] || stats["SET2"] || stats["S2"] || "0",
+            set3: stats["3"] || stats["SET3"] || stats["S3"] || "0",
+            set4: stats["4"] || stats["SET4"] || stats["S4"] || "",
+            set5: stats["5"] || stats["SET5"] || stats["S5"] || "",
+            pts: stats["PTS"] || stats["POINT"] || stats["POINTS"] || "0",
             score: stats["SETS"] || "0",
-            overs: stats["SET1"] || "0",
-            rr: stats["SET2"] || "0",
-            fours: stats["SET3"] || "0",
+            overs: stats["1"] || stats["SET1"] || "0",
+            rr: stats["2"] || stats["SET2"] || "0",
+            fours: stats["3"] || stats["SET3"] || "0",
             sixes: stats["PTS"] || "0",
             batsman: "",
             isBatting: false,
+            isServing,
           };
         }
 
@@ -193,8 +256,12 @@ export async function getLiveScoreData(eventId, sportId = "4") {
           rr: stats["RR"] || stats["RUN RATE"] || stats["RUNRATE"] || "-",
           fours: stats["4S"] || stats["FOURS"] || stats["FOUR"] || "-",
           sixes: stats["6S"] || stats["SIXES"] || stats["SIX"] || "-",
+          wides: stats["WIDES"] || stats["WIDE"] || "-",
+          firstIngs: stats["1ST INNINGS"] || stats["FIRSTINGS"] || "",
+          secondIngs: stats["2ND INNINGS"] || stats["SECONDINGS"] || "",
           batsman,
           isBatting,
+          isServing: false,
         };
       });
     }
@@ -220,13 +287,21 @@ export async function getLiveScoreData(eventId, sportId = "4") {
           set2: tf.set2?.stringValue || "0",
           set3: tf.set3?.stringValue || "0",
           pts: tf.pts?.stringValue || "0",
+          batsman: "",
+          isBatting: false,
+          isServing: false,
         };
       });
     }
 
+    const format = isSoccer ? "soccer" : isTennis ? "tennis" : isTestMatch ? "test" : "t20";
+
     const result = {
       eventId: eIdStr,
+      format,
+      isTestMatch,
       statusCommentry: commentary,
+      last6balls,
       team1Name,
       team2Name,
       teams,
@@ -235,6 +310,7 @@ export async function getLiveScoreData(eventId, sportId = "4") {
     scoreCache.set(cacheKey, { timestamp: Date.now(), data: result });
     return result;
   } catch (err) {
+    if (cached?.data) return cached.data;
     return null;
   }
 }
