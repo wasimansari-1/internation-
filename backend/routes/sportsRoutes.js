@@ -74,12 +74,37 @@ function handleSportsCatalog(req, res) {
 router.get("/", handleSportsCatalog);
 router.get("/list", handleSportsCatalog);
 
+// Persistent memory cache for sports event catalog to prevent empty responses during upstream blips
+let cachedAllEvents = [];
+
 async function handleEvents(req, res) {
-  const result = await telemetry.deduplicateOrFetch("sports_all_events", 1200, async () => {
+  const result = await telemetry.deduplicateOrFetch("sports_all_events", 2500, async () => {
     return proxyRequest("/api/exchange/market/matchodds/allEventsList");
   });
 
-  if (!result || !result.success) {
+  let allRaw = [];
+  if (result && result.success) {
+    const rawData =
+      result.data?.data?.data || result.data?.data || result.data || [];
+    if (Array.isArray(rawData)) {
+      allRaw = rawData;
+    } else if (typeof rawData === "object" && rawData !== null) {
+      for (const key of Object.keys(rawData)) {
+        if (Array.isArray(rawData[key])) {
+          allRaw.push(...rawData[key]);
+        }
+      }
+    }
+  }
+
+  // Update persistent cache if valid events arrived; otherwise fallback to last known good events
+  if (allRaw.length > 0) {
+    cachedAllEvents = allRaw;
+  } else if (cachedAllEvents.length > 0) {
+    allRaw = cachedAllEvents;
+  }
+
+  if (allRaw.length === 0 && (!result || !result.success)) {
     return res.status(result?.statusCode || 500).json({
       success: false,
       message: result?.error || "Failed to fetch sports events",
@@ -88,23 +113,10 @@ async function handleEvents(req, res) {
     });
   }
 
-  let allRaw = [];
-  const rawData =
-    result.data?.data?.data || result.data?.data || result.data || [];
-  if (Array.isArray(rawData)) {
-    allRaw = rawData;
-  } else if (typeof rawData === "object" && rawData !== null) {
-    for (const key of Object.keys(rawData)) {
-      if (Array.isArray(rawData[key])) {
-        allRaw.push(...rawData[key]);
-      }
-    }
-  }
-
   const sportId = req.params.sportId || req.query.sportId;
   if (sportId) {
-    allRaw = allRaw.filter((e) => String(e.sportId) === String(sportId));
-    const formattedData = allRaw.map(formatSportEvent);
+    const filtered = allRaw.filter((e) => String(e.sportId) === String(sportId));
+    const formattedData = filtered.map(formatSportEvent);
     return res.status(200).json({
       success: true,
       message: "Sport events fetched successfully",
