@@ -43,21 +43,39 @@ router.all("/ltve-fetch-proxy", async (req, res) => {
     const forwardedIp = clientIp || STABLE_STREAM_IP;
     const headers = {
       "Content-Type": req.headers["content-type"] || "application/json",
-      Origin: "https://nice444.com",
-      Referer: parentReferer,
+      Origin: "https://startexch99.com",
+      Referer: parentReferer || "https://startexch99.com/",
       "User-Agent":
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
       "X-Forwarded-For": forwardedIp,
       "X-Real-IP": forwardedIp,
+      "CF-Connecting-IP": forwardedIp,
     };
-    const upstreamRes = await axios({
-      method: req.method,
-      url: targetUrl,
-      data: req.body,
-      headers,
-      httpsAgent: nativeHttpsAgent,
-      timeout: 10000,
-    });
+
+    let upstreamRes;
+    try {
+      upstreamRes = await axios({
+        method: req.method,
+        url: targetUrl,
+        data: req.body,
+        headers,
+        timeout: 8000,
+      });
+    } catch (dirErr) {
+      // Fallback via Edge Proxy if direct CloudFront blocks datacenter IP
+      const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+      upstreamRes = await axios({
+        method: req.method,
+        url: proxyUrl,
+        data: req.body,
+        headers: {
+          "Content-Type": "application/json",
+          Origin: "https://startexch99.com",
+          Referer: parentReferer || "https://startexch99.com/",
+        },
+        timeout: 6000,
+      });
+    }
 
     res.removeHeader("Content-Security-Policy");
     res.removeHeader("X-Frame-Options");
@@ -404,47 +422,31 @@ router.get("/sports-tv-proxy/:eventId", async (req, res) => {
       html = await fetchStreamPage(result.url);
     } catch (fetchErr) {
       if (fetchErr.status === 403) {
-        // Fallback: If cloud datacenter IP is restricted, render smart client-side direct player
-        const directStreamUrl = result.url;
-        const clientBridgeHtml = `
+        // Auto-reconnecting screen with zero manual clicks required
+        const autoConnectingHtml = `
           <!DOCTYPE html><html><head><meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <title>Live Sports TV</title>
           <style>
             * { box-sizing: border-box; margin: 0; padding: 0; }
             body { background: #000; color: #fff; font-family: system-ui, -apple-system, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; overflow: hidden; text-align: center; }
-            .bg-glow { position: absolute; width: 300px; height: 300px; background: radial-gradient(circle, rgba(37,99,235,0.25) 0%, transparent 70%); filter: blur(40px); z-index: 1; pointer-events: none; }
-            .content { position: relative; z-index: 2; padding: 16px; max-width: 420px; width: 100%; display: flex; flex-direction: column; align-items: center; }
-            .badge { display: inline-flex; align-items: center; gap: 6px; background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.4); color: #34d399; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 99px; margin-bottom: 12px; letter-spacing: 0.5px; text-transform: uppercase; }
-            .badge .dot { width: 6px; height: 6px; background: #34d399; border-radius: 50%; box-shadow: 0 0 8px #34d399; animation: pulse 1.5s infinite; }
-            @keyframes pulse { 0% { opacity: 0.4; transform: scale(0.9); } 50% { opacity: 1; transform: scale(1.1); } 100% { opacity: 0.4; transform: scale(0.9); } }
-            h2 { font-size: 16px; font-weight: 800; color: #f8fafc; margin-bottom: 6px; letter-spacing: -0.3px; }
-            p { font-size: 12px; color: #94a3b8; margin-bottom: 18px; line-height: 1.4; }
-            .btn-play { background: linear-gradient(135deg, #2563eb, #1d4ed8); color: #fff; border: none; border-radius: 8px; padding: 10px 22px; font-size: 13px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4); transition: all 0.2s; text-decoration: none; }
-            .btn-play:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(37, 99, 235, 0.6); background: linear-gradient(135deg, #3b82f6, #2563eb); }
-            .btn-play:active { transform: translateY(0); }
-            .play-icon { width: 16px; height: 16px; fill: currentColor; }
+            .spinner { width: 32px; height: 32px; border: 3px solid rgba(255,255,255,0.15); border-top-color: #ef4444; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 12px; }
+            @keyframes spin { to { transform: rotate(360deg); } }
+            .title { font-size: 13px; font-weight: 700; color: #f1f5f9; letter-spacing: 0.3px; }
+            .sub { font-size: 11px; color: #64748b; margin-top: 4px; }
           </style>
           </head><body>
-            <div class="bg-glow"></div>
-            <div class="content">
-              <div class="badge"><span class="dot"></span> Live Broadcast Available</div>
-              <h2>Watch Live Match Stream</h2>
-              <p>Direct high-definition live feed ready from residential network.</p>
-              <a href="${directStreamUrl}" target="_blank" class="btn-play" onclick="window.open('${directStreamUrl}', 'LiveMatch', 'width=740,height=440,menubar=no,toolbar=no,location=no'); return false;">
-                <svg class="play-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-                ▶️ Watch Live Stream (HD Popout)
-              </a>
-            </div>
+            <div class="spinner"></div>
+            <div class="title">⚡ Connecting Live Broadcast Feed...</div>
+            <div class="sub">Direct high-definition stream initializing</div>
+            <script>
+              setTimeout(function() {
+                window.location.href = window.location.pathname + '?sportId=${sportId}&fresh=1&t=' + Date.now();
+              }, 2500);
+            </script>
           </body></html>
         `;
-        sportsStreamCache.set(cacheKey, {
-          html: clientBridgeHtml,
-          url: result.url,
-          streamId: result.streamId,
-          expiresAt: Date.now() + 60000,
-        });
-        return clientBridgeHtml;
+        return autoConnectingHtml;
       }
       sportsStreamCache.delete(String(eventId));
       if (result.streamId) sportsStreamCache.delete(String(result.streamId));
@@ -614,21 +616,22 @@ router.get("/sports-tv-proxy/:eventId", async (req, res) => {
       <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body{background:#000;color:#94a3b8;font-family:system-ui,-apple-system,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center;padding:16px;}
+        .spinner { width: 30px; height: 30px; border: 3px solid rgba(255,255,255,0.15); border-top-color: #ef4444; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 12px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
         .msg{max-width:380px;width:100%;display:flex;flex-direction:column;align-items:center;}
-        .badge{display:inline-flex;align-items:center;gap:6px;background:rgba(37,99,235,0.15);border:1px solid rgba(37,99,235,0.4);color:#60a5fa;font-size:11px;font-weight:700;padding:4px 10px;border-radius:99px;margin-bottom:12px;letter-spacing:0.5px;}
-        .title{font-size:15px;font-weight:700;color:#f3f4f6;margin-bottom:6px;}
-        .desc{font-size:12px;line-height:1.5;color:#9ca3af;margin-bottom:14px;}
-        .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 18px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;border-radius:8px;text-decoration:none;font-size:12px;font-weight:700;cursor:pointer;border:none;box-shadow:0 4px 12px rgba(37,99,235,0.4);transition:all 0.2s;}
-        .btn:hover{background:linear-gradient(135deg,#3b82f6,#2563eb);transform:translateY(-1px);}
+        .title{font-size:13px;font-weight:700;color:#f3f4f6;margin-bottom:4px;}
+        .desc{font-size:11px;color:#64748b;}
       </style></head><body>
         <div class="msg">
-          <div class="badge">📺 Live Sports TV</div>
-          <div class="title">${isOffline ? "Live Stream Offline" : "Live Stream Ready"}</div>
-          <div class="desc">${isOffline ? "No active video broadcast available for this match right now." : "Click below to watch the live match stream."}</div>
-          <button class="btn" onclick="window.location.href=window.location.pathname+'?sportId=${sportId}&fresh=1&t='+Date.now()">
-            🔄 ${isOffline ? "Retry Feed" : "Watch Live Match (Connect)"}
-          </button>
+          <div class="spinner"></div>
+          <div class="title">⚡ Connecting Live Broadcast...</div>
+          <div class="desc">${isOffline ? "Checking for match broadcast stream..." : "Loading live sports video feed..."}</div>
         </div>
+        <script>
+          setTimeout(function() {
+            window.location.href = window.location.pathname + '?sportId=${sportId}&fresh=1&t=' + Date.now();
+          }, 3000);
+        </script>
       </body></html>
     `);
   }

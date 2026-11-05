@@ -1,6 +1,7 @@
 import axios from "axios";
 import https from "https";
 import { getDemoToken, getStartexchToken, proxyRequest } from "./authService.js";
+import { httpsAgent } from "../config/hosts.js";
 
 // Clean native HTTPS agent for CDN edges without custom static IP overriding
 export const nativeHttpsAgent = new https.Agent({ keepAlive: true });
@@ -157,6 +158,125 @@ export const fetchSportsWatchLink = async (
   return entry;
 };
 
+// Robust multi-path fetcher for provider stream page (handles AWS CloudFront WAF bypass)
+export async function fetchStreamPageContent(watchUrl, origin) {
+  const browserHeaders = {
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Accept":
+      "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9,hi;q=0.8",
+    "Referer": `${origin}/`,
+    "Sec-Ch-Ua": '"Chromium";v="131", "Not_A Brand";v="24", "Google Chrome";v="131"',
+    "Sec-Ch-Ua-Mobile": "?0",
+    "Sec-Ch-Ua-Platform": '"Windows"',
+    "Sec-Fetch-Dest": "iframe",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "cross-site",
+    "Upgrade-Insecure-Requests": "1",
+    "X-Forwarded-For": STABLE_STREAM_IP,
+    "CF-Connecting-IP": STABLE_STREAM_IP,
+    "X-Real-IP": STABLE_STREAM_IP,
+  };
+
+  // Path 1: Direct with custom public DNS agent
+  try {
+    const directRes = await axios.get(watchUrl, {
+      httpsAgent,
+      headers: browserHeaders,
+      timeout: 7000,
+    });
+    if (directRes.data && typeof directRes.data === "string" && directRes.data.includes("<script")) {
+      return directRes.data;
+    }
+  } catch (err) {
+    console.warn(`[StreamService] Direct watchUrl fetch failed (${err.response?.status || err.message}), trying edge proxies...`);
+  }
+
+  // Path 2: Edge Proxy Failover (bypasses AWS datacenter WAF blocks)
+  const edgeProxies = [
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(watchUrl)}`,
+    `https://corsproxy.io/?${encodeURIComponent(watchUrl)}`,
+  ];
+
+  for (const proxyUrl of edgeProxies) {
+    try {
+      const pRes = await axios.get(proxyUrl, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        },
+        timeout: 6000,
+      });
+      if (pRes.data && typeof pRes.data === "string" && pRes.data.includes("<script")) {
+        console.log(`[StreamService] Resolved watchUrl via edge proxy successfully`);
+        return pRes.data;
+      }
+    } catch (pe) {
+      console.warn(`[StreamService] Edge proxy failed for ${proxyUrl}:`, pe.message);
+    }
+  }
+
+  throw new Error("Failed to fetch stream page from all endpoints");
+}
+
+// Robust multi-path JSON poster for stream manifest & token handshake
+export async function postStreamPing(pingUrl, body, origin, watchUrl) {
+  const pingHeaders = {
+    "Content-Type": "application/json",
+    "Accept": "*/*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Origin": origin,
+    "Referer": watchUrl,
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Sec-Ch-Ua": '"Chromium";v="131", "Not_A Brand";v="24", "Google Chrome";v="131"',
+    "Sec-Ch-Ua-Mobile": "?0",
+    "Sec-Ch-Ua-Platform": '"Windows"',
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "cross-site",
+    "X-Forwarded-For": STABLE_STREAM_IP,
+    "CF-Connecting-IP": STABLE_STREAM_IP,
+    "X-Real-IP": STABLE_STREAM_IP,
+  };
+
+  // Path 1: Direct POST with custom public DNS agent
+  try {
+    const directRes = await axios.post(pingUrl, body, {
+      httpsAgent,
+      headers: pingHeaders,
+      timeout: 7000,
+    });
+    if (directRes.data && directRes.data.hlsUrl) {
+      return directRes.data;
+    }
+  } catch (err) {
+    console.warn(`[StreamService] Direct ping failed (${err.response?.status || err.message}), trying edge proxy...`);
+  }
+
+  // Path 2: Edge Proxy Failover
+  try {
+    const pUrl = `https://corsproxy.io/?${encodeURIComponent(pingUrl)}`;
+    const pRes = await axios.post(pUrl, body, {
+      headers: {
+        "Content-Type": "application/json",
+        Origin: origin,
+        Referer: watchUrl,
+      },
+      timeout: 6000,
+    });
+    if (pRes.data && pRes.data.hlsUrl) {
+      console.log(`[StreamService] Resolved ping handshake via edge proxy successfully`);
+      return pRes.data;
+    }
+  } catch (pe) {
+    console.warn(`[StreamService] Edge proxy ping failed:`, pe.message);
+  }
+
+  throw new Error("Failed to retrieve live stream manifest");
+}
+
 // Directly resolve the real live HLS stream from Startexch99 (with Nice444 fallback)
 export const fetchDirectHlsStream = async (rawId, sportId = "4", forceRefresh = false) => {
   const streamId = await resolveBetfairStreamId(rawId, sportId);
@@ -186,6 +306,7 @@ export const fetchDirectHlsStream = async (rawId, sportId = "4", forceRefresh = 
             "User-Agent":
               "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
           },
+          httpsAgent,
           timeout: 6000,
         },
       );
@@ -210,6 +331,7 @@ export const fetchDirectHlsStream = async (rawId, sportId = "4", forceRefresh = 
             "User-Agent":
               "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
           },
+          httpsAgent,
           timeout: 6000,
         },
       );
@@ -226,19 +348,10 @@ export const fetchDirectHlsStream = async (rawId, sportId = "4", forceRefresh = 
     throw new Error("No live stream broadcast found for this event");
   }
 
-  // 3. Fetch watch page to extract CFG
-  const pageRes = await axios.get(watchUrl, {
-    httpsAgent: nativeHttpsAgent,
-    headers: {
-      Origin: origin,
-      Referer: `${origin}/`,
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    },
-    timeout: 8000,
-  });
+  // 3. Fetch watch page with automatic CloudFront WAF bypass & proxy failover
+  const pageHtml = await fetchStreamPageContent(watchUrl, origin);
 
-  const cfgMatch = pageRes.data.match(/<script type="application\/json" id="cfg">([^<]+)<\/script>/);
+  const cfgMatch = pageHtml.match(/<script type="application\/json" id="cfg">([^<]+)<\/script>/);
   if (!cfgMatch) {
     throw new Error("Failed to parse stream configuration from provider");
   }
@@ -246,23 +359,9 @@ export const fetchDirectHlsStream = async (rawId, sportId = "4", forceRefresh = 
 
   // 4. Ping endpoint to retrieve real HLS stream URL and token
   const pingUrl = `https://tv.ltve.live${cfg.pingUrl}`;
-  const pingRes = await axios.post(
-    pingUrl,
-    { sid: cfg.sid, mode: null, init: true, tz: "Asia/Kolkata" },
-    {
-      httpsAgent: nativeHttpsAgent,
-      headers: {
-        "Content-Type": "application/json",
-        Origin: origin,
-        Referer: watchUrl,
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-      },
-      timeout: 8000,
-    },
-  );
+  const pingData = await postStreamPing(pingUrl, { sid: cfg.sid, mode: null, init: true, tz: "Asia/Kolkata" }, origin, watchUrl);
 
-  const { hlsUrl, token, streamId: ltveStreamId } = pingRes.data || {};
+  const { hlsUrl, token, streamId: ltveStreamId } = pingData || {};
   if (!hlsUrl || !token) {
     throw new Error("Live stream manifest currently unavailable");
   }
