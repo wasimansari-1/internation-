@@ -18,7 +18,7 @@ import casinoRouter from "./routes/casinoRoutes.js";
 import streamRouter from "./routes/streamRoutes.js";
 import adminRouter from "./routes/adminRoutes.js";
 import { proxyRequest } from "./services/authService.js";
-import { getClientIp } from "./services/streamService.js";
+import { getClientIp, nativeHttpsAgent } from "./services/streamService.js";
 import axios from "axios";
 import { telemetry } from "./services/telemetryService.js";
 
@@ -117,6 +117,7 @@ app.all("/w/*", async (req, res) => {
       url: targetUrl,
       data: req.body,
       headers,
+      httpsAgent: nativeHttpsAgent,
       timeout: 10000,
     });
     res.removeHeader("Content-Security-Policy");

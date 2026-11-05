@@ -8,6 +8,7 @@ import {
   upstreamStreamBreaker,
   fetchSportsWatchLink,
   fetchDirectHlsStream,
+  nativeHttpsAgent,
 } from "../services/streamService.js";
 
 const router = express.Router();
@@ -54,6 +55,7 @@ router.all("/ltve-fetch-proxy", async (req, res) => {
       url: targetUrl,
       data: req.body,
       headers,
+      httpsAgent: nativeHttpsAgent,
       timeout: 10000,
     });
 
@@ -364,6 +366,7 @@ router.get("/sports-tv-proxy/:eventId", async (req, res) => {
             "CF-Connecting-IP": clientIp,
             "True-Client-IP": clientIp,
           },
+          httpsAgent: nativeHttpsAgent,
           timeout: 8000,
         });
         if (

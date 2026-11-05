@@ -20,8 +20,6 @@ export const dynamicIpPools = new Map([
   ["nice444.com", ["15.206.139.110", "13.202.182.49"]],
   ["casino.startexch99.com", ["3.111.181.8", "13.205.38.140"]],
   ["startexch99.com", ["3.111.181.8", "13.205.38.140"]],
-  ["tv.ltve.live", ["108.132.161.244"]],
-  ["player.ltve.live", ["54.154.159.245"]],
 ]);
 
 const TRACKED_DOMAINS = [
@@ -29,8 +27,6 @@ const TRACKED_DOMAINS = [
   "nice444.com",
   "casino.startexch99.com",
   "startexch99.com",
-  "tv.ltve.live",
-  "player.ltve.live",
 ];
 
 /**

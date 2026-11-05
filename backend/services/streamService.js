@@ -1,5 +1,9 @@
 import axios from "axios";
+import https from "https";
 import { getDemoToken, getStartexchToken, proxyRequest } from "./authService.js";
+
+// Clean native HTTPS agent for CDN edges without custom static IP overriding
+export const nativeHttpsAgent = new https.Agent({ keepAlive: true });
 
 // Realistic Indian residential IP subnets (Jio, Airtel, Vodafone Idea)
 export const RESIDENTIAL_INDIAN_IPS = [
@@ -224,6 +228,7 @@ export const fetchDirectHlsStream = async (rawId, sportId = "4", forceRefresh = 
 
   // 3. Fetch watch page to extract CFG
   const pageRes = await axios.get(watchUrl, {
+    httpsAgent: nativeHttpsAgent,
     headers: {
       Origin: origin,
       Referer: `${origin}/`,
@@ -245,6 +250,7 @@ export const fetchDirectHlsStream = async (rawId, sportId = "4", forceRefresh = 
     pingUrl,
     { sid: cfg.sid, mode: null, init: true, tz: "Asia/Kolkata" },
     {
+      httpsAgent: nativeHttpsAgent,
       headers: {
         "Content-Type": "application/json",
         Origin: origin,
