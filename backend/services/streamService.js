@@ -175,7 +175,8 @@ export async function fetchStreamPageContent(watchUrl, origin) {
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
     "Accept":
       "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9,hi;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Origin": origin,
     "Referer": `${origin}/`,
     "Sec-Ch-Ua": '"Chromium";v="131", "Not_A Brand";v="24", "Google Chrome";v="131"',
     "Sec-Ch-Ua-Mobile": "?0",
@@ -184,15 +185,12 @@ export async function fetchStreamPageContent(watchUrl, origin) {
     "Sec-Fetch-Mode": "navigate",
     "Sec-Fetch-Site": "cross-site",
     "Upgrade-Insecure-Requests": "1",
-    "X-Forwarded-For": STABLE_STREAM_IP,
-    "CF-Connecting-IP": STABLE_STREAM_IP,
-    "X-Real-IP": STABLE_STREAM_IP,
   };
 
-  // Path 1: Direct with custom public DNS agent
+  // Path 1: Direct with clean native HTTPS agent
   try {
     const directRes = await axios.get(watchUrl, {
-      httpsAgent,
+      httpsAgent: nativeHttpsAgent,
       headers: browserHeaders,
       timeout: 7000,
     });
@@ -205,8 +203,8 @@ export async function fetchStreamPageContent(watchUrl, origin) {
 
   // Path 2: Edge Proxy Failover (bypasses AWS datacenter WAF blocks)
   const edgeProxies = [
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(watchUrl)}`,
     `https://corsproxy.io/?${encodeURIComponent(watchUrl)}`,
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(watchUrl)}`,
   ];
 
   for (const proxyUrl of edgeProxies) {
@@ -246,15 +244,12 @@ export async function postStreamPing(pingUrl, body, origin, watchUrl) {
     "Sec-Fetch-Dest": "empty",
     "Sec-Fetch-Mode": "cors",
     "Sec-Fetch-Site": "cross-site",
-    "X-Forwarded-For": STABLE_STREAM_IP,
-    "CF-Connecting-IP": STABLE_STREAM_IP,
-    "X-Real-IP": STABLE_STREAM_IP,
   };
 
-  // Path 1: Direct POST with custom public DNS agent
+  // Path 1: Direct POST with native HTTPS agent
   try {
     const directRes = await axios.post(pingUrl, body, {
-      httpsAgent,
+      httpsAgent: nativeHttpsAgent,
       headers: pingHeaders,
       timeout: 7000,
     });
