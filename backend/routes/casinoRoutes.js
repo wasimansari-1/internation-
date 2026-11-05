@@ -316,41 +316,16 @@ router.get("/stream-proxy/:gameId", async (req, res) => {
       if (uniRes.status === 200 && typeof uniRes.data === "string" && uniRes.data.includes("<video")) {
         let html = uniRes.data;
 
-        // Base tag, beacon disabler & origin spoofing
-        const stealthScript = `
-  <base href="https://univideo.series444.com/">
-  <script>
-    try {
-      navigator.sendBeacon = function() { return true; };
-      var _origFetch = window.fetch;
-      if (_origFetch) {
-        window.fetch = function(url) {
-          if (typeof url === "string" && url.includes("/flag")) {
-            return Promise.resolve(new Response("{}"));
-          }
-          return _origFetch.apply(this, arguments);
-        };
-      }
-      try {
-        Object.defineProperty(window.location, "ancestorOrigins", {
-          get: function() { return ["https://universeapi.site"]; }
-        });
-      } catch(e) {}
-    } catch(e) {}
-  </script>`;
-        html = html.replace("<head>", `<head>\n${stealthScript}`);
+        // Base tag for assets & stealth beacon disabler
+        html = html.replace("<head>", `<head>\n  <base href="https://univideo.series444.com/">\n  <script>try{navigator.sendBeacon=function(){return true;};}catch(e){}</script>`);
 
-        // Rewrite WebSocket to connect via our local origin-cloaking proxy (/api/casino/ws)
-        html = html.replace(
-          /ws = new WebSocket\([\s\S]*?\);/g,
-          "ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/api/casino/ws?table=' + encodeURIComponent(TABLE) + (ACCESS ? '&a=' + encodeURIComponent(ACCESS) : ''));"
-        );
+        // Rewrite WebSocket connection directly to the active endpoint /uni/api/video/ws
+        html = html.replace(/ws = new WebSocket\([\s\S]*?\);/g, "ws = new WebSocket('wss://univideo.series444.com/uni/api/video/ws?table=' + encodeURIComponent(TABLE) + (ACCESS ? '&a=' + encodeURIComponent(ACCESS) : ''));");
 
-        // Neutralize bot detection & iframe checks safely
+        // Neutralize bot detection & iframe checks safely (no regex syntax corruption)
         html = html.replace(/var refuse = [^;]+;/g, "var refuse = false;");
         html = html.replace(/IFRAME_MODE = "[^"]+"/g, 'IFRAME_MODE = "off"');
         html = html.replace(/BOTS_MODE = "[^"]+"/g, 'BOTS_MODE = "off"');
-        html = html.replace(/BLOCKED = true/g, "BLOCKED = false");
 
         res.removeHeader("Content-Security-Policy");
         res.removeHeader("X-Frame-Options");

@@ -4,7 +4,6 @@ import path from "path";
 import fs from "fs";
 import crypto from "crypto";
 import { fileURLToPath } from "url";
-import { WebSocketServer, WebSocket } from "ws";
 
 // Global process exception handlers to guarantee 100% uptime and eliminate 502 Bad Gateway
 process.on("uncaughtException", (err) => {
@@ -266,66 +265,10 @@ app.get("*", (req, res, next) => {
   res.status(404).json({ error: "Route not found" });
 });
 
-export function setupCasinoWsProxy(server) {
-  const wss = new WebSocketServer({ server, path: "/api/casino/ws" });
-
-  wss.on("connection", (clientWs, req) => {
-    try {
-      const url = new URL(req.url, "http://localhost");
-      const table = url.searchParams.get("table") || "99.0010";
-      const a = url.searchParams.get("a") || "";
-
-      const targetUrl = `wss://univideo.series444.com/uni/api/video/ws?table=${encodeURIComponent(table)}${a ? "&a=" + encodeURIComponent(a) : ""}`;
-
-      const upstreamWs = new WebSocket(targetUrl, {
-        headers: {
-          Origin: "https://universeapi.site",
-          Referer: "https://universeapi.site/",
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-        },
-      });
-
-      upstreamWs.on("message", (data) => {
-        if (clientWs.readyState === WebSocket.OPEN) {
-          clientWs.send(data);
-        }
-      });
-
-      clientWs.on("message", (data) => {
-        if (upstreamWs.readyState === WebSocket.OPEN) {
-          upstreamWs.send(data);
-        }
-      });
-
-      upstreamWs.on("close", () => {
-        try { clientWs.close(); } catch (e) {}
-      });
-
-      clientWs.on("close", () => {
-        try { upstreamWs.close(); } catch (e) {}
-      });
-
-      upstreamWs.on("error", () => {
-        try { clientWs.close(); } catch (e) {}
-      });
-
-      clientWs.on("error", () => {
-        try { upstreamWs.close(); } catch (e) {}
-      });
-    } catch (err) {
-      try { clientWs.close(); } catch (e) {}
-    }
-  });
-
-  return wss;
-}
-
 if (!process.env.VERCEL) {
-  const server = app.listen(PORT, "0.0.0.0", () => {
+  app.listen(PORT, "0.0.0.0", () => {
     console.log(`🚀 Modular Backend Server running on http://0.0.0.0:${PORT}`);
   });
-  setupCasinoWsProxy(server);
 }
 
 export default app;
