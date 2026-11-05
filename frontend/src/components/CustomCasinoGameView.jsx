@@ -1055,9 +1055,13 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
                         </span>
                         <span style={{ color: '#94a3b8', fontSize: '12px' }}>ⓘ</span>
                       </div>
-                      <span style={{ color: '#94a3b8', fontSize: '10px' }}>
-                        Min/Max: {m.min || 100} - {m.max || 500000}
-                      </span>
+                      {(m.min != null || m.max != null) && (
+                        <span style={{ color: '#94a3b8', fontSize: '10px' }}>
+                          {m.min != null && m.max != null
+                            ? `Min/Max: ${m.min} - ${m.max}`
+                            : (m.min != null ? `Min: ${m.min}` : `Max: ${m.max}`)}
+                        </span>
+                      )}
                     </div>
 
                     {/* Runners Odds Row */}

@@ -240,8 +240,13 @@ export async function getLiveScoreData(eventId, sportId = "4") {
 }
 
 const parseFirestoreNumber = (f) => {
-  if (!f) return null;
-  const raw = f.doubleValue ?? f.integerValue;
+  if (f === null || f === undefined) return null;
+  if (typeof f === "number") return isNaN(f) ? null : f;
+  if (typeof f === "string") {
+    const n = Number(f);
+    return isNaN(n) ? null : n;
+  }
+  const raw = f.doubleValue ?? f.integerValue ?? f.stringValue;
   if (raw === "NaN" || raw === null || raw === undefined) return null;
   const n = Number(raw);
   return isNaN(n) ? null : n;
@@ -423,8 +428,8 @@ export async function queryFirestoreForEvent(eventId, sportId = "4") {
         marketId: bDoc.exMarketId?.stringValue || d.document.name.split("/").pop(),
         marketName: bDoc.marketName?.stringValue || "Match Odds",
         sequence: getSequence(bDoc),
-        min: parseFirestoreNumber(bDoc.min) || 100,
-        max: parseFirestoreNumber(bDoc.max) || 1000,
+        min: parseFirestoreNumber(bDoc.min) ?? parseFirestoreNumber(bDoc.minBet) ?? parseFirestoreNumber(bDoc.minStake) ?? null,
+        max: parseFirestoreNumber(bDoc.max) ?? parseFirestoreNumber(bDoc.maxBet) ?? parseFirestoreNumber(bDoc.maxStake) ?? null,
         totalMatched:
           bDoc.oddsData?.mapValue?.fields?.totalMatched?.integerValue ||
           bDoc.oddsData?.mapValue?.fields?.totalMatched?.stringValue ||
@@ -448,8 +453,8 @@ export async function queryFirestoreForEvent(eventId, sportId = "4") {
         marketId: bmDoc.exMarketId?.stringValue || d.document.name.split("/").pop(),
         marketName: bmDoc.marketName?.stringValue || "Bookmaker Bhav",
         sequence: getSequence(bmDoc),
-        min: parseFirestoreNumber(bmDoc.min) || 100,
-        max: parseFirestoreNumber(bmDoc.max) || 25000,
+        min: parseFirestoreNumber(bmDoc.min) ?? parseFirestoreNumber(bmDoc.minBet) ?? parseFirestoreNumber(bmDoc.minStake) ?? null,
+        max: parseFirestoreNumber(bmDoc.max) ?? parseFirestoreNumber(bmDoc.maxBet) ?? parseFirestoreNumber(bmDoc.maxStake) ?? null,
         totalMatched:
           bmDoc.oddsData?.mapValue?.fields?.totalMatched?.integerValue ||
           bmDoc.oddsData?.mapValue?.fields?.totalMatched?.stringValue ||
@@ -501,8 +506,8 @@ export async function queryFirestoreForEvent(eventId, sportId = "4") {
         sequence: getSequence(f),
         status: odds.status?.stringValue || (isSuspended ? "SUSPENDED" : "ONLINE"),
         isSuspended,
-        min: parseFirestoreNumber(f.min) || 100,
-        max: parseFirestoreNumber(f.max) || 50000,
+        min: parseFirestoreNumber(f.min) ?? parseFirestoreNumber(f.minBet) ?? parseFirestoreNumber(f.minStake) ?? null,
+        max: parseFirestoreNumber(f.max) ?? parseFirestoreNumber(f.maxBet) ?? parseFirestoreNumber(f.maxStake) ?? null,
         no: {
           price: noPrice,
           size: formatDisplaySize(noSize),
@@ -568,8 +573,8 @@ export async function queryFirestoreForEvent(eventId, sportId = "4") {
       marketId: swf.exMarketId?.stringValue || toWinTheMatchDoc.document.name.split("/").pop(),
       marketName: swf.marketName?.stringValue || "To Win The Match",
       sequence: getSequence(swf) || 20,
-      min: parseFirestoreNumber(swf.min) || 100,
-      max: parseFirestoreNumber(swf.max) || 500000,
+      min: parseFirestoreNumber(swf.min) ?? parseFirestoreNumber(swf.minBet) ?? parseFirestoreNumber(swf.minStake) ?? null,
+      max: parseFirestoreNumber(swf.max) ?? parseFirestoreNumber(swf.maxBet) ?? parseFirestoreNumber(swf.maxStake) ?? null,
       totalMatched:
         odds.totalMatched?.integerValue ||
         odds.totalMatched?.stringValue ||
@@ -688,8 +693,8 @@ export async function getLiveRatesForEvent(eventId, sportId = "4") {
           marketId: String(mo.marketId || mo.exMarketId || ""),
           marketName: mo.marketName || "Match Odds",
           sequence: Number(mo.sequence || mo.priority || 0),
-          min: mo.min || 100,
-          max: mo.max || 1000,
+          min: mo.min ?? mo.minBet ?? mo.minStake ?? null,
+          max: mo.max ?? mo.maxBet ?? mo.maxStake ?? null,
           totalMatched: mo.oddsData?.totalMatched || "0",
           status: mo.oddsData?.status || "OPEN",
           runners: parseRunners(mo.oddsData?.runners, mo.runnersData),
@@ -701,8 +706,8 @@ export async function getLiveRatesForEvent(eventId, sportId = "4") {
           marketId: String(bm.marketId || bm.exMarketId || ""),
           marketName: bm.marketName || "Bookmaker Bhav",
           sequence: Number(bm.sequence || bm.priority || 0),
-          min: bm.min || 100,
-          max: bm.max || 25000,
+          min: bm.min ?? bm.minBet ?? bm.minStake ?? null,
+          max: bm.max ?? bm.maxBet ?? bm.maxStake ?? null,
           totalMatched: bm.oddsData?.totalMatched || "0",
           status: bm.oddsData?.status || "OPEN",
           runners: parseRunners(bm.oddsData?.runners, bm.runnersData),
@@ -728,8 +733,8 @@ export async function getLiveRatesForEvent(eventId, sportId = "4") {
             sequence: Number(f.sequence || f.priority || 0),
             status: odds.status || (isSusp ? "SUSPENDED" : "ONLINE"),
             isSuspended: isSusp,
-            min: f.min || 100,
-            max: f.max || 50000,
+            min: f.min ?? f.minBet ?? f.minStake ?? null,
+            max: f.max ?? f.maxBet ?? f.maxStake ?? null,
             no: {
               price: l0.price ?? null,
               size: formatDisplaySize(l0.size || 100),

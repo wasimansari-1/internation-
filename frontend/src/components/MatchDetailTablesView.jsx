@@ -186,8 +186,8 @@ export default function MatchDetailTablesView({ event, onBack }) {
               sequence: Number(f.sequence || f.priority || 0),
               status: odds.status || (isSusp ? 'SUSPENDED' : 'ONLINE'),
               isSuspended: isSusp,
-              min: f.min || 100,
-              max: f.max || 50000,
+              min: f.min ?? f.minBet ?? null,
+              max: f.max ?? f.maxBet ?? null,
               no: { price: l0.price ?? null, size: l0.size || 100 },
               yes: { price: b0.price ?? null, size: b0.size || 100 },
             };
@@ -203,8 +203,8 @@ export default function MatchDetailTablesView({ event, onBack }) {
             return {
               marketId: String(mo.marketId || mo.exMarketId || ''),
               marketName: mo.marketName || 'Match Odds',
-              min: mo.min || 100,
-              max: mo.max || 1000,
+              min: mo.min ?? mo.minBet ?? null,
+              max: mo.max ?? mo.maxBet ?? null,
               totalMatched: mo.oddsData?.totalMatched || '0',
               status: mo.oddsData?.status || 'OPEN',
               runners: runners.map((r) => {
@@ -232,8 +232,8 @@ export default function MatchDetailTablesView({ event, onBack }) {
             return {
               marketId: String(bm.marketId || bm.exMarketId || ''),
               marketName: bm.marketName || 'Bookmaker Bhav',
-              min: bm.min || 100,
-              max: bm.max || 25000,
+              min: bm.min ?? bm.minBet ?? null,
+              max: bm.max ?? bm.maxBet ?? null,
               totalMatched: bm.oddsData?.totalMatched || '0',
               status: bm.oddsData?.status || 'OPEN',
               runners: runners.map((r) => {
@@ -829,7 +829,9 @@ export default function MatchDetailTablesView({ event, onBack }) {
                   }}
                 >
                   <div style={{ padding: '6px 12px', color: '#0369a1' }}>
-                    Min/Max {mo.min} - {mo.max}
+                    {mo.min != null && mo.max != null
+                      ? `Min/Max ${mo.min} - ${mo.max}`
+                      : (mo.min != null ? `Min ${mo.min}` : (mo.max != null ? `Max ${mo.max}` : ''))}
                   </div>
                   <div style={{ background: '#72bbef', color: '#000', textAlign: 'center', padding: '6px 0', borderRight: '1px solid #fff' }}>
                     Back
@@ -994,7 +996,9 @@ export default function MatchDetailTablesView({ event, onBack }) {
             }}
           >
             <div style={{ padding: '6px 12px', color: '#0369a1' }}>
-              Min/Max {bm.min} - {bm.max}
+              {bm.min != null && bm.max != null
+                ? `Min/Max ${bm.min} - ${bm.max}`
+                : (bm.min != null ? `Min ${bm.min}` : (bm.max != null ? `Max ${bm.max}` : ''))}
             </div>
             <div style={{ background: '#72bbef', color: '#000', textAlign: 'center', padding: '6px 0', borderRight: '1px solid #fff' }}>
               Back
