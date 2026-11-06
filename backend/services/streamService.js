@@ -1,6 +1,6 @@
 import axios from "axios";
 import https from "https";
-import { getDemoToken, getStartexchToken, proxyRequest } from "./authService.js";
+import { getDemoToken, getStartexchToken, getCbtfToken, proxyRequest } from "./authService.js";
 import { httpsAgent } from "../config/hosts.js";
 
 // Clean native HTTPS agent for CDN edges without custom static IP overriding
@@ -158,6 +158,37 @@ export const fetchSportsWatchLink = async (
       }
     } catch (startErr) {
       console.warn("[StreamService] Startexch99 watch link fallback failed:", startErr.message);
+    }
+  }
+
+  // 3. Tertiary Attempt: CBTFexchange (3-Provider Failover Mesh)
+  if (!streamUrl) {
+    try {
+      const cbtfToken = await getCbtfToken(forceRefresh);
+      if (cbtfToken) {
+        const headers = {
+          Authorization: `Bearer ${cbtfToken}`,
+          Origin: "https://cbtfexchange.com",
+          Referer: "https://cbtfexchange.com/",
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+          "X-Forwarded-For": forwardedIp,
+          "X-Real-IP": forwardedIp,
+          "CF-Connecting-IP": forwardedIp,
+        };
+        const res = await axios.post(
+          "https://cbtfexchange.com/api/exchange/streaming/exchEventsWatchLink",
+          { streamId: String(streamId), timestamp: Date.now() },
+          { headers, timeout: 6000 },
+        );
+        if (res.data?.data?.url) {
+          streamUrl = res.data.data.url;
+          provider = "CBTFexchange";
+          console.log("[StreamService] Successfully acquired CBTFexchange stream URL:", streamUrl);
+        }
+      }
+    } catch (cbtfErr) {
+      console.warn("[StreamService] CBTFexchange watch link fallback failed:", cbtfErr.message);
     }
   }
 
@@ -349,6 +380,36 @@ export const fetchDirectHlsStream = async (rawId, sportId = "4", forceRefresh = 
     }
   }
 
+  // 3. Tertiary: CBTFexchange fallback (3-Way Mesh)
+  if (!watchUrl) {
+    try {
+      const cbtfToken = await getCbtfToken(forceRefresh);
+      if (cbtfToken) {
+        const res = await axios.post(
+          "https://cbtfexchange.com/api/exchange/streaming/exchEventsWatchLink",
+          { streamId: String(streamId), timestamp: Date.now() },
+          {
+            headers: {
+              Authorization: `Bearer ${cbtfToken}`,
+              Origin: "https://cbtfexchange.com",
+              Referer: "https://cbtfexchange.com/",
+              "User-Agent":
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            },
+            httpsAgent: nativeHttpsAgent,
+            timeout: 6000,
+          },
+        );
+        if (res.data?.data?.url) {
+          watchUrl = res.data.data.url;
+          origin = "https://cbtfexchange.com";
+        }
+      }
+    } catch (cbtfErr) {
+      console.warn("[StreamService] CBTF fallback failed:", cbtfErr.message);
+    }
+  }
+
   if (!watchUrl) {
     throw new Error("No live stream broadcast found for this event");
   }
@@ -380,6 +441,7 @@ export const fetchDirectHlsStream = async (rawId, sportId = "4", forceRefresh = 
     pingUrl: cfg.pingUrl,
     streamId,
     watchUrl,
+    origin,
     expiresAt: Date.now() + 50000,
   };
   sportsStreamCache.set(cacheKey, result);

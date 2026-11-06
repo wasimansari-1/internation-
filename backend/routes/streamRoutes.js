@@ -38,11 +38,12 @@ router.all("/ltve-fetch-proxy", async (req, res) => {
   if (!targetUrl) return res.status(400).json({ error: "url parameter required" });
 
   try {
+    const origin = req.query.origin || "https://startexch99.com";
     const parentReferer = targetUrl.replace(/\/(ping|flag|bye).*$/, "");
     const headers = {
       "Content-Type": req.headers["content-type"] || "application/json",
-      Origin: "https://startexch99.com",
-      Referer: parentReferer || "https://startexch99.com/",
+      Origin: origin,
+      Referer: parentReferer || `${origin}/`,
       "User-Agent":
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
     };
@@ -65,8 +66,8 @@ router.all("/ltve-fetch-proxy", async (req, res) => {
         data: req.body,
         headers: {
           "Content-Type": "application/json",
-          Origin: "https://startexch99.com",
-          Referer: parentReferer || "https://startexch99.com/",
+          Origin: origin,
+          Referer: parentReferer || `${origin}/`,
         },
         timeout: 6000,
       });
@@ -294,7 +295,7 @@ router.get("/sports-tv-proxy/:eventId", async (req, res) => {
 
     // Heartbeat token extension
     setInterval(() => {
-      fetch('/api/stream/ltve-fetch-proxy?url=' + encodeURIComponent('https://tv.ltve.live${hlsData.pingUrl}'), {
+      fetch('/api/stream/ltve-fetch-proxy?origin=' + encodeURIComponent('${hlsData.origin || "https://startexch99.com"}') + '&url=' + encodeURIComponent('https://tv.ltve.live${hlsData.pingUrl}'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sid: '${hlsData.sid}', mode: null, init: false, tz: 'Asia/Kolkata' })

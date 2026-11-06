@@ -28,27 +28,19 @@ const MemoizedLiveTvPlayer = React.memo(function MemoizedLiveTvPlayer({
     `/api/stream/sports-tv-proxy/${eventId}?sportId=${sportId}`
   );
 
+  useEffect(() => {
+    setStreamSrc(`/api/stream/sports-tv-proxy/${eventId}?sportId=${sportId}`);
+  }, [eventId, sportId]);
+
   const handleRefresh = () => {
     setStreamSrc(
       `/api/stream/sports-tv-proxy/${eventId}?sportId=${sportId}&fresh=1&t=${Date.now()}`
     );
   };
 
-  const handlePopout = async () => {
-    try {
-      const res = await axios.post('/api/stream/watch-link', { streamId: eventId, sportId });
-      const directUrl = res.data?.data?.url;
-      if (directUrl) {
-        window.open(
-          directUrl,
-          'LiveMatchPlayer',
-          'width=720,height=420,menubar=no,toolbar=no,location=no,status=no'
-        );
-        return;
-      }
-    } catch (e) {}
+  const handlePopout = () => {
     window.open(
-      watchUrl || `/api/stream/sports-tv-proxy/${eventId}?sportId=${sportId}&fresh=1`,
+      `/api/stream/sports-tv-proxy/${eventId}?sportId=${sportId}&fresh=1`,
       'LiveMatchPlayer',
       'width=720,height=420,menubar=no,toolbar=no,location=no,status=no'
     );
@@ -91,28 +83,25 @@ const MemoizedLiveTvPlayer = React.memo(function MemoizedLiveTvPlayer({
         >
           🔄 Refresh
         </button>
-      </div>
-      {watchUrl && (
-        <a
-          href={watchUrl}
-          target="_blank"
-          rel="noreferrer"
+        <button
+          onClick={handlePopout}
           style={{
-            position: 'absolute',
-            bottom: '6px',
-            right: '8px',
-            background: 'rgba(0,0,0,0.7)',
-            color: '#94a3b8',
-            padding: '2px 8px',
+            background: 'rgba(0,0,0,0.65)',
+            color: '#e2e8f0',
+            border: '1px solid rgba(255,255,255,0.2)',
             borderRadius: '4px',
+            padding: '3px 8px',
             fontSize: '10px',
-            textDecoration: 'none',
-            zIndex: 5
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '3px'
           }}
+          title="Popout Player"
         >
-          Direct Stream ↗
-        </a>
-      )}
+          ↗ Popout
+        </button>
+      </div>
     </div>
   );
 });

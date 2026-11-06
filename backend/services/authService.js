@@ -164,35 +164,7 @@ export const getStealthHeaders = (customHeaders = {}) => {
   return headers;
 };
 
-export const proxyRequest = async (endpoint, payload = {}, method = "POST") => {
-  const startTime = Date.now();
-  const url = `${TARGET_BASE}${endpoint}`;
-  try {
-    const response = await axios({
-      method,
-      url,
-      data: payload,
-      headers: getStealthHeaders(),
-      timeout: 10000,
-    });
-    telemetry.recordUpstreamHit("Nice444", endpoint, response.status, Date.now() - startTime);
-    return {
-      success: true,
-      statusCode: response.status,
-      latency: Date.now() - startTime,
-      data: response.data,
-    };
-  } catch (error) {
-    return {
-      success: false,
-      statusCode: error.response?.status || 500,
-      latency: Date.now() - startTime,
-      error: error.response?.data || error.message,
-    };
-  }
-};
-
-// Startexch99 Integration (Dual-Provider Load Balancing)
+// Startexch99 Integration
 export const STARTEXCH_BASE = "https://startexch99.com";
 export const STARTEXCH_CASINO_BASE = "https://casino.startexch99.com";
 
@@ -233,5 +205,199 @@ export const getStartexchToken = async (forceRefresh = false) => {
     telemetry.recordAuthAttempt("startexch99", false, err.message);
   }
   return cachedStartexchToken;
+};
+
+// CBTFexchange Integration (3rd Provider in Multi-Provider Mesh)
+export const CBTF_BASE = "https://cbtfexchange.com";
+export const CBTF_ACCOUNT = {
+  userName: "8292463648",
+  password: "Asdf1234",
+  siteKey: "2",
+};
+
+let cachedCbtfToken = null;
+let cbtfTokenExpiry = 0;
+
+export const getCbtfToken = async (forceRefresh = false) => {
+  if (!forceRefresh && cachedCbtfToken && Date.now() < cbtfTokenExpiry) {
+    return cachedCbtfToken;
+  }
+  try {
+    const res = await axios.post(
+      `${CBTF_BASE}/app/users/userLogin`,
+      {
+        userName: CBTF_ACCOUNT.userName,
+        password: CBTF_ACCOUNT.password,
+        siteKey: CBTF_ACCOUNT.siteKey,
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+          Origin: CBTF_BASE,
+          Referer: `${CBTF_BASE}/`,
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        },
+        timeout: 8000,
+      },
+    );
+    if (res.data?.data?.accessToken) {
+      cachedCbtfToken = res.data.data.accessToken;
+      cbtfTokenExpiry = Date.now() + 30 * 60 * 1000;
+      telemetry.recordAuthAttempt("cbtfexchange", true);
+      telemetry.recordUpstreamHit("CBTFexchange", "/app/users/userLogin", 200, 180);
+      return cachedCbtfToken;
+    }
+  } catch (err) {
+    console.error("Error getting CBTFexchange token:", err.message);
+    telemetry.recordAuthAttempt("cbtfexchange", false, err.message);
+  }
+  return cachedCbtfToken;
+};
+
+// 3-Way Load Balancing Provider Pointer (Nice444, Startexch99, CBTFexchange)
+let globalProviderIndex = 0;
+
+export const proxyRequest = async (endpoint, payload = {}, method = "POST") => {
+  const persona = telemetry?.getCurrentPersona ? telemetry.getCurrentPersona() : {
+    ip: "103.21.124.5",
+    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    secPlatform: '"Windows"',
+  };
+
+  const configured = (telemetry?.routingConfig?.sportsProvider || "AUTO").toUpperCase();
+
+  // Define the 3 providers
+  const providers = [
+    {
+      id: "NICE444",
+      name: "Nice444",
+      base: TARGET_BASE,
+      getToken: () => getDemoToken(),
+      buildHeaders: (tok) => ({
+        ...getStealthHeaders(),
+        Origin: TARGET_BASE,
+        Referer: `${TARGET_BASE}/`,
+        Authorization: tok ? `Bearer ${tok}` : undefined,
+      }),
+      buildPayload: (p) => ({ key: "2", ...p }),
+    },
+    {
+      id: "STARTEXCH99",
+      name: "Startexch99",
+      base: STARTEXCH_BASE,
+      getToken: () => getStartexchToken(),
+      buildHeaders: (tok) => ({
+        "Content-Type": "application/json",
+        Accept: "application/json, text/plain, */*",
+        Origin: STARTEXCH_BASE,
+        Referer: `${STARTEXCH_BASE}/`,
+        "User-Agent": persona.userAgent,
+        "X-Forwarded-For": persona.ip,
+        Authorization: tok ? `Bearer ${tok}` : undefined,
+      }),
+      buildPayload: (p) => ({ key: "2", ...p }),
+    },
+    {
+      id: "CBTFEXCHANGE",
+      name: "CBTFexchange",
+      base: CBTF_BASE,
+      getToken: () => getCbtfToken(),
+      buildHeaders: (tok) => ({
+        "Content-Type": "application/json",
+        Accept: "application/json, text/plain, */*",
+        Origin: CBTF_BASE,
+        Referer: `${CBTF_BASE}/`,
+        "User-Agent": persona.userAgent,
+        "X-Forwarded-For": persona.ip,
+        Authorization: tok ? `Bearer ${tok}` : undefined,
+      }),
+      buildPayload: (p) => ({ key: "2", ...p }),
+    },
+  ];
+
+  // Determine provider execution order based on routing config & health
+  let executionOrder = [];
+  if (configured === "CBTFEXCHANGE") {
+    executionOrder = [providers[2], providers[1], providers[0]];
+  } else if (configured === "STARTEXCH99") {
+    executionOrder = [providers[1], providers[2], providers[0]];
+  } else if (configured === "NICE444") {
+    executionOrder = [providers[0], providers[2], providers[1]];
+  } else {
+    // AUTO: 3-way smooth round-robin distribution
+    const startIdx = globalProviderIndex % providers.length;
+    globalProviderIndex = (globalProviderIndex + 1) % providers.length;
+
+    executionOrder = [
+      providers[startIdx],
+      providers[(startIdx + 1) % providers.length],
+      providers[(startIdx + 2) % providers.length],
+    ];
+
+    // Deprioritize any currently blocked or degraded providers to the back of the queue
+    executionOrder.sort((a, b) => {
+      const aBlocked = telemetry?.providerHealth?.[a.id.toLowerCase()]?.isBlocked ? 1 : 0;
+      const bBlocked = telemetry?.providerHealth?.[b.id.toLowerCase()]?.isBlocked ? 1 : 0;
+      return aBlocked - bBlocked;
+    });
+  }
+
+  let lastError = null;
+  let lastStatus = 500;
+
+  // Execute with Instant Auto-Failover across the 3 providers
+  for (let i = 0; i < executionOrder.length; i++) {
+    const p = executionOrder[i];
+    const startTime = Date.now();
+    try {
+      const token = await p.getToken();
+      const headers = p.buildHeaders(token);
+      const data = p.buildPayload(payload);
+      const url = `${p.base}${endpoint}`;
+
+      const response = await axios({
+        method,
+        url,
+        data,
+        headers,
+        timeout: 7000,
+      });
+
+      if (response.status >= 200 && response.status < 400 && response.data) {
+        telemetry.recordUpstreamHit(p.name, endpoint, response.status, Date.now() - startTime);
+        return {
+          success: true,
+          statusCode: response.status,
+          latency: Date.now() - startTime,
+          provider: p.name,
+          data: response.data,
+        };
+      }
+    } catch (err) {
+      lastStatus = err.response?.status || 500;
+      lastError = err.response?.data || err.message;
+      const isBlocked = lastStatus === 422 || lastStatus === 403;
+
+      console.warn(`[ProxyRequest] ${p.name} failed on ${endpoint} (Status: ${lastStatus}): ${err.message}. Trying next provider...`);
+
+      if (telemetry?.providerHealth?.[p.id.toLowerCase()]) {
+        telemetry.providerHealth[p.id.toLowerCase()].consecutiveErrors++;
+        if (isBlocked) {
+          telemetry.providerHealth[p.id.toLowerCase()].isBlocked = true;
+          telemetry.providerHealth[p.id.toLowerCase()].status = "BLOCKED";
+          telemetry.triggerAutoFailover(p.id.toLowerCase(), `${p.name} returned HTTP ${lastStatus}`);
+        }
+      }
+      // Continue to next provider in loop (Zero user disruption)
+    }
+  }
+
+  // If all 3 providers failed
+  return {
+    success: false,
+    statusCode: lastStatus,
+    error: lastError || "All providers (Nice444, Startexch99, CBTFexchange) timed out",
+  };
 };
 

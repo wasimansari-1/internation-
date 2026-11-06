@@ -140,6 +140,7 @@ class TelemetryService {
       totalHits: 0,
       nice444Hits: 0,
       startexchHits: 0,
+      cbtfHits: 0,
       recentTimestamps: [],
     };
 
@@ -186,6 +187,18 @@ class TelemetryService {
         lastError: null,
         status: "ACTIVE",
       },
+      cbtfexchange: {
+        account: "8292463648",
+        domain: "https://cbtfexchange.com",
+        casinoDomain: "https://cbtfexchange.com",
+        attempts: 0,
+        successes: 0,
+        failures: 0,
+        lastAttempt: null,
+        lastSuccess: null,
+        lastError: null,
+        status: "ACTIVE",
+      },
     };
 
     this.providerHealth = {
@@ -215,13 +228,26 @@ class TelemetryService {
         lastTested: null,
         lastError: null,
       },
+      cbtfexchange: {
+        name: "CBTFexchange",
+        domain: "cbtfexchange.com",
+        status: "HEALTHY",
+        isBlocked: false,
+        consecutiveErrors: 0,
+        latencyMs: 110,
+        totalCalls: 0,
+        successCount: 0,
+        blockCount: 0,
+        lastTested: null,
+        lastError: null,
+      },
     };
 
     // Routing Mode
     this.routingConfig = {
-      casinoProvider: "AUTO", // 'AUTO' | 'NICE444' | 'STARTEXCH99'
-      streamProvider: "AUTO", // 'AUTO' | 'NICE444' | 'STARTEXCH99'
-      sportsProvider: "AUTO", // 'AUTO' | 'NICE444' | 'STARTEXCH99'
+      casinoProvider: "AUTO", // 'AUTO' | 'NICE444' | 'STARTEXCH99' | 'CBTFEXCHANGE'
+      streamProvider: "AUTO", // 'AUTO' | 'NICE444' | 'STARTEXCH99' | 'CBTFEXCHANGE'
+      sportsProvider: "AUTO", // 'AUTO' | 'NICE444' | 'STARTEXCH99' | 'CBTFEXCHANGE'
       effectiveCasino: "Nice444",
       effectiveStream: "Startexch99",
       lastChanged: Date.now(),
@@ -252,6 +278,7 @@ class TelemetryService {
     const p = String(provider).toLowerCase();
     if (p.includes("nice") || p.includes("firestore")) this.upstreamMetrics.nice444Hits++;
     else if (p.includes("start")) this.upstreamMetrics.startexchHits++;
+    else if (p.includes("cbtf")) this.upstreamMetrics.cbtfHits++;
 
     const now = Date.now();
     this.upstreamMetrics.recentTimestamps.push(now);
@@ -460,21 +487,24 @@ class TelemetryService {
 
   /**
    * INSTANT AUTO-FAILOVER:
-   * If any provider is blocked or fails, traffic automatically flips to the healthy provider in <1ms!
+   * If any provider is blocked or fails, traffic automatically flips to the next healthy provider in <1ms!
    */
   triggerAutoFailover(failingProviderKey, reason) {
-    const backupKey = failingProviderKey === "nice444" ? "startexch99" : "nice444";
-    const backupName = backupKey === "nice444" ? "NICE444" : "STARTEXCH99";
+    const candidateKeys = ["cbtfexchange", "startexch99", "nice444"].filter(
+      (k) => k !== failingProviderKey && !this.providerHealth[k]?.isBlocked
+    );
+    const backupKey = candidateKeys[0] || (failingProviderKey === "nice444" ? "startexch99" : "cbtfexchange");
+    const backupName = backupKey === "nice444" ? "NICE444" : backupKey === "startexch99" ? "STARTEXCH99" : "CBTFEXCHANGE";
 
-    const alertMsg = `⚠️ Master Brain Failover: ${failingProviderKey.toUpperCase()} experienced an issue (${reason}). Instantly rerouting 100% traffic to ${backupName}!`;
+    const alertMsg = `⚠️ Master Brain Failover: ${failingProviderKey.toUpperCase()} experienced an issue (${reason}). Instantly rerouting traffic to ${backupName}!`;
     console.warn(alertMsg);
 
-    this.routingConfig.effectiveCasino = backupName === "NICE444" ? "Nice444" : "Startexch99";
-    this.routingConfig.effectiveStream = backupName === "NICE444" ? "Nice444" : "Startexch99";
+    this.routingConfig.effectiveCasino = backupName === "NICE444" ? "Nice444" : backupName === "STARTEXCH99" ? "Startexch99" : "CBTFexchange";
+    this.routingConfig.effectiveStream = backupName === "NICE444" ? "Nice444" : backupName === "STARTEXCH99" ? "Startexch99" : "CBTFexchange";
 
     this.brainStatus.state = "FAILOVER_ACTIVE";
     this.brainStatus.aiHeadline = `Failover Active: Rerouted to ${backupName}`;
-    this.brainStatus.aiMessage = `${failingProviderKey.toUpperCase()} was blocked or degraded. Master Brain shifted 100% traffic to ${backupName} seamlessly. Zero downtime for users!`;
+    this.brainStatus.aiMessage = `${failingProviderKey.toUpperCase()} was blocked or degraded. Master Brain shifted traffic to ${backupName} seamlessly. Zero downtime for users!`;
     this.brainStatus.recommendedAction = backupName;
     this.brainStatus.lastActionTaken = `Auto-failover to ${backupName} at ${new Date().toLocaleTimeString()}`;
 
@@ -556,34 +586,34 @@ class TelemetryService {
 
     const nice = this.providerHealth.nice444;
     const start = this.providerHealth.startexch99;
+    const cbtf = this.providerHealth.cbtfexchange;
 
-    // 1. Check if both are healthy
-    if (!nice.isBlocked && !start.isBlocked) {
-      if (rpm > 120 && this.routingConfig.casinoProvider !== "AUTO") {
-        this.brainStatus.state = "BALANCING";
-        this.brainStatus.aiHeadline = "High Load: Recommend AUTO (50/50 Balance)";
-        this.brainStatus.aiMessage = `Server request rate is high (${rpm} req/min). To prevent origin IP blocking, recommend switching to AUTO load-balancing.`;
-        this.brainStatus.recommendedAction = "AUTO";
-      } else {
-        this.brainStatus.state = "OPTIMAL";
-        this.brainStatus.aiHeadline = "Master Brain: Optimal State (Dual Redundant)";
-        this.brainStatus.aiMessage = `Traffic velocity: ${rpm} req/min. Both origins active. Residential ISP proxy mask engaged (${this.getCurrentPersona().name}).`;
-        this.brainStatus.recommendedAction = "KEEP_CURRENT";
-      }
-    } else if (nice.isBlocked && !start.isBlocked) {
+    const healthyCount = [nice, start, cbtf].filter((p) => p && !p.isBlocked).length;
+
+    if (healthyCount === 3) {
+      this.brainStatus.state = "OPTIMAL";
+      this.brainStatus.aiHeadline = "Master Brain: Optimal State (3-Way Mesh Active)";
+      this.brainStatus.aiMessage = `Traffic velocity: ${rpm} req/min. All 3 origins (Nice444, Startexch99, CBTFexchange) healthy and balanced.`;
+      this.brainStatus.recommendedAction = "AUTO";
+    } else if (nice.isBlocked && !cbtf.isBlocked) {
       this.brainStatus.state = "FAILOVER_ACTIVE";
-      this.brainStatus.aiHeadline = "Nice444 Blocked -> Route to Startexch99";
-      this.brainStatus.aiMessage = "Nice444 upstream returned 422 block. Recommend keeping traffic routed 100% to Startexch99.";
-      this.brainStatus.recommendedAction = "STARTEXCH99";
-    } else if (start.isBlocked && !nice.isBlocked) {
+      this.brainStatus.aiHeadline = "Nice444 Blocked -> Route to CBTF / Startexch";
+      this.brainStatus.aiMessage = "Nice444 upstream blocked. Traffic automatically distributed between CBTFexchange and Startexch99.";
+      this.brainStatus.recommendedAction = "CBTFEXCHANGE";
+    } else if (start.isBlocked && !cbtf.isBlocked) {
       this.brainStatus.state = "FAILOVER_ACTIVE";
-      this.brainStatus.aiHeadline = "Startexch99 Blocked -> Route to Nice444";
-      this.brainStatus.aiMessage = "Startexch99 upstream returned block. Recommend keeping traffic routed 100% to Nice444.";
+      this.brainStatus.aiHeadline = "Startexch99 Blocked -> Route to CBTF / Nice444";
+      this.brainStatus.aiMessage = "Startexch99 upstream blocked. Traffic automatically distributed between CBTFexchange and Nice444.";
+      this.brainStatus.recommendedAction = "CBTFEXCHANGE";
+    } else if (cbtf.isBlocked && !nice.isBlocked) {
+      this.brainStatus.state = "FAILOVER_ACTIVE";
+      this.brainStatus.aiHeadline = "CBTFexchange Blocked -> Route to Nice444";
+      this.brainStatus.aiMessage = "CBTFexchange upstream blocked. Traffic automatically routed to Nice444 / Startexch99.";
       this.brainStatus.recommendedAction = "NICE444";
     }
   }
 
-  async probeProviders(getDemoToken, getStartexchToken) {
+  async probeProviders(getDemoToken, getStartexchToken, getCbtfToken) {
     const results = {};
     const persona = this.getCurrentPersona();
 
@@ -655,6 +685,41 @@ class TelemetryService {
       this.providerHealth.startexch99.lastError = e.response?.data?.meta?.message || e.message;
       results.startexch99 = { ok: false, error: this.providerHealth.startexch99.lastError, status: e.response?.status };
       if (is422) this.triggerAutoFailover("startexch99", "Probe detected 422/403 origin block");
+    }
+
+    // 3. Probe CBTFexchange
+    try {
+      const t0 = Date.now();
+      const token = getCbtfToken ? await getCbtfToken() : null;
+      const res = await axios.post(
+        "https://cbtfexchange.com/api/exchange/streaming/exchEventsWatchLink",
+        { streamId: "4002026114122829531", timestamp: Date.now() },
+        {
+          headers: {
+            Origin: "https://cbtfexchange.com",
+            Referer: "https://cbtfexchange.com/",
+            Authorization: token ? `Bearer ${token}` : undefined,
+            "X-Forwarded-For": persona.ip,
+            "User-Agent": persona.userAgent,
+          },
+          timeout: 4000,
+        },
+      );
+      const lat = Date.now() - t0;
+      this.providerHealth.cbtfexchange.latencyMs = lat;
+      this.providerHealth.cbtfexchange.status = "HEALTHY";
+      this.providerHealth.cbtfexchange.isBlocked = false;
+      this.providerHealth.cbtfexchange.lastTested = new Date().toISOString();
+      this.providerHealth.cbtfexchange.lastError = null;
+      results.cbtfexchange = { ok: true, latency: lat, status: res.status };
+    } catch (e) {
+      const is422 = e.response?.status === 422 || e.response?.status === 403;
+      this.providerHealth.cbtfexchange.status = is422 ? "BLOCKED" : "DEGRADED";
+      this.providerHealth.cbtfexchange.isBlocked = is422;
+      this.providerHealth.cbtfexchange.lastTested = new Date().toISOString();
+      this.providerHealth.cbtfexchange.lastError = e.response?.data?.meta?.message || e.message;
+      results.cbtfexchange = { ok: false, error: this.providerHealth.cbtfexchange.lastError, status: e.response?.status };
+      if (is422) this.triggerAutoFailover("cbtfexchange", "Probe detected 422/403 origin block");
     }
 
     return results;

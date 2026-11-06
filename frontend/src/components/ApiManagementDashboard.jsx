@@ -1129,8 +1129,8 @@ export default function ApiManagementDashboard({ onSwitchTab }) {
                 <span>CASINO ODDS & RESULTS FEED</span>
                 <span style={{ color: '#0284c7', fontSize: '11px' }}>Current: {routingConfig.casinoProvider || 'AUTO'}</span>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
-                {['AUTO', 'NICE444', 'STARTEXCH99'].map((mode) => {
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+                {['AUTO', 'NICE444', 'STARTEXCH99', 'CBTFEXCHANGE'].map((mode) => {
                   const isActive = (routingConfig.casinoProvider || 'AUTO') === mode;
                   return (
                     <button
@@ -1150,7 +1150,7 @@ export default function ApiManagementDashboard({ onSwitchTab }) {
                         textAlign: 'center'
                       }}
                     >
-                      {mode === 'AUTO' ? '⚡ AUTO (50/50)' : mode}
+                      {mode === 'AUTO' ? '⚡ AUTO (3-Way Mesh)' : mode}
                     </button>
                   );
                 })}
@@ -1163,8 +1163,8 @@ export default function ApiManagementDashboard({ onSwitchTab }) {
                 <span>LIVE VIDEO STREAM WATCHLINK</span>
                 <span style={{ color: '#0284c7', fontSize: '11px' }}>Current: {routingConfig.streamProvider || 'AUTO'}</span>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
-                {['AUTO', 'NICE444', 'STARTEXCH99'].map((mode) => {
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+                {['AUTO', 'NICE444', 'STARTEXCH99', 'CBTFEXCHANGE'].map((mode) => {
                   const isActive = (routingConfig.streamProvider || 'AUTO') === mode;
                   return (
                     <button
@@ -1184,7 +1184,7 @@ export default function ApiManagementDashboard({ onSwitchTab }) {
                         textAlign: 'center'
                       }}
                     >
-                      {mode === 'AUTO' ? '⚡ AUTO (50/50)' : mode}
+                      {mode === 'AUTO' ? '⚡ AUTO (3-Way Mesh)' : mode}
                     </button>
                   );
                 })}
@@ -1193,10 +1193,10 @@ export default function ApiManagementDashboard({ onSwitchTab }) {
           </div>
         </div>
 
-        {/* ORIGIN HEALTH & ACCOUNT SESSIONS (NICE444 VS STARTEXCH99) */}
+        {/* ORIGIN HEALTH & ACCOUNT SESSIONS (3-WAY MESH: NICE444 VS STARTEXCH99 VS CBTFEXCHANGE) */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
           gap: '20px',
           marginBottom: '20px'
         }}>
@@ -1303,6 +1303,60 @@ export default function ApiManagementDashboard({ onSwitchTab }) {
                 <div style={{ color: '#64748b', fontSize: '11px' }}>422/403 Block Count</div>
                 <div style={{ color: providerHealth.startexch99?.blockCount > 0 ? '#dc2626' : '#059669', fontWeight: 700, marginTop: '2px' }}>
                   {providerHealth.startexch99?.blockCount || 0}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* CBTFexchange Health & Auth Card */}
+          <div style={{
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '14px',
+            padding: '20px',
+            boxShadow: '0 1px 3px rgba(15, 23, 42, 0.04)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: providerHealth.cbtfexchange?.isBlocked ? '#dc2626' : '#059669' }} />
+                <span style={{ fontSize: '15px', fontWeight: 800, color: '#0f172a' }}>CBTFexchange Origin</span>
+              </div>
+              <span style={{
+                fontSize: '11px',
+                fontWeight: 800,
+                padding: '3px 8px',
+                borderRadius: '6px',
+                background: providerHealth.cbtfexchange?.isBlocked ? '#fef2f2' : '#ecfdf5',
+                color: providerHealth.cbtfexchange?.isBlocked ? '#dc2626' : '#059669',
+                border: providerHealth.cbtfexchange?.isBlocked ? '1px solid #fecaca' : '1px solid #a7f3d0'
+              }}>
+                {providerHealth.cbtfexchange?.isBlocked ? 'BLOCKED 422' : 'HEALTHY 200 OK'}
+              </span>
+            </div>
+
+            <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '14px' }}>
+              Origin Domain: <code style={{ color: '#0369a1', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px' }}>cbtfexchange.com</code>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', background: '#f8fafc', padding: '12px', borderRadius: '8px', fontSize: '12px', border: '1px solid #f1f5f9' }}>
+              <div>
+                <div style={{ color: '#64748b', fontSize: '11px' }}>Account Session</div>
+                <div style={{ color: '#0f172a', fontWeight: 700, marginTop: '2px' }}>{authStats.cbtfexchange?.account || '8292463648'}</div>
+              </div>
+              <div>
+                <div style={{ color: '#64748b', fontSize: '11px' }}>Login Success Rate</div>
+                <div style={{ color: '#059669', fontWeight: 700, marginTop: '2px' }}>
+                  {authStats.cbtfexchange?.successes || 1} / {authStats.cbtfexchange?.attempts || 1} OK
+                </div>
+              </div>
+              <div>
+                <div style={{ color: '#64748b', fontSize: '11px' }}>Latency</div>
+                <div style={{ color: '#0f172a', fontWeight: 700, marginTop: '2px' }}>{providerHealth.cbtfexchange?.latencyMs || 135} ms</div>
+              </div>
+              <div>
+                <div style={{ color: '#64748b', fontSize: '11px' }}>422/403 Block Count</div>
+                <div style={{ color: providerHealth.cbtfexchange?.blockCount > 0 ? '#dc2626' : '#059669', fontWeight: 700, marginTop: '2px' }}>
+                  {providerHealth.cbtfexchange?.blockCount || 0}
                 </div>
               </div>
             </div>
