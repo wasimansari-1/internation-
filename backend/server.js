@@ -21,7 +21,6 @@ import { proxyRequest } from "./services/authService.js";
 import { getClientIp, nativeHttpsAgent } from "./services/streamService.js";
 import axios from "axios";
 import { telemetry } from "./services/telemetryService.js";
-import { domainFirewall } from "./services/domainFirewallService.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -64,40 +63,7 @@ app.use((req, res, next) => {
   }
 
   const start = Date.now();
-  const clientDomain = domainFirewall.extractDomainFromReq(req);
-  const clientIp = getClientIp(req);
-
-  // Enforce Administrator Domain Firewall
-  if (domainFirewall.isDomainBlocked(clientDomain)) {
-    domainFirewall.recordRequest({
-      domain: clientDomain,
-      path: req.originalUrl || req.url,
-      method: req.method,
-      ip: clientIp,
-      status: 403,
-      latencyMs: 1,
-      isBlocked: true,
-    });
-    return res.status(403).json({
-      success: false,
-      error: "DOMAIN_BLOCKED",
-      message: `Access Denied: The domain '${clientDomain}' has been blocked by the API administrator.`,
-      domain: clientDomain,
-      firewall: "ACTIVE",
-    });
-  }
-
   res.on("finish", () => {
-    domainFirewall.recordRequest({
-      domain: clientDomain,
-      path: req.originalUrl || req.url,
-      method: req.method,
-      ip: clientIp,
-      status: res.statusCode,
-      latencyMs: Date.now() - start,
-      isBlocked: false,
-    });
-
     let category = "other";
     if (p.includes("/live-odds")) category = "casinoOdds";
     else if (p.includes("/watch-link")) category = "streamWatch";
