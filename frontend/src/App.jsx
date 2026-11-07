@@ -4,6 +4,7 @@ import SportsOddsView from './components/SportsOddsView';
 import MatchDetailTablesView from './components/MatchDetailTablesView';
 import ApiInspector from './components/ApiInspector';
 import ApiManagementDashboard from './components/ApiManagementDashboard';
+import WingoGameView from './components/WingoGameView';
 import { RotateCw, ShieldCheck, Activity } from 'lucide-react';
 
 function getTabFromUrl() {
@@ -20,6 +21,7 @@ function getTabFromUrl() {
   ) {
     return 'GATEWAY';
   }
+  if (path.includes('/wingo') || hash.includes('wingo')) return 'WINGO';
   if (path.includes('/sports') || hash.includes('sports')) return 'SPORTS';
   if (path.includes('/docs') || hash.includes('docs')) return 'DOCS';
   return 'GAMES';
@@ -43,6 +45,7 @@ export default function App() {
     setSelectedMatch(null);
     let newPath = '/';
     if (tab === 'GATEWAY') newPath = '/admin';
+    else if (tab === 'WINGO') newPath = '/wingo';
     else if (tab === 'SPORTS') newPath = '/sports';
     else if (tab === 'DOCS') newPath = '/docs';
     try {
@@ -155,6 +158,37 @@ export default function App() {
           </button>
 
           <button
+            onClick={() => switchTab('WINGO')}
+            style={{
+              background: activeTab === 'WINGO' ? 'rgba(244, 63, 94, 0.15)' : 'none',
+              border: 'none',
+              color: activeTab === 'WINGO' ? '#f43f5e' : '#94a3b8',
+              fontWeight: 800,
+              fontSize: '12px',
+              letterSpacing: '0.8px',
+              cursor: 'pointer',
+              height: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              borderBottom: activeTab === 'WINGO' ? '2px solid #f43f5e' : '2px solid transparent',
+              transition: 'all 0.2s',
+              padding: '0 8px',
+              whiteSpace: 'nowrap',
+              flexShrink: 0
+            }}
+          >
+            <span style={{
+              width: '6px',
+              height: '6px',
+              borderRadius: '50%',
+              backgroundColor: '#f43f5e',
+              display: 'inline-block'
+            }} />
+            WINGO LOTTERY
+          </button>
+
+          <button
             onClick={() => switchTab('SPORTS')}
             style={{
               background: 'none',
@@ -258,6 +292,11 @@ export default function App() {
         {/* 1. GAMES TAB (Exact matching screenshot media_1793547711623_2f4e7a73.jpg) */}
         {activeTab === 'GAMES' && (
           <UniverseGamesView />
+        )}
+
+        {/* 1.5 WINGO LOTTERY TAB */}
+        {activeTab === 'WINGO' && (
+          <WingoGameView />
         )}
 
         {/* 2. SPORTS TAB */}

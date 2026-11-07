@@ -17,6 +17,7 @@ import sportsRouter from "./routes/sportsRoutes.js";
 import casinoRouter from "./routes/casinoRoutes.js";
 import streamRouter from "./routes/streamRoutes.js";
 import adminRouter from "./routes/adminRoutes.js";
+import wingoRouter from "./routes/wingoRoutes.js";
 import { proxyRequest } from "./services/authService.js";
 import { getClientIp, nativeHttpsAgent } from "./services/streamService.js";
 import axios from "axios";
@@ -94,6 +95,7 @@ app.use("/ori/api/sports", sportsRouter);
 app.use("/api/casino", casinoRouter);
 app.use("/api/stream", streamRouter);
 app.use("/api/admin", adminRouter);
+app.use("/api/wingo", wingoRouter);
 
 // Universal proxy for /w/* (WebRTC stream signaling, ping, and player telemetry)
 app.all("/w/*", async (req, res) => {
