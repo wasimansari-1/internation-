@@ -164,47 +164,140 @@ export const getStealthHeaders = (customHeaders = {}) => {
   return headers;
 };
 
-// Startexch99 Integration
+// Startexch99 Multi-Account Pool (Load Balanced across 3 accounts)
 export const STARTEXCH_BASE = "https://startexch99.com";
 export const STARTEXCH_CASINO_BASE = "https://casino.startexch99.com";
 
-let cachedStartexchToken = null;
-let startexchTokenExpiry = 0;
+export const STARTEXCH_ACCOUNTS = [
+  { userName: "smdemo", password: "Asdf12345" },
+  { userName: "suraj01s", password: "Asdf12345" },
+  { userName: "santosh01s", password: "Asdf12345" },
+];
 
-export const getStartexchToken = async (forceRefresh = false) => {
-  if (!forceRefresh && cachedStartexchToken && Date.now() < startexchTokenExpiry) {
-    return cachedStartexchToken;
+const startexchSessions = STARTEXCH_ACCOUNTS.map((acc) => ({
+  userName: acc.userName,
+  password: acc.password,
+  token: null,
+  tokenExpiry: 0,
+  lastLoginTime: 0,
+  failedAttempts: 0,
+  loginPromise: null,
+}));
+
+let currentStartexchAccountIndex = 0;
+
+// Helper to log in a specific Startexch session with 60s cooldown and promise lock
+async function loginStartexchAccount(session, forceRefresh = false) {
+  // If account was disabled due to password change or ban, check if cooldown passed
+  if (session.disabledUntil && Date.now() < session.disabledUntil) {
+    return null;
   }
-  try {
-    const res = await axios.post(
-      `${STARTEXCH_BASE}/app/users/userLogin`,
-      {
-        userName: "smdemo",
-        password: "Asdf12345",
-      },
-      {
-        headers: {
-          "Content-Type": "application/json",
-          Origin: STARTEXCH_BASE,
-          Referer: `${STARTEXCH_BASE}/`,
-          "User-Agent":
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+  if (!forceRefresh && session.token && Date.now() < session.tokenExpiry) {
+    return session.token;
+  }
+  // Cooldown: if logged in within 60s, reuse token
+  if (session.token && Date.now() - session.lastLoginTime < 60000) {
+    return session.token;
+  }
+  if (session.loginPromise) {
+    return session.loginPromise;
+  }
+
+  session.loginPromise = (async () => {
+    try {
+      const res = await axios.post(
+        `${STARTEXCH_BASE}/app/users/userLogin`,
+        {
+          userName: session.userName,
+          password: session.password,
         },
-        timeout: 8000,
-      },
-    );
-    if (res.data?.data?.accessToken) {
-      cachedStartexchToken = res.data.data.accessToken;
-      startexchTokenExpiry = Date.now() + 30 * 60 * 1000;
-      telemetry.recordAuthAttempt("startexch99", true);
-      telemetry.recordUpstreamHit("Startexch99", "/app/users/userLogin", 200, 180);
-      return cachedStartexchToken;
+        {
+          headers: {
+            "Content-Type": "application/json",
+            Origin: STARTEXCH_BASE,
+            Referer: `${STARTEXCH_BASE}/`,
+            "User-Agent":
+              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+          },
+          timeout: 8000,
+        },
+      );
+      if (res.data?.data?.accessToken) {
+        session.token = res.data.data.accessToken;
+        session.tokenExpiry = Date.now() + 30 * 60 * 1000;
+        session.lastLoginTime = Date.now();
+        session.failedAttempts = 0;
+        session.disabledUntil = 0;
+        telemetry.recordAuthAttempt("startexch99", true);
+        telemetry.recordUpstreamHit("Startexch99", `/app/users/userLogin (${session.userName})`, 200, 180);
+        return session.token;
+      }
+    } catch (err) {
+      session.failedAttempts = (session.failedAttempts || 0) + 1;
+      const status = err.response?.status;
+      const msg = err.response?.data?.meta?.message || err.message;
+      console.error(`Error logging in Startexch account ${session.userName} (Status ${status}): ${msg}`);
+      
+      // If password changed (401/422) or banned, isolate this account for 15 minutes
+      if (status === 401 || status === 422 || session.failedAttempts >= 3) {
+        session.disabledUntil = Date.now() + 15 * 60 * 1000;
+        session.token = null;
+        console.warn(`[Auto-Isolation] Startexch account ${session.userName} disabled for 15 mins (password change/ban detected). Switching to backup accounts.`);
+        if (telemetry?.addBrainAlert) {
+          telemetry.addBrainAlert({
+            level: "WARNING",
+            title: `Account Isolated: ${session.userName}`,
+            message: `Startexch login failed (${msg}). Auto-failover using remaining healthy accounts!`,
+            timestamp: Date.now(),
+          });
+        }
+      }
+      telemetry.recordAuthAttempt("startexch99", false, msg);
+    } finally {
+      session.loginPromise = null;
     }
-  } catch (err) {
-    console.error("Error getting Startexch99 demo token:", err.message);
-    telemetry.recordAuthAttempt("startexch99", false, err.message);
+    return session.token;
+  })();
+
+  return session.loginPromise;
+}
+
+// 3-Way Round-Robin Load Balanced getStartexchToken with Auto-Banned Account Skip
+export const getStartexchToken = async (forceRefresh = false) => {
+  // 1. Get currently active (non-disabled) accounts
+  const activeSessions = startexchSessions.filter(
+    (s) => !s.disabledUntil || Date.now() >= s.disabledUntil
+  );
+
+  const pool = activeSessions.length > 0 ? activeSessions : startexchSessions;
+  const primaryIdx = currentStartexchAccountIndex % pool.length;
+  currentStartexchAccountIndex = (currentStartexchAccountIndex + 1) % pool.length;
+
+  const primary = pool[primaryIdx];
+  // 2. If primary account has an active unexpired token and no forceRefresh
+  if (!forceRefresh && primary.token && Date.now() < primary.tokenExpiry) {
+    return primary.token;
   }
-  return cachedStartexchToken;
+
+  // 3. Perform login for primary account
+  const token = await loginStartexchAccount(primary, forceRefresh);
+  if (token) {
+    return token;
+  }
+
+  // 4. Fallback: If primary failed/banned, immediately try remaining accounts in pool
+  for (let i = 1; i < pool.length; i++) {
+    const backup = pool[(primaryIdx + i) % pool.length];
+    if (backup.token && Date.now() < backup.tokenExpiry) {
+      return backup.token;
+    }
+    const backupToken = await loginStartexchAccount(backup, false);
+    if (backupToken) {
+      return backupToken;
+    }
+  }
+
+  return primary.token || null;
 };
 
 // CBTFexchange Integration (3rd Provider in Multi-Provider Mesh)

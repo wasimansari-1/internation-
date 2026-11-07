@@ -1287,7 +1287,7 @@ export default function ApiManagementDashboard({ onSwitchTab }) {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', background: '#f8fafc', padding: '12px', borderRadius: '8px', fontSize: '12px', border: '1px solid #f1f5f9' }}>
               <div>
                 <div style={{ color: '#64748b', fontSize: '11px' }}>Account Session</div>
-                <div style={{ color: '#0f172a', fontWeight: 700, marginTop: '2px' }}>{authStats.startexch99?.account || 'smdemo'}</div>
+                <div style={{ color: '#0f172a', fontWeight: 700, marginTop: '2px' }}>{authStats.startexch99?.account || 'smdemo / suraj01s / santosh01s (33/33/33 Load Balanced)'}</div>
               </div>
               <div>
                 <div style={{ color: '#64748b', fontSize: '11px' }}>Login Success Rate</div>

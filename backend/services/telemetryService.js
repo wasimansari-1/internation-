@@ -176,7 +176,7 @@ class TelemetryService {
         status: "ACTIVE",
       },
       startexch99: {
-        account: "smdemo",
+        account: "smdemo / suraj01s / santosh01s (33/33/33 Load Balanced)",
         domain: "https://startexch99.com",
         casinoDomain: "https://casino.startexch99.com",
         attempts: 0,
