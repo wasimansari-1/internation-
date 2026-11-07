@@ -90,6 +90,78 @@ router.all("/ltve-fetch-proxy", async (req, res) => {
   }
 });
 
+// 1. Same-Origin Live M3U8 Playlist Reverse Proxy (Eliminates CORS & Domain 403 Forbidden)
+router.get("/hls/:eventId/live.m3u8", async (req, res) => {
+  const { eventId } = req.params;
+  const sportId = req.query.sportId || "4";
+  try {
+    const hlsData = await fetchDirectHlsStream(eventId, sportId);
+    if (!hlsData || !hlsData.hlsUrl) {
+      return res.status(404).send("#EXTM3U\n#EXT-X-ERROR: Stream not available");
+    }
+    const origin = hlsData.origin || "https://startexch99.com";
+    const upstreamRes = await axios.get(hlsData.hlsUrl, {
+      headers: {
+        Origin: origin,
+        Referer: `${origin}/`,
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+      },
+      httpsAgent: nativeHttpsAgent,
+      timeout: 7000,
+    });
+
+    let m3u8 = upstreamRes.data;
+    if (typeof m3u8 !== "string") {
+      return res.status(502).send("#EXTM3U\n#EXT-X-ERROR: Invalid playlist");
+    }
+
+    const baseStreamUrl = hlsData.baseHlsUrl.replace(/[^\/]+$/, "");
+    m3u8 = m3u8.replace(/([a-zA-Z0-9_\-]+\.ts)(\?token=[^\s\r\n]+)?/g, (match, seg, tokenPart) => {
+      const fullUrl = `${baseStreamUrl}${seg}${tokenPart || ""}`;
+      return `/api/stream/hls/segment?origin=${encodeURIComponent(origin)}&url=${encodeURIComponent(fullUrl)}`;
+    });
+
+    res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    return res.send(m3u8);
+  } catch (err) {
+    return res.status(500).send("#EXTM3U\n#EXT-X-ERROR: " + err.message);
+  }
+});
+
+// 2. High-speed Binary TS Video Segment Streamer
+router.get("/hls/segment", async (req, res) => {
+  const targetUrl = req.query.url;
+  const origin = req.query.origin || "https://startexch99.com";
+  if (!targetUrl) return res.status(400).send("url is required");
+
+  try {
+    const upstream = await axios({
+      method: "GET",
+      url: targetUrl,
+      responseType: "stream",
+      headers: {
+        Origin: origin,
+        Referer: `${origin}/`,
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+      },
+      httpsAgent: nativeHttpsAgent,
+      timeout: 8000,
+    });
+
+    res.setHeader("Content-Type", "video/mp2t");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Cache-Control", "public, max-age=30");
+    upstream.data.pipe(res);
+  } catch (err) {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    return res.status(err.response?.status || 500).send("Segment fetch error");
+  }
+});
+
 router.get("/sports-tv-proxy/:eventId", async (req, res) => {
   const { eventId } = req.params;
   const sportId = req.query.sportId || "4";
@@ -236,7 +308,7 @@ router.get("/sports-tv-proxy/:eventId", async (req, res) => {
       }
     });
 
-    const hlsUrl = "${hlsData.hlsUrl}";
+    const hlsUrl = "/api/stream/hls/${eventId}/live.m3u8?sportId=${sportId}";
     let hlsInstance = null;
 
     function playStream() {
