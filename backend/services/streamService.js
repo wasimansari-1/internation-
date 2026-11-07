@@ -329,24 +329,46 @@ export const fetchDirectHlsStream = async (rawId, sportId = "4", forceRefresh = 
   let watchUrl = "";
   let origin = "https://startexch99.com";
   try {
-    const startToken = await getStartexchToken(forceRefresh);
+    let startToken = await getStartexchToken(false);
     if (startToken) {
-      const res = await axios.post(
-        "https://startexch99.com/api/exchange/streaming/exchEventsWatchLink",
-        { streamId: String(streamId), timestamp: Date.now() },
-        {
-          headers: {
-            Authorization: `Bearer ${startToken}`,
-            Origin: "https://startexch99.com",
-            Referer: "https://startexch99.com/",
-            "User-Agent":
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+      try {
+        const res = await axios.post(
+          "https://startexch99.com/api/exchange/streaming/exchEventsWatchLink",
+          { streamId: String(streamId), timestamp: Date.now() },
+          {
+            headers: {
+              Authorization: `Bearer ${startToken}`,
+              Origin: "https://startexch99.com",
+              Referer: "https://startexch99.com/",
+              "User-Agent":
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            },
+            httpsAgent: nativeHttpsAgent,
+            timeout: 6000,
           },
-          httpsAgent: nativeHttpsAgent,
-          timeout: 6000,
-        },
-      );
-      watchUrl = res.data?.data?.url || "";
+        );
+        watchUrl = res.data?.data?.url || "";
+      } catch (postErr) {
+        if (postErr.response?.status === 401 || postErr.response?.status === 403) {
+          startToken = await getStartexchToken(true);
+          const resRetry = await axios.post(
+            "https://startexch99.com/api/exchange/streaming/exchEventsWatchLink",
+            { streamId: String(streamId), timestamp: Date.now() },
+            {
+              headers: {
+                Authorization: `Bearer ${startToken}`,
+                Origin: "https://startexch99.com",
+                Referer: "https://startexch99.com/",
+                "User-Agent":
+                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+              },
+              httpsAgent: nativeHttpsAgent,
+              timeout: 6000,
+            },
+          );
+          watchUrl = resRetry.data?.data?.url || "";
+        }
+      }
     }
   } catch (e) {
     console.warn("[StreamService] Startexch watchlink failed:", e.message);
