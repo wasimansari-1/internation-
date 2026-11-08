@@ -704,17 +704,6 @@ export async function fetchRealSportHighlights(etid) {
     return cacheStore.highlights[etid].data;
   }
 
-  // For Cricket (etid 4): First pull the 100% exact live sequence from D247 DOM (Virtual + Super Over2 + Live)
-  if (Number(etid) === 4) {
-    const liveDomMatches = await getLiveDomCricketMatches();
-    if (Array.isArray(liveDomMatches) && liveDomMatches.length > 0) {
-      realDataStore.sportsMatches[etid] = liveDomMatches;
-      cacheStore.highlights[etid] = { time: now, data: liveDomMatches };
-      realDataStore.lastUpdate = now;
-      return liveDomMatches;
-    }
-  }
-
   const dec = await evalD247Api(`highlighthomePrivate?etid=${etid}`, { etid: Number(etid), type: "all" });
   if (dec && dec.data) {
     const t1 = Array.isArray(dec.data.t1) ? dec.data.t1 : (Array.isArray(dec.data) ? dec.data : []);

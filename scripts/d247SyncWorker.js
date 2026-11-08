@@ -16,20 +16,25 @@ const POLL_INTERVAL_MS = 2000;
 
 const POPULAR_CASINO_TABLES = [
   "goal2",
-  "matka",
-  "worli3",
-  "lucky7",
-  "teen",
   "superover2",
-  "dolidana",
-  "roulette",
-  "dragon_tiger",
-  "andar_bahar",
-  "32cards",
+  "dt20",
+  "ab20",
+  "card32",
+  "card32eu",
+  "roulette11",
+  "teen",
+  "lucky7",
+  "lucky7eu",
   "baccarat",
+  "dolidana",
   "mogambo",
-  "lucky6"
+  "aaa",
+  "sicbo",
+  "worli3"
 ];
+
+// All active sports supported by D247
+const ACTIVE_SPORTS_ETIDS = [4, 1, 2, 8, 10, 65, 7522];
 
 async function runWorker() {
   console.log("==================================================================");
@@ -49,9 +54,21 @@ async function runWorker() {
   while (true) {
     try {
       loopCount++;
-      const cricketMatches = await fetchRealSportHighlights(4).catch(() => []);
-      const footballMatches = await fetchRealSportHighlights(1).catch(() => []);
-      const tennisMatches = await fetchRealSportHighlights(2).catch(() => []);
+      
+      // Fetch highlights for ALL sports (Cricket, Football, Tennis, Table Tennis, Horse Racing, Greyhound, Basketball)
+      const allSportsMatches = {};
+      for (const etid of ACTIVE_SPORTS_ETIDS) {
+        try {
+          const list = await fetchRealSportHighlights(etid).catch(() => []);
+          if (Array.isArray(list) && list.length > 0) {
+            allSportsMatches[etid] = list;
+          }
+        } catch (e) {}
+      }
+
+      const cricketMatches = allSportsMatches[4] || [];
+      const footballMatches = allSportsMatches[1] || [];
+      const tennisMatches = allSportsMatches[2] || [];
       
       let casinoTables = realDataStore.casinoTables || [];
       if (casinoTables.length === 0) {
@@ -64,28 +81,30 @@ async function runWorker() {
         sportsTree = await fetchRealSportsTree().catch(() => sportsTree);
       }
 
-      // Continuously fetch live table states & results for popular casino games (round-robin)
+      // Continuously fetch live table states & results for popular casino games (batch of 5 per cycle)
       const casinoLiveBatch = {};
       const casinoResultsBatch = {};
-      const startIdx = (loopCount * 2) % POPULAR_CASINO_TABLES.length;
-      const batchGtypes = [
-        POPULAR_CASINO_TABLES[startIdx],
-        POPULAR_CASINO_TABLES[(startIdx + 1) % POPULAR_CASINO_TABLES.length]
-      ];
+      const batchSize = 5;
+      const startIdx = (loopCount * batchSize) % POPULAR_CASINO_TABLES.length;
+      const batchGtypes = [];
+      for (let i = 0; i < batchSize; i++) {
+        batchGtypes.push(POPULAR_CASINO_TABLES[(startIdx + i) % POPULAR_CASINO_TABLES.length]);
+      }
 
-      for (const gtype of batchGtypes) {
+      await Promise.all(batchGtypes.map(async (gtype) => {
         try {
           const live = await fetchRealCasinoTableLive(gtype).catch(() => null);
           if (live) casinoLiveBatch[gtype] = live;
           const res = await fetchRealCasinoLastResults(gtype).catch(() => null);
           if (res && res.length > 0) casinoResultsBatch[gtype] = res;
         } catch (e) {}
-      }
+      }));
 
-      // Continuously fetch deep multi-market odds for top active cricket matches (Bangladesh v West Indies, etc.)
+      // Continuously fetch deep multi-market odds for top active cricket matches
       const matchDetailsBatch = {};
       if (cricketMatches.length > 0) {
-        const topMatch = cricketMatches[loopCount % Math.min(cricketMatches.length, 5)];
+        const candidateMatches = cricketMatches.slice(0, 6);
+        const topMatch = candidateMatches[loopCount % candidateMatches.length];
         if (topMatch && topMatch.gmid && topMatch.gmid !== 'superover2') {
           try {
             const odds = await fetchRealMatchOdds(4, topMatch.gmid).catch(() => null);
@@ -98,6 +117,7 @@ async function runWorker() {
 
       const payload = {
         sportsTree,
+        allSportsMatches,
         cricketMatches,
         footballMatches,
         tennisMatches,
@@ -119,7 +139,8 @@ async function runWorker() {
 
       const liveKeys = Object.keys(casinoLiveBatch).join(", ") || "none";
       const oddsKeys = Object.keys(matchDetailsBatch).join(", ") || "none";
-      console.log(`[Sync Worker #${loopCount}] Pushed to VPS -> Cricket: ${cricketMatches.length} | Casino: ${casinoTables.length} | Live tables: [${liveKeys}] | Match odds: [${oddsKeys}] | VPS matches: ${res.data.cricketCount}`);
+      const totalSportsSynced = Object.keys(allSportsMatches).length;
+      console.log(`[Sync Worker #${loopCount}] Pushed to VPS -> Sports: ${totalSportsSynced} (Cricket: ${cricketMatches.length}, Football: ${footballMatches.length}, Tennis: ${tennisMatches.length}, TT: ${(allSportsMatches[8] || []).length}) | Live: [${liveKeys}] | Match odds: [${oddsKeys}]`);
     } catch (err) {
       console.warn(`[Sync Worker Error #${loopCount}]:`, err.message);
     }

@@ -121,10 +121,35 @@ router.get("/debug/test-engine", async (req, res) => {
 
 // Live Feed Sync Bridge (Pushes 100% real D247 feed from residential node to production VPS)
 router.post("/push-live", (req, res) => {
-  const { sportsTree, cricketMatches, footballMatches, tennisMatches, casinoTables, latestEvents, casinoLive, casinoResults, matchDetails } = req.body;
+  const {
+    sportsTree,
+    sportsMatches,
+    allSportsMatches,
+    cricketMatches,
+    footballMatches,
+    tennisMatches,
+    casinoTables,
+    latestEvents,
+    casinoLive,
+    casinoResults,
+    matchDetails
+  } = req.body;
+
   if (Array.isArray(sportsTree) && sportsTree.length > 0) {
     realDataStore.sportsTree = sportsTree;
   }
+
+  // Support comprehensive all-sports map (Cricket, Football, Tennis, Table Tennis, Horse Racing, Greyhound, Basketball, etc.)
+  const sportsMap = allSportsMatches || sportsMatches;
+  if (sportsMap && typeof sportsMap === "object") {
+    for (const [etid, matches] of Object.entries(sportsMap)) {
+      if (Array.isArray(matches)) {
+        realDataStore.sportsMatches[Number(etid)] = matches;
+        realDataStore.sportsMatches[String(etid)] = matches;
+      }
+    }
+  }
+
   if (Array.isArray(cricketMatches) && cricketMatches.length > 0) {
     realDataStore.sportsMatches[4] = cricketMatches;
   }
@@ -158,6 +183,7 @@ router.post("/push-live", (req, res) => {
     message: "Live stream synchronized successfully!",
     cricketCount: (realDataStore.sportsMatches[4] || []).length,
     casinoCount: (realDataStore.casinoTables || []).length,
+    sportsSynced: Object.keys(realDataStore.sportsMatches),
     matchDetailsCount: Object.keys(realDataStore.matchDetails || {}).length,
     timestamp: realDataStore.lastUpdate
   });
@@ -371,16 +397,18 @@ router.get("/casino/categories", async (req, res) => {
 // Real Live Casino Table (Countdown timer, round ID, real rates)
 router.get("/casino/live/:gtype", async (req, res) => {
   const { gtype } = req.params;
+  const { normalizeCasinoGtype } = await import("../services/d247ScraperEngine.js");
+  const normalized = normalizeCasinoGtype ? normalizeCasinoGtype(gtype) : gtype;
 
   // 1. Fast path: If live feed already synchronized into realDataStore
-  if (realDataStore.casinoLive[gtype]) {
-    return res.json({ success: true, data: realDataStore.casinoLive[gtype] });
+  if (realDataStore.casinoLive[normalized] || realDataStore.casinoLive[gtype]) {
+    return res.json({ success: true, data: realDataStore.casinoLive[normalized] || realDataStore.casinoLive[gtype] });
   }
 
   // 2. Race against 2500ms timeout so VPS NEVER hangs with 504
   try {
     const realLive = await Promise.race([
-      fetchRealCasinoTableLive(gtype),
+      fetchRealCasinoTableLive(normalized),
       new Promise(resolve => setTimeout(() => resolve(null), 2500))
     ]);
     if (realLive) {
@@ -389,23 +417,25 @@ router.get("/casino/live/:gtype", async (req, res) => {
   } catch (e) {}
 
   // 3. Instant fallback table generator (Zero delay)
-  const data = await getCasinoTableLive(gtype);
+  const data = await getCasinoTableLive(normalized);
   res.json({ success: true, data });
 });
 
 // Real Round Winning Results
 router.get("/casino/results/:gtype", async (req, res) => {
   const { gtype } = req.params;
+  const { normalizeCasinoGtype } = await import("../services/d247ScraperEngine.js");
+  const normalized = normalizeCasinoGtype ? normalizeCasinoGtype(gtype) : gtype;
 
   // 1. Fast path: Check store
-  if (realDataStore.casinoResults[gtype]) {
-    return res.json({ success: true, data: { res: realDataStore.casinoResults[gtype] } });
+  if (realDataStore.casinoResults[normalized] || realDataStore.casinoResults[gtype]) {
+    return res.json({ success: true, data: { res: realDataStore.casinoResults[normalized] || realDataStore.casinoResults[gtype] } });
   }
 
   // 2. Race against 2000ms timeout
   try {
     const realResults = await Promise.race([
-      fetchRealCasinoLastResults(gtype),
+      fetchRealCasinoLastResults(normalized),
       new Promise(resolve => setTimeout(() => resolve(null), 2000))
     ]);
     if (realResults) {

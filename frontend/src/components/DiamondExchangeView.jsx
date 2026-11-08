@@ -621,22 +621,8 @@ export default function DiamondExchangeView() {
           rawData = rawData.markets;
         }
         if (Array.isArray(rawData)) {
-          // Normalize so every market has mname and section
-          const normalized = rawData.map((m, idx) => {
-            if (m.nat && !m.section && !m.runners) {
-              return null;
-            }
-            return {
-              ...m,
-              mname: m.mname || m.name || (idx === 0 ? 'MATCH_ODDS' : `Market ${idx + 1}`),
-              section: m.section || m.runners || []
-            };
-          }).filter(Boolean);
-
-          if (normalized.length > 0) {
-            setMatchOddsData(normalized);
-          } else if (rawData.length > 0 && rawData[0].nat) {
-            // rawData is an array of runners! Wrap into default Match Odds market
+          // If rawData is directly an array of runners (e.g. [{ nat: 'Bangladesh', b1: ... }])
+          if (rawData.length > 0 && rawData[0].nat && !rawData[0].section && !rawData[0].runners) {
             setMatchOddsData([{
               mid: `${gmid}_match_odds`,
               mname: 'MATCH_ODDS',
@@ -646,6 +632,23 @@ export default function DiamondExchangeView() {
               min: 100,
               section: rawData
             }]);
+          } else {
+            // rawData is an array of market objects
+            const normalized = rawData.map((m, idx) => {
+              const runners = m.section || m.runners || [];
+              if (runners.length === 0 && m.nat) {
+                return null;
+              }
+              return {
+                ...m,
+                mname: m.mname || m.name || (idx === 0 ? 'MATCH_ODDS' : `Market ${idx + 1}`),
+                section: runners
+              };
+            }).filter(Boolean);
+
+            if (normalized.length > 0) {
+              setMatchOddsData(normalized);
+            }
           }
         }
       }
@@ -2413,6 +2416,17 @@ export default function DiamondExchangeView() {
                           key={`match_${match.gmid || 'm'}_${mIdx}`}
                           onClick={() => {
                             setSelectedMatch(match);
+                            if (Array.isArray(match.matchOdds) && match.matchOdds.length > 0) {
+                              setMatchOddsData([{
+                                mid: `${match.gmid}_match_odds`,
+                                mname: 'MATCH_ODDS',
+                                gtype: 'match',
+                                status: match.status === 'STARTED' ? 'OPEN' : 'OPEN',
+                                max: 1000000,
+                                min: 100,
+                                section: match.matchOdds
+                              }]);
+                            }
                             fetchMatchDetails(match.gmid);
                             if (match.gmid === 'superover2' || (match.ename || '').toLowerCase().includes('super over')) {
                               fetchCasinoLive('superover2');
@@ -2551,7 +2565,7 @@ export default function DiamondExchangeView() {
                     {activeCasinoTable.name} ({activeCasinoTable.category})
                   </div>
                   <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                    Round ID: {casinoLiveData?.roundId || '193261107230647004'}
+                    Round ID: {casinoLiveData?.roundId || 'Connecting to live table...'}
                   </div>
                 </div>
 
@@ -2956,50 +2970,25 @@ export default function DiamondExchangeView() {
                     })}
                   </div>
                 ) : (
-                  <>
-                    {/* Fallback runners */}
-                    <div style={{
-                      display: 'grid',
-                      gridTemplateColumns: '1fr 1fr',
-                      gap: '10px'
-                    }}>
-                      <div style={{
-                        background: '#131e33',
-                        border: '1px solid #1e3a5f',
-                        borderRadius: '8px',
-                        padding: '12px 16px',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center'
-                      }}>
-                        <span style={{ fontWeight: 800, fontSize: '14px' }}>Player A</span>
-                        <RateBox 
-                          rate={casinoLiveData?.odds?.playerA?.rate || 1.97} 
-                          type="back" 
-                          label="Player A"
-                          onSelect={handlePlaceBet}
-                        />
-                      </div>
-
-                      <div style={{
-                        background: '#131e33',
-                        border: '1px solid #1e3a5f',
-                        borderRadius: '8px',
-                        padding: '12px 16px',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center'
-                      }}>
-                        <span style={{ fontWeight: 800, fontSize: '14px' }}>Player B</span>
-                        <RateBox 
-                          rate={casinoLiveData?.odds?.playerB?.rate || 1.97} 
-                          type="back" 
-                          label="Player B"
-                          onSelect={handlePlaceBet}
-                        />
-                      </div>
+                  <div style={{
+                    background: '#131e33',
+                    border: '1px solid #1e3a5f',
+                    borderRadius: '8px',
+                    padding: '24px',
+                    textAlign: 'center',
+                    color: '#94a3b8',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}>
+                    <div style={{ fontSize: '13px', fontWeight: 700, color: '#f8fafc' }}>
+                      📡 Connecting to Live D247 Dealer Stream...
                     </div>
-                  </>
+                    <div style={{ fontSize: '11px', color: '#64748b' }}>
+                      Receiving verified real-time round rates & dealt cards
+                    </div>
+                  </div>
                 ))}
 
                 {/* Last Result Bar matching D247 */}
