@@ -6,6 +6,7 @@ import {
   fetchRealCasinoTables,
   fetchRealSportsTree
 } from "../backend/services/d247ScraperEngine.js";
+import { getCasinoTableList } from "../backend/services/d247Service.js";
 
 const TARGET_VPS_URL = process.env.VPS_URL || "https://stream.chimneysolutions.info/api/d247/push-live";
 const POLL_INTERVAL_MS = 2000;
@@ -33,8 +34,9 @@ async function runWorker() {
       const tennisMatches = await fetchRealSportHighlights(2).catch(() => []);
       
       let casinoTables = realDataStore.casinoTables || [];
-      if (casinoTables.length === 0 || loopCount % 10 === 0) {
-        casinoTables = await fetchRealCasinoTables().catch(() => casinoTables);
+      if (casinoTables.length === 0) {
+        const fullTables = await getCasinoTableList().catch(() => []);
+        casinoTables = Array.isArray(fullTables) ? fullTables : (fullTables?.data || []);
       }
 
       let sportsTree = realDataStore.sportsTree || [];
