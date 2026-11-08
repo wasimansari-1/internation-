@@ -287,18 +287,37 @@ export async function startD247Engine() {
 
   console.log(`[D247 Engine] Launching Autonomous Scraper Engine using binary: ${chromePath}...`);
   try {
+    const launchArgs = [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--no-zygote",
+      "--disable-blink-features=AutomationControlled",
+      "--window-size=1280,800"
+    ];
+
+    // Auto-detect Cloudflare WARP proxy on port 40000 to bypass datacenter IP restrictions
+    try {
+      const net = await import("net");
+      const isWarpActive = await new Promise(resolve => {
+        const client = net.createConnection({ port: 40000, host: "127.0.0.1" }, () => {
+          client.destroy();
+          resolve(true);
+        });
+        client.on("error", () => resolve(false));
+        client.setTimeout(400, () => { client.destroy(); resolve(false); });
+      });
+      if (isWarpActive) {
+        launchArgs.push("--proxy-server=socks5://127.0.0.1:40000");
+        console.log("[D247 Engine] Routing browser through Cloudflare WARP proxy on 127.0.0.1:40000");
+      }
+    } catch (e) {}
+
     browserInstance = await puppeteer.launch({
       executablePath: chromePath,
       headless: "new",
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-gpu",
-        "--no-zygote",
-        "--disable-blink-features=AutomationControlled",
-        "--window-size=1280,800"
-      ]
+      args: launchArgs
     });
 
     browserInstance.on("disconnected", () => {
