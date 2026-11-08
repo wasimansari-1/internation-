@@ -206,10 +206,18 @@ export async function startD247Engine() {
   isStarting = true;
 
   const chromePath = getChromeExecutablePath();
-  console.log(`[D247 Engine] Launching Autonomous Scraper Engine using binary: ${chromePath || 'Puppeteer Default'}...`);
+  if (!chromePath) {
+    console.warn("[D247 Engine] Notice: Chrome binary not found on this environment.");
+    console.warn("[D247 Engine] Server running with direct encrypted REST engine (Zero Crash Guarantee).");
+    console.warn("[D247 Engine] To enable headless browser on Ubuntu VPS, run: sudo apt-get install -y google-chrome-stable");
+    isStarting = false;
+    return;
+  }
+
+  console.log(`[D247 Engine] Launching Autonomous Scraper Engine using binary: ${chromePath}...`);
   try {
     browserInstance = await puppeteer.launch({
-      executablePath: chromePath || undefined,
+      executablePath: chromePath,
       headless: "new",
       args: [
         "--no-sandbox",

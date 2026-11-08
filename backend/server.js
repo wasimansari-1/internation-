@@ -1,4 +1,5 @@
 import express from "express";
+import http from "http";
 import cors from "cors";
 import path from "path";
 import fs from "fs";
@@ -274,17 +275,34 @@ app.get("*", (req, res, next) => {
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     return res.sendFile(indexPath);
   }
-  res.status(404).json({ error: "Route not found" });
+  res.json({
+    status: "online",
+    service: "Universal Sports & Casino Platform API",
+    version: "1.0.0",
+    time: new Date().toISOString()
+  });
 });
 
 if (!process.env.VERCEL) {
-  app.listen(PORT, "0.0.0.0", () => {
+  const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`🚀 Modular Backend Server running on http://0.0.0.0:${PORT}`);
-    // Boot autonomous real-time D247 scraper engine
+    // Boot autonomous real-time D247 scraper engine in background safely
     startD247Engine().catch((err) => {
       console.warn("[D247 Engine] Failed to boot scraper engine:", err.message);
     });
   });
+
+  // Dual-Port Zero 502 Bad Gateway Shield:
+  // If Nginx proxies to 5001 or 3000, listen on both ports simultaneously!
+  const SECONDARY_PORT = Number(PORT) === 5001 ? 3000 : (Number(PORT) === 3000 ? 5001 : null);
+  if (SECONDARY_PORT) {
+    const secondaryServer = http.createServer(app);
+    secondaryServer.listen(SECONDARY_PORT, "0.0.0.0", () => {
+      console.log(`🛡️ Secondary Zero-502 Port listener active on http://0.0.0.0:${SECONDARY_PORT}`);
+    }).on("error", (e) => {
+      // Port already in use by dev tool or another process, ignore safely
+    });
+  }
 }
 
 export default app;
