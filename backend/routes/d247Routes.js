@@ -166,6 +166,11 @@ router.get("/casino/tables", async (req, res) => {
   if (realDataStore.casinoTables.length > 0) {
     return res.json({ success: true, data: realDataStore.casinoTables, total: realDataStore.casinoTables.length });
   }
+  const { fetchRealCasinoTables } = await import("../services/d247ScraperEngine.js");
+  const liveTables = await fetchRealCasinoTables();
+  if (Array.isArray(liveTables) && liveTables.length > 0) {
+    return res.json({ success: true, data: liveTables, total: liveTables.length });
+  }
   const gmid = req.query.gmid || null;
   const result = await getCasinoTableList(gmid);
   const data = Array.isArray(result) ? result : (Array.isArray(result?.data) ? result.data : []);

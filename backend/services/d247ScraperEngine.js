@@ -1,10 +1,12 @@
 import puppeteer from "puppeteer-core";
 import CryptoJS from "crypto-js";
+import axios from "axios";
 import fs from "fs";
 import path from "path";
 
 // Multi-Platform Chrome Path Auto-Detection (Guarantees zero-configuration deployment on Linux VPS, Mac, and Windows)
 export function getChromeExecutablePath() {
+  if (process.env.FORCE_REST_MODE === "1") return null;
   if (process.env.CHROME_BIN && fs.existsSync(process.env.CHROME_BIN)) return process.env.CHROME_BIN;
   if (process.env.PUPPETEER_EXECUTABLE_PATH && fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)) return process.env.PUPPETEER_EXECUTABLE_PATH;
 
@@ -97,38 +99,84 @@ export async function performDemoLogin(page) {
   }
 }
 
-// Direct API execution with browser AbortController & 4s timeout
+// Direct API execution with browser evaluate or High-Speed Encrypted Axios REST (Zero Chrome Required on VPS)
 async function executeD247Direct(endpoint, rawPayload = {}) {
-  if (!pageInstance || pageInstance.isClosed()) return null;
+  // 1. If headless Chrome page is alive, use browser evaluate
+  if (pageInstance && !pageInstance.isClosed()) {
+    try {
+      const encBody = encrypt(rawPayload);
+      const fullUrl = endpoint.startsWith("http") ? endpoint : `https://d247.com/api/front/${endpoint}`;
+
+      const fetchPromise = pageInstance.evaluate(async (url, dataEnc) => {
+        try {
+          const controller = new AbortController();
+          const tid = setTimeout(() => controller.abort(), 3500);
+          const r = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ data: dataEnc }),
+            signal: controller.signal
+          });
+          clearTimeout(tid);
+          return await r.json();
+        } catch (err) {
+          return { error: err.message };
+        }
+      }, fullUrl, encBody);
+
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Timeout")), 4000)
+      );
+
+      const rawRes = await Promise.race([fetchPromise, timeoutPromise]);
+      let finalResult = rawRes;
+      if (rawRes?.data && typeof rawRes.data === "string") {
+        finalResult = decrypt(rawRes.data);
+      }
+      if (finalResult && !finalResult.error) {
+        return finalResult;
+      }
+    } catch (err) {
+      // Fall through to direct REST
+    }
+  }
+
+  // 2. High-Speed Direct Encrypted Axios REST (Runs on Linux VPS with zero browser overhead)
   try {
     const encBody = encrypt(rawPayload);
     const fullUrl = endpoint.startsWith("http") ? endpoint : `https://d247.com/api/front/${endpoint}`;
 
-    const fetchPromise = pageInstance.evaluate(async (url, dataEnc) => {
+    let cookieStr = realDataStore.sessionCookies;
+    let tokenStr = realDataStore.authToken;
+    if (!cookieStr && fs.existsSync(SESSION_FILE)) {
       try {
-        const controller = new AbortController();
-        const tid = setTimeout(() => controller.abort(), 3500);
-        const r = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ data: dataEnc }),
-          signal: controller.signal
-        });
-        clearTimeout(tid);
-        return await r.json();
-      } catch (err) {
-        return { error: err.message };
-      }
-    }, fullUrl, encBody);
+        const stored = JSON.parse(fs.readFileSync(SESSION_FILE, "utf-8"));
+        cookieStr = stored.cookies || "";
+        tokenStr = stored.token || "";
+        realDataStore.sessionCookies = cookieStr;
+        realDataStore.authToken = tokenStr;
+      } catch (e) {}
+    }
 
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("Timeout")), 4000)
+    const res = await axios.post(
+      fullUrl,
+      { data: encBody },
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "Origin": "https://d247.com",
+          "Referer": "https://d247.com/",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+          ...(cookieStr ? { "Cookie": cookieStr } : {}),
+          ...(tokenStr ? { "Authorization": `Bearer ${tokenStr}` } : {})
+        },
+        timeout: 5000
+      }
     );
 
-    const rawRes = await Promise.race([fetchPromise, timeoutPromise]);
-    let finalResult = rawRes;
-    if (rawRes?.data && typeof rawRes.data === "string") {
-      finalResult = decrypt(rawRes.data);
+    let finalResult = res.data;
+    if (res.data?.data && typeof res.data.data === "string") {
+      finalResult = decrypt(res.data.data);
     }
     return finalResult;
   } catch (err) {
@@ -207,9 +255,28 @@ export async function startD247Engine() {
 
   const chromePath = getChromeExecutablePath();
   if (!chromePath) {
-    console.warn("[D247 Engine] Notice: Chrome binary not found on this environment.");
-    console.warn("[D247 Engine] Server running with direct encrypted REST engine (Zero Crash Guarantee).");
-    console.warn("[D247 Engine] To enable headless browser on Ubuntu VPS, run: sudo apt-get install -y google-chrome-stable");
+    console.log("[D247 Engine] Notice: Headless Chrome binary not found on this environment.");
+    console.log("[D247 Engine] Activating Zero-Chrome High-Speed Encrypted REST Engine (VPS Optimized)...");
+    
+    // Load stored session credentials from disk
+    try {
+      if (fs.existsSync(SESSION_FILE)) {
+        const stored = JSON.parse(fs.readFileSync(SESSION_FILE, "utf-8"));
+        if (stored.cookies) realDataStore.sessionCookies = stored.cookies;
+        if (stored.token) realDataStore.authToken = stored.token;
+        console.log(`[D247 Engine] Loaded session credentials (cookie length: ${(realDataStore.sessionCookies || "").length})`);
+      }
+    } catch (e) {}
+
+    realDataStore.isEngineActive = true;
+
+    // Direct REST data initialization
+    await fetchRealSportsTree().catch(() => {});
+    await fetchRealCasinoTables().catch(() => {});
+    await refreshAllSports().catch(() => {});
+
+    // Start 24/7 background polling loop on VPS
+    startBackgroundPollLoop();
     isStarting = false;
     return;
   }
@@ -418,6 +485,30 @@ export async function getDebugPageImages() {
   } catch (e) {
     return { error: e.message };
   }
+}
+
+export async function fetchRealCasinoTables() {
+  const dec = await evalD247Api("casino/tablelist", {});
+  const rawTables = dec?.data?.t1 || dec?.data || [];
+  if (Array.isArray(rawTables) && rawTables.length > 0) {
+    realDataStore.casinoTables = rawTables.map(t => ({
+      gtype: t.gmid || t.gid || String(t.srno),
+      gmid: String(t.srno || t.gmid),
+      name: t.gname || t.ename || "Live Table",
+      category: t.gname?.toLowerCase().includes("teen") ? "Teen Patti"
+        : t.gname?.toLowerCase().includes("roulette") ? "Roulette"
+        : t.gname?.toLowerCase().includes("baccarat") ? "Baccarat"
+        : t.gname?.toLowerCase().includes("dragon") ? "Dragon Tiger"
+        : t.gname?.toLowerCase().includes("matka") || t.gname?.toLowerCase().includes("worli") ? "Matka"
+        : t.gname?.toLowerCase().includes("dice") || t.gname?.toLowerCase().includes("doli") ? "Dice"
+        : "Special",
+      minBet: 100,
+      maxBet: 50000,
+      imgpath: t.imgpath ? (t.imgpath.startsWith("http") ? t.imgpath : `https://cdn.926assets.com/g1-casino-icons/lc/${t.imgpath}`) : "https://cdn.926assets.com/g1-casino-icons/default.jpg"
+    }));
+    return realDataStore.casinoTables;
+  }
+  return realDataStore.casinoTables;
 }
 
 export async function fetchRealSportsTree() {
@@ -642,14 +733,14 @@ export async function refreshAllSports() {
   }
 }
 
-// 4. Background refresh loop (lightweight so Chrome stays ultra-responsive)
+// 4. Background refresh loop (Continuous real live update on VPS & local)
+let pollInterval = null;
 function startBackgroundPollLoop() {
+  if (pollInterval) return;
   const sportsCycle = [4, 1, 2, 8];
   let cycleIdx = 0;
 
-  setInterval(async () => {
-    if (!pageInstance || pageInstance.isClosed()) return;
-
+  pollInterval = setInterval(async () => {
     try {
       const etid = sportsCycle[cycleIdx % sportsCycle.length];
       cycleIdx++;
