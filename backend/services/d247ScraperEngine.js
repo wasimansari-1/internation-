@@ -216,39 +216,51 @@ export function formatRealMatch(m, etid) {
   
   const matchOdds = runners.map((r, rIdx) => {
     const oddsList = Array.isArray(r.odds) ? r.odds : [];
-    const b1Obj = oddsList.find(o => o.oname === "back1" || o.otype === "back");
-    const l1Obj = oddsList.find(o => o.oname === "lay1" || o.otype === "lay");
-    const b2Obj = oddsList.find(o => o.oname === "back2");
-    const l2Obj = oddsList.find(o => o.oname === "lay2");
-    const b3Obj = oddsList.find(o => o.oname === "back3");
-    const l3Obj = oddsList.find(o => o.oname === "lay3");
+    const b1Obj = oddsList.find(o => (o.oname && o.oname.toLowerCase() === "back1") || (o.otype && o.otype.toLowerCase() === "back" && o.tno === 0));
+    const l1Obj = oddsList.find(o => (o.oname && o.oname.toLowerCase() === "lay1") || (o.otype && o.otype.toLowerCase() === "lay" && o.tno === 0));
+    const b2Obj = oddsList.find(o => (o.oname && o.oname.toLowerCase() === "back2") || (o.otype && o.otype.toLowerCase() === "back" && o.tno === 1));
+    const l2Obj = oddsList.find(o => (o.oname && o.oname.toLowerCase() === "lay2") || (o.otype && o.otype.toLowerCase() === "lay" && o.tno === 1));
+    const b3Obj = oddsList.find(o => (o.oname && o.oname.toLowerCase() === "back3") || (o.otype && o.otype.toLowerCase() === "back" && o.tno === 2));
+    const l3Obj = oddsList.find(o => (o.oname && o.oname.toLowerCase() === "lay3") || (o.otype && o.otype.toLowerCase() === "lay" && o.tno === 2));
+
+    const b1Val = (b1Obj && Number(b1Obj.odds) > 0) ? b1Obj.odds : null;
+    const l1Val = (l1Obj && Number(l1Obj.odds) > 0) ? l1Obj.odds : null;
+    const b2Val = (b2Obj && Number(b2Obj.odds) > 0) ? b2Obj.odds : null;
+    const l2Val = (l2Obj && Number(l2Obj.odds) > 0) ? l2Obj.odds : null;
+    const b3Val = (b3Obj && Number(b3Obj.odds) > 0) ? b3Obj.odds : null;
+    const l3Val = (l3Obj && Number(l3Obj.odds) > 0) ? l3Obj.odds : null;
 
     return {
       sid: r.sid || rIdx + 1,
       nat: r.nat || `Runner ${rIdx + 1}`,
-      b1: b1Obj ? b1Obj.odds : null,
-      bs1: b1Obj ? String(Math.round(b1Obj.size || 0)) : null,
-      l1: l1Obj ? l1Obj.odds : null,
-      ls1: l1Obj ? String(Math.round(l1Obj.size || 0)) : null,
-      b2: b2Obj ? b2Obj.odds : null,
-      l2: l2Obj ? l2Obj.odds : null,
-      b3: b3Obj ? b3Obj.odds : null,
-      l3: l3Obj ? l3Obj.odds : null,
-      gstatus: r.gstatus || "ACTIVE"
+      b1: b1Val,
+      bs1: (b1Obj && Number(b1Obj.size) > 0) ? String(Math.round(b1Obj.size)) : null,
+      l1: l1Val,
+      ls1: (l1Obj && Number(l1Obj.size) > 0) ? String(Math.round(l1Obj.size)) : null,
+      b2: b2Val,
+      l2: l2Val,
+      b3: b3Val,
+      l3: l3Val,
+      gstatus: r.gstatus || (m.status === "SUSPENDED" ? "SUSPENDED" : "ACTIVE")
     };
   });
 
   return {
     gmid: m.gmid,
     etid: m.etid || etid,
-    ename: m.ename,
+    ename: (m.ename || "").trim(),
     cname: m.cname || "",
     stime: m.stime,
     iplay: Boolean(m.iplay),
     status: m.iplay ? "STARTED" : (m.status || "UPCOMING"),
     score: m.score || null,
+    hasTv: Boolean(m.tv),
+    hasBm: Boolean(m.bm),
+    hasFancy: Boolean(m.f || m.f1),
+    isVirtual: Boolean(m.iscc === 4 || (m.ename || '').includes('(e)')),
     matchOdds: matchOdds,
-    rawSection: runners
+    rawSection: runners,
+    oid: m.oid ?? 999
   };
 }
 
@@ -705,7 +717,18 @@ export async function fetchRealSportHighlights(etid) {
 
   const dec = await evalD247Api(`highlighthomePrivate?etid=${etid}`, { etid: Number(etid), type: "all" });
   if (dec && dec.data) {
-    const rawList = Array.isArray(dec.data.t1) ? dec.data.t1 : (Array.isArray(dec.data) ? dec.data : []);
+    const t1 = Array.isArray(dec.data.t1) ? dec.data.t1 : (Array.isArray(dec.data) ? dec.data : []);
+    const t2 = Array.isArray(dec.data.t2) ? dec.data.t2 : [];
+
+    // Deduplicate all authentic matches across t1 (in-play) and t2 (all competitions & upcoming)
+    const seenGmid = new Set();
+    const rawList = [];
+    for (const m of [...t1, ...t2]) {
+      if (m && m.gmid && !seenGmid.has(String(m.gmid))) {
+        seenGmid.add(String(m.gmid));
+        rawList.push(m);
+      }
+    }
     
     let formatted = [];
     // Check if nested by country/track (Horse Racing: etid 10, Greyhound: etid 65)
@@ -729,6 +752,16 @@ export async function fetchRealSportHighlights(etid) {
       }
     } else {
       formatted = rawList.map(m => formatRealMatch(m, etid));
+      // Sort matching D247: In-play matches first, then matches with active odds, then upcoming
+      formatted.sort((a, b) => {
+        if (a.iplay && !b.iplay) return -1;
+        if (!a.iplay && b.iplay) return 1;
+        const aOdds = (a.matchOdds || []).some(o => o.b1);
+        const bOdds = (b.matchOdds || []).some(o => o.b1);
+        if (aOdds && !bOdds) return -1;
+        if (!aOdds && bOdds) return 1;
+        return 0;
+      });
     }
 
     // For Football (etid 1): Prepend Goal 2 as first pinned live virtual game matching D247

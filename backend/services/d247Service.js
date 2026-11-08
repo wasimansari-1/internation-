@@ -107,28 +107,8 @@ const BASE_96_TABLES = [
   { gtype: "craps", gmid: "501801055", name: "Craps Live Table", category: "Dice", minBet: 100, maxBet: 50000 }
 ];
 
-// Generate exactly 96 high-liquidity tables as verified on D247
-export const DIAMOND_CASINO_96_TABLES = (() => {
-  const list = [...BASE_96_TABLES];
-  const prefixes = ["VIP", "Diamond Pro", "Speed", "Classic", "Gold", "Royal", "Turbo", "Imperial"];
-  const categories = ["Teen Patti", "Dragon Tiger", "Roulette", "Baccarat", "Andar Bahar", "32 Cards", "Dice", "Special"];
-  
-  let i = list.length + 1;
-  while (list.length < 96) {
-    const pref = prefixes[(i * 3) % prefixes.length];
-    const cat = categories[(i * 5) % categories.length];
-    list.push({
-      gtype: `diamond_tbl_${i}`,
-      gmid: `501801${i < 100 ? "0" + i : i}`,
-      name: `${pref} ${cat} ${String.fromCharCode(65 + (i % 8))}`,
-      category: cat,
-      minBet: (i % 3 === 0) ? 500 : 100,
-      maxBet: (i % 2 === 0) ? 100000 : 50000
-    });
-    i++;
-  }
-  return list;
-})();
+// 100% Real Authentic Diamond247 Casino Tables Directory (Zero Dummy/Fake tables)
+export const DIAMOND_CASINO_96_TABLES = [...BASE_96_TABLES];
 
 // Encrypt payload using D247 AES key
 export function encryptPayload(data = {}) {
