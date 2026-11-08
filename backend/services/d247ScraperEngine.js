@@ -110,11 +110,12 @@ async function executeD247Direct(endpoint, rawPayload = {}) {
       const fetchPromise = pageInstance.evaluate(async (url, dataEnc) => {
         try {
           const controller = new AbortController();
-          const tid = setTimeout(() => controller.abort(), 3500);
+          const tid = setTimeout(() => controller.abort(), 7000);
           const r = await fetch(url, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ data: dataEnc }),
+            credentials: "include",
             signal: controller.signal
           });
           clearTimeout(tid);
@@ -125,7 +126,7 @@ async function executeD247Direct(endpoint, rawPayload = {}) {
       }, fullUrl, encBody);
 
       const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("Timeout")), 4000)
+        setTimeout(() => reject(new Error("Timeout")), 8500)
       );
 
       const rawRes = await Promise.race([fetchPromise, timeoutPromise]);
@@ -384,33 +385,41 @@ export async function startD247Engine() {
       } catch (err) {}
     });
 
-    console.log("[D247 Engine] Loading https://d247.com/ ...");
-    await pageInstance.goto("https://d247.com/", { waitUntil: "networkidle2", timeout: 40000 });
-
-    // Perform resilient In-Browser Demo Login
-    console.log("[D247 Engine] Performing In-Browser Demo Login...");
-    await performDemoLogin(pageInstance);
-
-    // Save session cookies
-    const cookies = await pageInstance.cookies();
-    realDataStore.sessionCookies = cookies.map(c => `${c.name}=${c.value}`).join("; ");
-    realDataStore.isEngineActive = true;
-    console.log(`[D247 Engine] Engine Online! Cookies Captured: ${cookies.length}`);
-
-    // Persist to disk
     try {
-      fs.writeFileSync(SESSION_FILE, JSON.stringify({
-        cookies: realDataStore.sessionCookies,
-        token: realDataStore.authToken,
-        lastUpdate: Date.now()
-      }, null, 2));
-    } catch (e) {}
+      console.log("[D247 Engine] Loading https://d247.com/ ...");
+      await pageInstance.goto("https://d247.com/", { waitUntil: "domcontentloaded", timeout: 25000 });
+      console.log("[D247 Engine] Base page loaded. Performing In-Browser Demo Login...");
+      await performDemoLogin(pageInstance).catch(() => {});
 
-    // Fetch full sports list from D247 tablist
-    await fetchRealSportsTree();
+      // Save session cookies
+      const cookies = await pageInstance.cookies();
+      if (cookies && cookies.length > 0) {
+        realDataStore.sessionCookies = cookies.map(c => `${c.name}=${c.value}`).join("; ");
+      }
+      realDataStore.isEngineActive = true;
+      console.log(`[D247 Engine] Engine Online! Cookies Captured: ${cookies?.length || 0}`);
 
-    // Initial load for major sports
-    await refreshAllSports();
+      // Persist to disk
+      try {
+        fs.writeFileSync(SESSION_FILE, JSON.stringify({
+          cookies: realDataStore.sessionCookies,
+          token: realDataStore.authToken,
+          lastUpdate: Date.now()
+        }, null, 2));
+      } catch (e) {}
+    } catch (navErr) {
+      console.warn("[D247 Engine] Initial navigation notice:", navErr.message);
+      realDataStore.isEngineActive = true;
+    }
+
+    // Initialize Real Sports Tree, Casino Tables, and Sports Matches
+    try {
+      await fetchRealSportsTree().catch(() => {});
+      await fetchRealCasinoTables().catch(() => {});
+      await refreshAllSports().catch(() => {});
+    } catch (fetchErr) {
+      console.warn("[D247 Engine] Initial data fetch warning:", fetchErr.message);
+    }
 
     // Start background polling loop
     startBackgroundPollLoop();
