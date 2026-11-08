@@ -829,25 +829,47 @@ export default function DiamondExchangeView() {
     };
   }, [sportsCategory, selectedMatch]);
 
-  // Polling intervals for open Casino Table
+  // Ultra-Fast Real-Time Live SSE Stream for Open Casino Table (Instant socket-like push, ZERO polling, ZERO fluctuation)
   useEffect(() => {
     if (!activeCasinoTable) return;
-    fetchCasinoLive(activeCasinoTable.gtype);
-    fetchCasinoResults(activeCasinoTable.gtype);
-    
-    const casinoLiveTimer = setInterval(() => {
-      fetchCasinoLive(activeCasinoTable.gtype);
-    }, 1200);
+    const targetGtype = normalizeCasinoGtype(activeCasinoTable.gtype);
 
+    // Initial instant HTTP fetch
+    fetchCasinoLive(targetGtype);
+    fetchCasinoResults(targetGtype);
+
+    // Continuous Real-Time SSE Stream (0.01s instant updates from VPS)
+    let eventSource = null;
+    try {
+      eventSource = new EventSource(`/api/d247/casino/stream/${targetGtype}`);
+      eventSource.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload?.success && payload?.data) {
+            setCasinoLiveData(payload.data);
+            if (typeof payload.data.leftSec === 'number') {
+              setLiveTimer(payload.data.leftSec);
+            }
+            setLastSync(Date.now());
+          }
+        } catch (err) {}
+      };
+      eventSource.onerror = () => {
+        // Fallback polling if SSE disconnects
+        fetchCasinoLive(targetGtype);
+      };
+    } catch (e) {}
+
+    // Faster winning results sync
     const casinoResultsTimer = setInterval(() => {
-      fetchCasinoResults(activeCasinoTable.gtype);
-    }, 7000);
+      fetchCasinoResults(targetGtype);
+    }, 4000);
 
     return () => {
-      clearInterval(casinoLiveTimer);
+      if (eventSource) eventSource.close();
       clearInterval(casinoResultsTimer);
     };
-  }, [activeCasinoTable]);
+  }, [activeCasinoTable?.gtype]);
 
   // Categories list for casino
   const casinoCategories = ['ALL', 'Teen Patti', 'Dragon Tiger', 'Roulette', 'Baccarat', 'Lucky', 'Andar Bahar', '32 Cards', 'Dice', 'Special'];

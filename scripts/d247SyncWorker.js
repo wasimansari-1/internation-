@@ -12,7 +12,7 @@ import {
 import { getCasinoTableList } from "../backend/services/d247Service.js";
 
 const TARGET_VPS_URL = process.env.VPS_URL || "https://stream.chimneysolutions.info/api/d247/push-live";
-const POLL_INTERVAL_MS = 2000;
+const POLL_INTERVAL_MS = 1200;
 
 const POPULAR_CASINO_TABLES = [
   "goal2",
@@ -34,7 +34,7 @@ const POPULAR_CASINO_TABLES = [
 ];
 
 // All active sports supported by D247
-const ACTIVE_SPORTS_ETIDS = [4, 1, 2, 8, 10, 65, 7522];
+const ACTIVE_SPORTS_ETIDS = [4, 1, 2, 8, 10, 65, 7522, 9, 11, 5, 12];
 
 async function runWorker() {
   console.log("==================================================================");
