@@ -238,8 +238,8 @@ router.post("/push-live", (req, res) => {
       const parts = k.split("_");
       return parts.length === 2 ? { etid: Number(parts[0]), gmid: parts[1] } : { etid: 4, gmid: k };
     }),
-    activeMatch: (realDataStore.lastRequestedMatch && Date.now() - realDataStore.lastRequestedMatch.time < 30000) ? realDataStore.lastRequestedMatch : null,
-    activeCasino: (realDataStore.lastRequestedCasino && Date.now() - realDataStore.lastRequestedCasino.time < 30000) ? realDataStore.lastRequestedCasino.gtype : null,
+    activeMatch: (realDataStore.lastRequestedMatch && Date.now() - realDataStore.lastRequestedMatch.time < 120000) ? realDataStore.lastRequestedMatch : null,
+    activeCasino: (realDataStore.lastRequestedCasino && Date.now() - realDataStore.lastRequestedCasino.time < 120000) ? realDataStore.lastRequestedCasino.gtype : null,
     timestamp: realDataStore.lastUpdate
   });
 });
@@ -564,13 +564,15 @@ router.get("/casino/live/:gtype", async (req, res) => {
   const normalized = normalizeCasinoGtype ? normalizeCasinoGtype(gtype) : gtype;
   realDataStore.lastRequestedCasino = { gtype: normalized, time: Date.now() };
 
-  // 1. Fast path: Always return cached live table data immediately
+  // 1. Fast path: Fresh push cache from sync worker (under 300ms)
+  const now = Date.now();
   const cached = realDataStore.casinoLive[normalized] || realDataStore.casinoLive[gtype];
-  if (cached) {
+  const fetchTime = realDataStore.casinoLive[`${normalized}_time`] || 0;
+  if (cached && (now - fetchTime < 300)) {
     return res.json({ success: true, data: cached });
   }
 
-  // 2. On-demand direct fetch for instant real-time live timer & odds
+  // 2. Fetch fresh live round from D247 so rounds NEVER freeze!
   try {
     const live = await fetchRealCasinoTableLive(gtype);
     if (live) {
@@ -579,6 +581,11 @@ router.get("/casino/live/:gtype", async (req, res) => {
       return res.json({ success: true, data: live });
     }
   } catch (e) {}
+
+  // 3. Fallback to cached only if fetch failed
+  if (cached) {
+    return res.json({ success: true, data: cached });
+  }
 
   res.json({ success: true, data: null });
 });

@@ -174,7 +174,7 @@ async function runCasinoLoop() {
       }
     } catch (e) {}
 
-    await new Promise(r => setTimeout(r, 400));
+    await new Promise(r => setTimeout(r, 180));
   }
 }
 
@@ -271,7 +271,7 @@ async function runSportsLoop() {
       console.warn(`[Sports Sync Error #${count}]:`, err.message);
     }
 
-    await new Promise(r => setTimeout(r, 2500));
+    await new Promise(r => setTimeout(r, 1200));
   }
 }
 

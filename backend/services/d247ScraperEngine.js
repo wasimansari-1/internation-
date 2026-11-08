@@ -926,13 +926,16 @@ export async function fetchRealCasinoTableLive(gtype) {
         });
       });
 
+      const rawCards = t1.card || "";
+      const parsedCards = rawCards ? rawCards.split(/[,|]/).map(s => s.trim()).filter(Boolean) : [];
+
       const result = {
         roundId: String(t1.gmid || Date.now()),
         leftSec: Number(t1.lt ?? 0),
         roundStatus: isRoundSuspended ? "SUSPENDED" : "OPEN",
         gtype: t1.gtype || gtype,
-        card: t1.card || "",
-        cards: t1.card ? t1.card.split("|").filter(Boolean) : [],
+        card: rawCards,
+        cards: parsedCards,
         ename: t1.ename || "IND Vs ENG Super Over2",
         markets: rawMarkets,
         sub: allRunners,
@@ -977,13 +980,16 @@ export async function fetchRealCasinoTableLive(gtype) {
 
     const runners = Array.isArray(d.sub) ? d.sub : [];
     
+    const rawCardStr = d.card || "";
+    const parsedCardList = rawCardStr ? rawCardStr.split(/[,|]/).map(s => s.trim()).filter(Boolean) : [];
+
     const result = {
       roundId: String(d.mid || Date.now()),
       leftSec: Number(d.lt ?? 0),
       roundStatus: Number(d.lt) <= 0 ? "SUSPENDED" : "OPEN",
       gtype: d.gtype || gtype,
-      card: d.card || "",
-      cards: d.card ? d.card.split(",").filter(Boolean) : [],
+      card: rawCardStr,
+      cards: parsedCardList,
       remark: d.remark || d.rdesc || "",
       score: d.card || "0 0",
       sub: runners.map((r, rIdx) => {

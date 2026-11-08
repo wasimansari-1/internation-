@@ -900,10 +900,10 @@ export default function DiamondExchangeView() {
       };
     } catch (e) {}
 
-    // Dedicated 1-second interval for instant real-time casino rate update
+    // Dedicated ultra-fast 350ms interval for instant real-time casino card flip & rate update
     const casinoLiveTick = setInterval(() => {
       fetchCasinoLive(targetGtype);
-    }, 1000);
+    }, 350);
 
     // Winning results sync every 4 seconds
     const casinoResultsTimer = setInterval(() => {
@@ -951,7 +951,7 @@ export default function DiamondExchangeView() {
 
     const soTick = setInterval(() => {
       fetchCasinoLive('superover2');
-    }, 1000);
+    }, 350);
 
     return () => {
       if (eventSource) eventSource.close();
@@ -1022,7 +1022,7 @@ export default function DiamondExchangeView() {
     if (!activeCasinoTable) return null;
     const cat = (activeCasinoTable.category || '').toLowerCase();
     const gtype = (activeCasinoTable.gtype || '').toLowerCase();
-    const cardList = (casinoLiveData?.card || '').split(',').map(s => s.trim()).filter(Boolean);
+    const cardList = (casinoLiveData?.card || '').split(/[,|]/).map(s => s.trim()).filter(Boolean);
 
     // 1. Dragon Tiger
     if (cat.includes('dragon') || gtype.includes('dt')) {
