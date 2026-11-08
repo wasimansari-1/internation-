@@ -713,9 +713,15 @@ export async function fetchRealSportHighlights(etid) {
     const seenGmid = new Set();
     const rawList = [];
     for (const m of [...t1, ...t2]) {
-      if (m && m.gmid && !seenGmid.has(String(m.gmid))) {
-        seenGmid.add(String(m.gmid));
-        rawList.push(m);
+      if (m && (m.gmid || m.children)) {
+        if (m.gmid) {
+          if (!seenGmid.has(String(m.gmid))) {
+            seenGmid.add(String(m.gmid));
+            rawList.push(m);
+          }
+        } else {
+          rawList.push(m);
+        }
       }
     }
     
@@ -975,18 +981,23 @@ export async function fetchRealCasinoTableLive(gtype) {
       cards: d.card ? d.card.split(",").filter(Boolean) : [],
       remark: d.remark || d.rdesc || "",
       score: d.card || "0 0",
-      sub: runners.map(r => ({
-        sid: r.sid,
-        nat: r.nat || `Runner ${r.sid}`,
-        b: Number(r.b || 0),
-        bs: Number(r.bs || 0),
-        l: Number(r.l || 0),
-        ls: Number(r.ls || 0),
-        gstatus: r.gstatus || "ACTIVE",
-        min: r.min || 100,
-        max: r.max || 100000,
-        subtype: r.subtype || "main"
-      })),
+      sub: runners.map(r => {
+        const runnerId = r.sid || r.i;
+        const runnerName = r.nat || (r.n !== undefined && r.n !== null ? String(r.n) : `Runner ${runnerId}`);
+        const runnerStatus = r.gstatus || (r.s === 0 ? "SUSPENDED" : "ACTIVE");
+        return {
+          sid: runnerId,
+          nat: runnerName,
+          b: Number(r.b || 0),
+          bs: Number(r.bs || 0),
+          l: Number(r.l || 0),
+          ls: Number(r.ls || 0),
+          gstatus: runnerStatus,
+          min: r.min || 100,
+          max: r.max || 100000,
+          subtype: r.subtype || "main"
+        };
+      }),
       odds: runners.reduce((acc, r) => {
         const key = r.nat?.toLowerCase().replace(/\s+/g, "") || `r_${r.sid}`;
         acc[key] = {

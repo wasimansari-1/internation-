@@ -2963,7 +2963,7 @@ export default function DiamondExchangeView() {
                                 >
                                   {/* Runner Name */}
                                   <div style={{ fontWeight: 700, fontSize: '13px', color: '#f1f5f9' }}>
-                                    {runner.nat}
+                                    {runner.nat || (runner.n !== undefined && runner.n !== null ? String(runner.n) : (runner.sid !== undefined ? `Runner ${runner.sid}` : 'Runner'))}
                                   </div>
 
                                   {/* Back & Lay Buttons */}

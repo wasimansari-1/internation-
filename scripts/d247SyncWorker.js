@@ -36,56 +36,17 @@ const POPULAR_CASINO_TABLES = [
 // All active sports supported by D247
 const ACTIVE_SPORTS_ETIDS = [4, 1, 2, 8, 10, 65, 7522, 9, 11, 5, 12];
 
-async function runWorker() {
-  console.log("==================================================================");
-  console.log("   D247 HIGH-SPEED RESIDENTIAL SYNC BRIDGE -> PRODUCTION VPS      ");
-  console.log(`   Target: ${TARGET_VPS_URL}`);
-  console.log("==================================================================");
-
-  console.log("[Sync Worker] Booting autonomous local Chrome engine on Mac...");
-  await startD247Engine();
-
-  // Wait a few seconds for engine initialization
-  await new Promise(r => setTimeout(r, 4000));
-
-  console.log("[Sync Worker] Chrome engine is online! Starting real-time synchronization loop...");
-
-  let loopCount = 0;
+// Dedicated high-speed loops: Casino runs at 800ms, Sports runs at 2500ms
+async function runCasinoLoop() {
+  console.log("[Casino Engine] Starting real-time 800ms casino live feed loop...");
+  let count = 0;
   while (true) {
     try {
-      loopCount++;
-      
-      // Fetch highlights for ALL sports (Cricket, Football, Tennis, Table Tennis, Horse Racing, Greyhound, Basketball)
-      const allSportsMatches = {};
-      for (const etid of ACTIVE_SPORTS_ETIDS) {
-        try {
-          const list = await fetchRealSportHighlights(etid).catch(() => []);
-          if (Array.isArray(list) && list.length > 0) {
-            allSportsMatches[etid] = list;
-          }
-        } catch (e) {}
-      }
-
-      const cricketMatches = allSportsMatches[4] || [];
-      const footballMatches = allSportsMatches[1] || [];
-      const tennisMatches = allSportsMatches[2] || [];
-      
-      let casinoTables = realDataStore.casinoTables || [];
-      if (casinoTables.length === 0) {
-        const fullTables = await getCasinoTableList().catch(() => []);
-        casinoTables = Array.isArray(fullTables) ? fullTables : (fullTables?.data || []);
-      }
-
-      let sportsTree = realDataStore.sportsTree || [];
-      if (sportsTree.length === 0 || loopCount % 15 === 0) {
-        sportsTree = await fetchRealSportsTree().catch(() => sportsTree);
-      }
-
-      // Continuously fetch live table states & results for popular casino games (batch of 8 per cycle + pinned)
+      count++;
       const casinoLiveBatch = {};
       const casinoResultsBatch = {};
-      const batchSize = 8;
-      const startIdx = (loopCount * batchSize) % POPULAR_CASINO_TABLES.length;
+      const batchSize = 6;
+      const startIdx = (count * batchSize) % POPULAR_CASINO_TABLES.length;
       const batchGtypes = ["superover2", "goal2"];
       for (let i = 0; i < batchSize; i++) {
         const t = POPULAR_CASINO_TABLES[(startIdx + i) % POPULAR_CASINO_TABLES.length];
@@ -109,16 +70,59 @@ async function runWorker() {
         } catch (e) {}
       }));
 
-      // Continuously fetch deep multi-market odds for top active cricket matches
+      if (Object.keys(casinoLiveBatch).length > 0) {
+        await axios.post(TARGET_VPS_URL, {
+          casinoLive: casinoLiveBatch,
+          casinoResults: casinoResultsBatch
+        }, {
+          headers: { "Content-Type": "application/json" },
+          timeout: 4000
+        }).catch(() => null);
+      }
+    } catch (e) {}
+
+    await new Promise(r => setTimeout(r, 800));
+  }
+}
+
+async function runSportsLoop() {
+  console.log("[Sports Engine] Starting real-time 2500ms multi-sport sync loop...");
+  let count = 0;
+  while (true) {
+    try {
+      count++;
+      const allSportsMatches = {};
+      for (const etid of ACTIVE_SPORTS_ETIDS) {
+        try {
+          const list = await fetchRealSportHighlights(etid).catch(() => []);
+          allSportsMatches[etid] = Array.isArray(list) ? list : [];
+        } catch (e) {}
+      }
+
+      const cricketMatches = allSportsMatches[4] || [];
+      const footballMatches = allSportsMatches[1] || [];
+      const tennisMatches = allSportsMatches[2] || [];
+
+      let casinoTables = realDataStore.casinoTables || [];
+      if (casinoTables.length === 0) {
+        const fullTables = await getCasinoTableList().catch(() => []);
+        casinoTables = Array.isArray(fullTables) ? fullTables : (fullTables?.data || []);
+      }
+
+      let sportsTree = realDataStore.sportsTree || [];
+      if (sportsTree.length === 0 || count % 10 === 0) {
+        sportsTree = await fetchRealSportsTree().catch(() => sportsTree);
+      }
+
       const matchDetailsBatch = {};
       if (cricketMatches.length > 0) {
-        const candidateMatches = cricketMatches.slice(0, 6);
-        const topMatch = candidateMatches[loopCount % candidateMatches.length];
-        if (topMatch && topMatch.gmid && topMatch.gmid !== 'superover2') {
+        const topMatches = cricketMatches.slice(0, 5);
+        const targetMatch = topMatches[count % topMatches.length];
+        if (targetMatch?.gmid && targetMatch.gmid !== 'superover2') {
           try {
-            const odds = await fetchRealMatchOdds(4, topMatch.gmid).catch(() => null);
-            if (odds && Array.isArray(odds) && odds.length > 0) {
-              matchDetailsBatch[topMatch.gmid] = odds;
+            const odds = await fetchRealMatchOdds(4, targetMatch.gmid).catch(() => null);
+            if (Array.isArray(odds) && odds.length > 0) {
+              matchDetailsBatch[targetMatch.gmid] = odds;
             }
           } catch (e) {}
         }
@@ -131,8 +135,6 @@ async function runWorker() {
         footballMatches,
         tennisMatches,
         casinoTables,
-        casinoLive: casinoLiveBatch,
-        casinoResults: casinoResultsBatch,
         matchDetails: matchDetailsBatch,
         latestEvents: cricketMatches.slice(0, 6).map(m => ({
           name: m.ename,
@@ -143,19 +145,36 @@ async function runWorker() {
 
       const res = await axios.post(TARGET_VPS_URL, payload, {
         headers: { "Content-Type": "application/json" },
-        timeout: 6000
+        timeout: 5000
       });
 
-      const liveKeys = Object.keys(casinoLiveBatch).join(", ") || "none";
-      const oddsKeys = Object.keys(matchDetailsBatch).join(", ") || "none";
-      const totalSportsSynced = Object.keys(allSportsMatches).length;
-      console.log(`[Sync Worker #${loopCount}] Pushed to VPS -> Sports: ${totalSportsSynced} (Cricket: ${cricketMatches.length}, Football: ${footballMatches.length}, Tennis: ${tennisMatches.length}, TT: ${(allSportsMatches[8] || []).length}) | Live: [${liveKeys}] | Match odds: [${oddsKeys}]`);
+      console.log(`[Sports Sync #${count}] Pushed -> Cricket: ${cricketMatches.length}, Football: ${footballMatches.length}, Tennis: ${tennisMatches.length}, TT: ${(allSportsMatches[8] || []).length}, Horse: ${(allSportsMatches[10] || []).length}, Greyhound: ${(allSportsMatches[65] || []).length}`);
     } catch (err) {
-      console.warn(`[Sync Worker Error #${loopCount}]:`, err.message);
+      console.warn(`[Sports Sync Error #${count}]:`, err.message);
     }
 
-    await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+    await new Promise(r => setTimeout(r, 2500));
   }
+}
+
+async function runWorker() {
+  console.log("==================================================================");
+  console.log("   D247 DUAL-CORE ULTRA-SPEED RESIDENTIAL BRIDGE -> PRODUCTION VPS ");
+  console.log(`   Target: ${TARGET_VPS_URL}`);
+  console.log("==================================================================");
+
+  console.log("[Sync Worker] Booting autonomous local Chrome engine on Mac...");
+  await startD247Engine();
+
+  // Wait 4 seconds for Chrome initialization & login
+  await new Promise(r => setTimeout(r, 4000));
+
+  console.log("[Sync Worker] Chrome engine is online! Launching dual parallel workers...");
+  // Launch both loops in parallel
+  Promise.all([
+    runCasinoLoop(),
+    runSportsLoop()
+  ]);
 }
 
 runWorker();
