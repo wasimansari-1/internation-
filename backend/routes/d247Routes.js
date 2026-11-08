@@ -95,17 +95,16 @@ router.get("/debug/page-info", async (req, res) => {
 });
 
 router.get("/debug/test-engine", async (req, res) => {
-  const { evalD247Api, fetchRealSportHighlights } = await import("../services/d247ScraperEngine.js");
+  const { evalD247Api, fetchRealSportHighlights, realDataStore } = await import("../services/d247ScraperEngine.js");
   try {
     const raw = await evalD247Api("highlighthomePrivate?etid=4", { etid: 4, type: "all" });
     const matches = await fetchRealSportHighlights(4);
     res.json({
       success: true,
-      rawType: typeof raw,
-      rawIsArray: Array.isArray(raw?.data),
-      rawKeys: raw?.data ? (Array.isArray(raw.data) ? raw.data.length : Object.keys(raw.data)) : null,
-      matchesCount: (matches || []).length,
-      sampleMatch: matches?.[0] || null
+      raw: raw,
+      storeTreeLength: realDataStore.sportsTree.length,
+      storeMatchesCricket: (realDataStore.sportsMatches[4] || []).length,
+      matchesCount: (matches || []).length
     });
   } catch (err) {
     res.json({ success: false, error: err.message });
