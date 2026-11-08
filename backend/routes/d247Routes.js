@@ -121,7 +121,7 @@ router.get("/debug/test-engine", async (req, res) => {
 
 // Live Feed Sync Bridge (Pushes 100% real D247 feed from residential node to production VPS)
 router.post("/push-live", (req, res) => {
-  const { sportsTree, cricketMatches, footballMatches, tennisMatches, casinoTables, latestEvents, casinoLive, casinoResults } = req.body;
+  const { sportsTree, cricketMatches, footballMatches, tennisMatches, casinoTables, latestEvents, casinoLive, casinoResults, matchDetails } = req.body;
   if (Array.isArray(sportsTree) && sportsTree.length > 0) {
     realDataStore.sportsTree = sportsTree;
   }
@@ -143,6 +143,10 @@ router.post("/push-live", (req, res) => {
   if (casinoResults && typeof casinoResults === "object") {
     Object.assign(realDataStore.casinoResults, casinoResults);
   }
+  if (matchDetails && typeof matchDetails === "object") {
+    if (!realDataStore.matchDetails) realDataStore.matchDetails = {};
+    Object.assign(realDataStore.matchDetails, matchDetails);
+  }
   if (Array.isArray(latestEvents) && latestEvents.length > 0) {
     cachedLatestEvents = latestEvents;
     lastEventsFetchTime = Date.now();
@@ -154,6 +158,7 @@ router.post("/push-live", (req, res) => {
     message: "Live stream synchronized successfully!",
     cricketCount: (realDataStore.sportsMatches[4] || []).length,
     casinoCount: (realDataStore.casinoTables || []).length,
+    matchDetailsCount: Object.keys(realDataStore.matchDetails || {}).length,
     timestamp: realDataStore.lastUpdate
   });
 });
@@ -276,14 +281,32 @@ router.get("/sports/detail-private/:etid/:gmid", async (req, res) => {
 
 router.get("/sports/odds/:etid/:gmid", async (req, res) => {
   const { etid, gmid } = req.params;
-  // 1. Fast path: check in-memory match odds
+
+  // 1. Check if full multi-market details already cached in realDataStore
+  if (realDataStore.matchDetails && realDataStore.matchDetails[gmid]) {
+    const cached = realDataStore.matchDetails[gmid];
+    if (Array.isArray(cached) && cached.length > 0) {
+      return res.json({ success: true, data: cached });
+    }
+  }
+
+  // 2. Fast path: check in-memory match odds from highlights and wrap in standard market format
   const existingMatches = realDataStore.sportsMatches[etid] || [];
   const found = existingMatches.find(m => String(m.gmid) === String(gmid));
   if (found && Array.isArray(found.matchOdds) && found.matchOdds.length > 0) {
-    return res.json({ success: true, data: found.matchOdds });
+    const defaultMarket = [{
+      mid: `${gmid}_match_odds`,
+      mname: "MATCH_ODDS",
+      gtype: "match",
+      status: found.status === "STARTED" ? "OPEN" : "OPEN",
+      max: 1000000,
+      min: 100,
+      section: found.matchOdds
+    }];
+    return res.json({ success: true, data: defaultMarket });
   }
 
-  // 2. Strict timeout race to prevent any VPS hang
+  // 3. Strict timeout race to prevent any VPS hang
   try {
     const realOdds = await Promise.race([
       fetchRealMatchOdds(etid, gmid),
@@ -295,7 +318,27 @@ router.get("/sports/odds/:etid/:gmid", async (req, res) => {
   } catch (e) {}
 
   const data = await getLiveMatchOdds(etid, gmid);
-  res.json({ success: true, data });
+  if (data?.markets && Array.isArray(data.markets)) {
+    const formatted = data.markets.map((m, idx) => ({
+      mid: `${gmid}_${idx}`,
+      mname: m.mname || "MATCH_ODDS",
+      gtype: "match",
+      status: "OPEN",
+      max: 100000,
+      min: 100,
+      section: (m.runners || []).map((r, rIdx) => ({
+        sid: rIdx + 1,
+        nat: r.nat,
+        b1: r.b1,
+        bs1: r.bs1,
+        l1: r.l1,
+        ls1: r.ls1,
+        gstatus: "ACTIVE"
+      }))
+    }));
+    return res.json({ success: true, data: formatted });
+  }
+  res.json({ success: true, data: [] });
 });
 
 router.get("/sports/detail/:gmid", async (req, res) => {

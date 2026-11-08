@@ -603,7 +603,7 @@ export default function DiamondExchangeView() {
       const list = Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : []);
       setSportsHighlights(list);
       if (selectedMatch) {
-        const updated = list.find(m => m.gmid === selectedMatch.gmid);
+        const updated = list.find(m => String(m.gmid) === String(selectedMatch.gmid));
         if (updated) setSelectedMatch(updated);
       }
     } catch (err) {
@@ -616,7 +616,38 @@ export default function DiamondExchangeView() {
     try {
       const res = await axios.get(`/api/d247/sports/odds/${sportsCategory}/${gmid}`);
       if (res.data?.success && res.data?.data) {
-        setMatchOddsData(res.data.data);
+        let rawData = res.data.data;
+        if (!Array.isArray(rawData) && rawData.markets) {
+          rawData = rawData.markets;
+        }
+        if (Array.isArray(rawData)) {
+          // Normalize so every market has mname and section
+          const normalized = rawData.map((m, idx) => {
+            if (m.nat && !m.section && !m.runners) {
+              return null;
+            }
+            return {
+              ...m,
+              mname: m.mname || m.name || (idx === 0 ? 'MATCH_ODDS' : `Market ${idx + 1}`),
+              section: m.section || m.runners || []
+            };
+          }).filter(Boolean);
+
+          if (normalized.length > 0) {
+            setMatchOddsData(normalized);
+          } else if (rawData.length > 0 && rawData[0].nat) {
+            // rawData is an array of runners! Wrap into default Match Odds market
+            setMatchOddsData([{
+              mid: `${gmid}_match_odds`,
+              mname: 'MATCH_ODDS',
+              gtype: 'match',
+              status: 'OPEN',
+              max: 1000000,
+              min: 100,
+              section: rawData
+            }]);
+          }
+        }
       }
     } catch (err) {
       console.warn('Error fetching match odds:', err.message);
@@ -2061,9 +2092,9 @@ export default function DiamondExchangeView() {
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <span style={{ fontWeight: 800, fontSize: '13px', color: '#f8fafc', textTransform: 'uppercase' }}>
-                            {market.mname}
+                            {market.mname || market.name || 'MATCH_ODDS'}
                           </span>
-                          {market.status === 'SUSPENDED' && (market.section || []).every(r => !r.b1 && !r.l1) && (
+                          {market.status === 'SUSPENDED' && (market.section || market.runners || []).every(r => !r.b1 && !r.l1) && (
                             <span style={{ fontSize: '10px', background: 'rgba(239, 68, 68, 0.25)', color: '#f87171', padding: '2px 6px', borderRadius: '4px', fontWeight: 800 }}>
                               SUSPENDED
                             </span>
@@ -2088,8 +2119,9 @@ export default function DiamondExchangeView() {
 
                       {/* Check if market is 2-column (Bookmaker, Fancy1, Normal Fancy) or 6-ladder Match Odds */}
                       {(() => {
-                        const hasLadder = (market.section || []).some(r => r.b2 || r.l2 || r.b3 || r.l3);
-                        const isFancyNoYes = (market.gtype === 'fancy' || market.mname?.toLowerCase().includes('normal')) && !market.mname?.toLowerCase().includes('fancy1') && !market.mname?.toLowerCase().includes('bookmaker');
+                        const marketRunners = market.section || market.runners || [];
+                        const hasLadder = marketRunners.some(r => r.b2 || r.l2 || r.b3 || r.l3);
+                        const isFancyNoYes = (market.gtype === 'fancy' || (market.mname || '').toLowerCase().includes('normal')) && !(market.mname || '').toLowerCase().includes('fancy1') && !(market.mname || '').toLowerCase().includes('bookmaker');
 
                         if (!hasLadder) {
                           return (
@@ -2124,7 +2156,7 @@ export default function DiamondExchangeView() {
 
                               {/* 2-Column Runner Rows */}
                               <div style={{ padding: '4px 0' }}>
-                                {(market.section || []).map((runner, rIdx) => {
+                                {marketRunners.map((runner, rIdx) => {
                                   const hasAnyOdds = runner.b1 || runner.l1;
                                   const isSuspended = runner.gstatus === 'SUSPENDED' || (!hasAnyOdds && market.status === 'SUSPENDED');
                                   return (
@@ -2133,7 +2165,7 @@ export default function DiamondExchangeView() {
                                       gridTemplateColumns: 'minmax(140px, 1fr) 140px',
                                       padding: '6px 14px',
                                       alignItems: 'center',
-                                      borderBottom: rIdx < market.section.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none'
+                                      borderBottom: rIdx < marketRunners.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none'
                                     }}>
                                       <div style={{ fontWeight: 700, fontSize: '13px', color: '#f1f5f9' }}>
                                         {runner.nat}
@@ -2201,7 +2233,7 @@ export default function DiamondExchangeView() {
 
                             {/* Runner Rows with 3 Back / 3 Lay Ladder */}
                             <div style={{ padding: '4px 0' }}>
-                              {(market.section || []).map((runner, rIdx) => {
+                              {marketRunners.map((runner, rIdx) => {
                                 const hasAnyOdds = runner.b1 || runner.l1 || runner.b2 || runner.l2 || runner.b3 || runner.l3;
                                 const isSuspended = runner.gstatus === 'SUSPENDED' || (market.status === 'SUSPENDED' && !hasAnyOdds);
 
@@ -2211,7 +2243,7 @@ export default function DiamondExchangeView() {
                                     gridTemplateColumns: 'minmax(140px, 1fr) 280px',
                                     padding: '6px 14px',
                                     alignItems: 'center',
-                                    borderBottom: rIdx < market.section.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none'
+                                    borderBottom: rIdx < marketRunners.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none'
                                   }}>
                                     <div style={{ fontWeight: 700, fontSize: '13px', color: '#f1f5f9' }}>
                                       {runner.nat}
@@ -2367,9 +2399,14 @@ export default function DiamondExchangeView() {
                   {/* Rows matching D247 */}
                   <div style={{ display: 'flex', flexDirection: 'column' }}>
                     {safeSports.map((match, mIdx) => {
-                      const c1 = match.c1 || (match.matchOdds?.[0] ? { b: match.matchOdds[0].b1, l: match.matchOdds[0].l1 } : { b: null, l: null });
-                      const cX = match.cX || (match.matchOdds?.[1] ? { b: match.matchOdds[1].b1, l: match.matchOdds[1].l1 } : { b: null, l: null });
-                      const c2 = match.c2 || (match.matchOdds?.[2] ? { b: match.matchOdds[2].b1, l: match.matchOdds[2].l1 } : { b: null, l: null });
+                      const drawRunner = (match.matchOdds || []).find(r => (r.nat || '').toLowerCase().includes('draw'));
+                      const nonDraw = (match.matchOdds || []).filter(r => r !== drawRunner);
+                      const r1 = nonDraw[0] || match.matchOdds?.[0];
+                      const r2 = nonDraw[1] || match.matchOdds?.[1];
+
+                      const c1 = match.c1 || (r1 ? { b: r1.b1, l: r1.l1 } : { b: null, l: null });
+                      const cX = match.cX || (drawRunner ? { b: drawRunner.b1, l: drawRunner.l1 } : { b: null, l: null });
+                      const c2 = match.c2 || (r2 ? { b: r2.b1, l: r2.l1 } : { b: null, l: null });
 
                       return (
                         <div

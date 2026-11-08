@@ -6,7 +6,8 @@ import {
   fetchRealCasinoTables,
   fetchRealSportsTree,
   fetchRealCasinoTableLive,
-  fetchRealCasinoLastResults
+  fetchRealCasinoLastResults,
+  fetchRealMatchOdds
 } from "../backend/services/d247ScraperEngine.js";
 import { getCasinoTableList } from "../backend/services/d247Service.js";
 
@@ -81,6 +82,20 @@ async function runWorker() {
         } catch (e) {}
       }
 
+      // Continuously fetch deep multi-market odds for top active cricket matches (Bangladesh v West Indies, etc.)
+      const matchDetailsBatch = {};
+      if (cricketMatches.length > 0) {
+        const topMatch = cricketMatches[loopCount % Math.min(cricketMatches.length, 5)];
+        if (topMatch && topMatch.gmid && topMatch.gmid !== 'superover2') {
+          try {
+            const odds = await fetchRealMatchOdds(4, topMatch.gmid).catch(() => null);
+            if (odds && Array.isArray(odds) && odds.length > 0) {
+              matchDetailsBatch[topMatch.gmid] = odds;
+            }
+          } catch (e) {}
+        }
+      }
+
       const payload = {
         sportsTree,
         cricketMatches,
@@ -89,6 +104,7 @@ async function runWorker() {
         casinoTables,
         casinoLive: casinoLiveBatch,
         casinoResults: casinoResultsBatch,
+        matchDetails: matchDetailsBatch,
         latestEvents: cricketMatches.slice(0, 6).map(m => ({
           name: m.ename,
           sportId: 4,
@@ -102,7 +118,8 @@ async function runWorker() {
       });
 
       const liveKeys = Object.keys(casinoLiveBatch).join(", ") || "none";
-      console.log(`[Sync Worker #${loopCount}] Pushed to VPS -> Cricket: ${cricketMatches.length} | Casino: ${casinoTables.length} tables | Live tables: [${liveKeys}] | VPS matches: ${res.data.cricketCount}`);
+      const oddsKeys = Object.keys(matchDetailsBatch).join(", ") || "none";
+      console.log(`[Sync Worker #${loopCount}] Pushed to VPS -> Cricket: ${cricketMatches.length} | Casino: ${casinoTables.length} | Live tables: [${liveKeys}] | Match odds: [${oddsKeys}] | VPS matches: ${res.data.cricketCount}`);
     } catch (err) {
       console.warn(`[Sync Worker Error #${loopCount}]:`, err.message);
     }
