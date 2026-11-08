@@ -872,8 +872,9 @@ export function normalizeCasinoGtype(gtype) {
 export async function fetchRealCasinoTableLive(gtype) {
   const normalized = normalizeCasinoGtype(gtype);
   const now = Date.now();
-  if (cacheStore.casino[gtype] && (now - cacheStore.casino[gtype].time < 100)) {
-    return cacheStore.casino[gtype].data;
+  const cached = cacheStore.casino[gtype] || cacheStore.casino[normalized];
+  if (cached && (now - cached.time < 150) && cached.data?.roundStatus !== "SUSPENDED") {
+    return cached.data;
   }
 
   // Handle Super Over2 and other tabdata-driven tables
