@@ -308,7 +308,64 @@ router.get("/sports/detail-private/:etid/:gmid", async (req, res) => {
 router.get("/sports/odds/:etid/:gmid", async (req, res) => {
   const { etid, gmid } = req.params;
 
-  // 1. Check if full multi-market details already cached in realDataStore
+  // 1. Dedicated live stream for Super Over2 (IND vs ENG Bookmaker & Fancy)
+  if (String(gmid).toLowerCase().includes("superover")) {
+    const soLive = realDataStore.casinoLive["superover2"];
+    if (soLive && Array.isArray(soLive.markets) && soLive.markets.length > 0) {
+      const formatted = soLive.markets.map((m, mIdx) => ({
+        mid: m.mid || `so_${mIdx}`,
+        mname: m.mname || (mIdx === 0 ? "Bookmaker" : "Fancy"),
+        gtype: m.gtype || "match",
+        status: (Number(soLive.leftSec) <= 3 || soLive.roundStatus === "SUSPENDED") ? "SUSPENDED" : "OPEN",
+        max: m.max || 300000,
+        min: m.min || 100,
+        section: (m.section || []).map((r, rIdx) => {
+          const oddsList = Array.isArray(r.odds) ? r.odds : [];
+          const b1 = oddsList.find(o => o.oname === "back1" || (o.otype === "back" && o.tno === 0));
+          const l1 = oddsList.find(o => o.oname === "lay1" || (o.otype === "lay" && o.tno === 0));
+          return {
+            sid: r.sid || rIdx + 1,
+            nat: r.nat || (rIdx === 0 ? "IND" : "ENG"),
+            gstatus: r.gstatus || "ACTIVE",
+            b1: b1 && Number(b1.odds) > 0 ? Number(b1.odds) : null,
+            bs1: b1 && Number(b1.size) > 0 ? String(Math.round(b1.size)) : "300K",
+            l1: l1 && Number(l1.odds) > 0 ? Number(l1.odds) : null,
+            ls1: l1 && Number(l1.size) > 0 ? String(Math.round(l1.size)) : "300K"
+          };
+        })
+      }));
+      return res.json({ success: true, data: formatted });
+    }
+  }
+
+  // 2. Dedicated live stream for Goal2 (Virtual Football)
+  if (String(gmid).toLowerCase().includes("goal")) {
+    const goalLive = realDataStore.casinoLive["goal2"];
+    if (goalLive && Array.isArray(goalLive.sub) && goalLive.sub.length > 0) {
+      const formatted = [
+        {
+          mid: goalLive.roundId || "goal2_who",
+          mname: "Who Will Goal Next?",
+          gtype: "match1",
+          status: (Number(goalLive.leftSec) <= 3 || goalLive.roundStatus === "SUSPENDED") ? "SUSPENDED" : "OPEN",
+          max: 50000,
+          min: 100,
+          section: goalLive.sub.filter(r => r.subtype === "player" || r.sid <= 12).map((r, rIdx) => ({
+            sid: r.sid || rIdx + 1,
+            nat: r.nat || `Runner ${rIdx + 1}`,
+            gstatus: r.gstatus || "ACTIVE",
+            b1: Number(r.b || 0) > 0 ? Number(r.b) : null,
+            bs1: Number(r.bs || 0) > 0 ? String(r.bs) : "50K",
+            l1: Number(r.l || 0) > 0 ? Number(r.l) : null,
+            ls1: Number(r.ls || 0) > 0 ? String(r.ls) : "50K"
+          }))
+        }
+      ];
+      return res.json({ success: true, data: formatted });
+    }
+  }
+
+  // 3. Check if full multi-market details already cached in realDataStore
   if (realDataStore.matchDetails && realDataStore.matchDetails[gmid]) {
     const cached = realDataStore.matchDetails[gmid];
     if (Array.isArray(cached) && cached.length > 0) {
@@ -316,10 +373,10 @@ router.get("/sports/odds/:etid/:gmid", async (req, res) => {
     }
   }
 
-  // 2. Fast path: check in-memory match odds from highlights and wrap in standard market format
+  // 4. Fast path: check in-memory match odds from highlights ONLY IF valid non-null odds exist
   const existingMatches = realDataStore.sportsMatches[etid] || [];
   const found = existingMatches.find(m => String(m.gmid) === String(gmid));
-  if (found && Array.isArray(found.matchOdds) && found.matchOdds.length > 0) {
+  if (found && Array.isArray(found.matchOdds) && found.matchOdds.some(r => r.b1 !== null && r.b1 !== undefined)) {
     const defaultMarket = [{
       mid: `${gmid}_match_odds`,
       mname: "MATCH_ODDS",

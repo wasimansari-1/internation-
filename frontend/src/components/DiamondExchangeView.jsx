@@ -212,6 +212,24 @@ function RateBox({ rate, size, type = 'back', label = '', prevRate = null, onSel
   );
 }
 
+// Normalize UI table slug to real D247 API slug
+const normalizeCasinoGtype = (gtype) => {
+  if (!gtype) return gtype;
+  const g = String(gtype).toLowerCase().trim();
+  if (g === "dragon_tiger" || g === "dragontiger" || g === "dt") return "dt20";
+  if (g === "dt1day" || g === "dtfast") return "dt6";
+  if (g === "andar_bahar" || g === "andarbahar" || g === "ab") return "ab20";
+  if (g === "andar_bahar2" || g === "andarbahar2") return "abj";
+  if (g === "32cards" || g === "32card" || g === "32_cards") return "card32";
+  if (g === "32cardsb" || g === "32cardeu") return "card32eu";
+  if (g === "roulette" || g === "beachroulette") return "roulette11";
+  if (g === "viproulette") return "roulette12";
+  if (g === "poker" || g === "poker6player") return "poker";
+  if (g === "matka" || g === "worli") return "worli3";
+  if (g.includes("superover")) return "superover2";
+  return g;
+};
+
 // Group runners by subtype for D247 casino tables
 const groupRunnersBySubtype = (sub) => {
   if (!Array.isArray(sub) || sub.length === 0) return {};
@@ -708,11 +726,12 @@ export default function DiamondExchangeView() {
     }
   };
 
-  // 4. Fetch Active Casino Live Data (Every 1200ms)
+  // 4. Fetch Active Casino Live Data (Every 1000ms for instant real-time odds)
   const fetchCasinoLive = async (gtype) => {
     try {
+      const targetGtype = normalizeCasinoGtype(gtype);
       setIsUpdating(true);
-      const liveRes = await axios.get(`/api/d247/casino/live/${gtype}`);
+      const liveRes = await axios.get(`/api/d247/casino/live/${targetGtype}`);
       if (liveRes.data?.success && liveRes.data?.data) {
         setCasinoLiveData(liveRes.data.data);
       }
@@ -726,7 +745,8 @@ export default function DiamondExchangeView() {
 
   const fetchCasinoResults = async (gtype) => {
     try {
-      const resultsRes = await axios.get(`/api/d247/casino/results/${gtype}`);
+      const targetGtype = normalizeCasinoGtype(gtype);
+      const resultsRes = await axios.get(`/api/d247/casino/results/${targetGtype}`);
       if (resultsRes.data?.success && resultsRes.data?.data?.res) {
         setCasinoResults(resultsRes.data.data.res);
       }
@@ -1622,7 +1642,7 @@ export default function DiamondExchangeView() {
           }}
         >
           <Award size={16} />
-          OUR CASINO (96 TABLES)
+          OUR CASINO ({casinoTables.length > 0 ? `${casinoTables.length} TABLES` : '58 TABLES'})
         </button>
       </div>
 
@@ -2076,8 +2096,48 @@ export default function DiamondExchangeView() {
 
               {/* Dynamic Markets List from Real D247 gamedataPrivate */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                {Array.isArray(matchOddsData) && matchOddsData.length > 0 ? (
-                  matchOddsData.map((market, mIdx) => (
+                {(() => {
+                  let marketsToRender = Array.isArray(matchOddsData) ? matchOddsData : [];
+
+                  // For Super Over2: Use authentic Bookmaker & Fancy markets from casinoLiveData
+                  if (selectedMatch.gmid === 'superover2') {
+                    if (casinoLiveData?.markets && casinoLiveData.markets.length > 0) {
+                      marketsToRender = casinoLiveData.markets.map((m, mIdx) => ({
+                        mid: m.mid || `so_${mIdx}`,
+                        mname: m.mname || (mIdx === 0 ? 'BOOKMAKER' : 'FANCY'),
+                        gtype: m.gtype || 'match',
+                        status: (liveTimer <= 3 || casinoLiveData?.roundStatus === 'SUSPENDED') ? 'SUSPENDED' : 'OPEN',
+                        max: m.max || 300000,
+                        min: m.min || 100,
+                        section: (m.section || []).map((r, rIdx) => {
+                          const oddsList = Array.isArray(r.odds) ? r.odds : [];
+                          const b1 = oddsList.find(o => o.oname === 'back1' || (o.otype === 'back' && o.tno === 0));
+                          const l1 = oddsList.find(o => o.oname === 'lay1' || (o.otype === 'lay' && o.tno === 0));
+                          const rate = (b1 && Number(b1.odds) > 0) ? Number(b1.odds) : 1.95;
+                          const layRate = (l1 && Number(l1.odds) > 0) ? Number(l1.odds) : Number((rate + 0.02).toFixed(2));
+                          return {
+                            sid: r.sid || rIdx + 1,
+                            nat: r.nat || (rIdx === 0 ? 'IND' : 'ENG'),
+                            gstatus: r.gstatus || 'ACTIVE',
+                            b1: rate,
+                            bs1: b1 && Number(b1.size) > 0 ? String(Math.round(b1.size)) : '300K',
+                            l1: layRate,
+                            ls1: l1 && Number(l1.size) > 0 ? String(Math.round(l1.size)) : '300K'
+                          };
+                        })
+                      }));
+                    }
+                  }
+
+                  if (marketsToRender.length === 0) {
+                    return (
+                      <div style={{ textAlign: 'center', padding: '30px', color: '#94a3b8' }}>
+                        📡 Connecting to live market stream...
+                      </div>
+                    );
+                  }
+
+                  return marketsToRender.map((market, mIdx) => (
                     <div key={market.mid || mIdx} style={{
                       background: '#0d1522',
                       border: '1px solid #1e293b',
@@ -2314,45 +2374,8 @@ export default function DiamondExchangeView() {
                         );
                       })()}
                     </div>
-                  ))
-                ) : (
-                  /* Initial Top Market View */
-                  <div style={{
-                    background: '#0d1522',
-                    border: '1px solid #1e293b',
-                    borderRadius: '10px',
-                    overflow: 'hidden'
-                  }}>
-                    <div style={{
-                      background: '#1e293b',
-                      padding: '10px 14px',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center'
-                    }}>
-                      <span style={{ fontWeight: 800, fontSize: '13px' }}>MATCH_ODDS</span>
-                      <span style={{ fontSize: '11px', color: '#94a3b8' }}>Max: 10L</span>
-                    </div>
-
-                    <div style={{ padding: '8px 14px' }}>
-                      {(selectedMatch.matchOdds || []).map((runner, i) => (
-                        <div key={i} style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          padding: '8px 0',
-                          borderBottom: i < selectedMatch.matchOdds.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none'
-                        }}>
-                          <div style={{ fontWeight: 700, fontSize: '13px' }}>{runner.nat}</div>
-                          <div style={{ display: 'flex', gap: '8px' }}>
-                            <RateBox rate={runner.b1} size={runner.bs1} type="back" label={runner.nat} onSelect={handlePlaceBet} />
-                            <RateBox rate={runner.l1} size={runner.ls1} type="lay" label={runner.nat} onSelect={handlePlaceBet} />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                  ));
+                })()}
               </div>
             </div>
           ) : (

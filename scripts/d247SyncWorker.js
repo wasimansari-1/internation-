@@ -81,22 +81,31 @@ async function runWorker() {
         sportsTree = await fetchRealSportsTree().catch(() => sportsTree);
       }
 
-      // Continuously fetch live table states & results for popular casino games (batch of 5 per cycle)
+      // Continuously fetch live table states & results for popular casino games (batch of 8 per cycle + pinned)
       const casinoLiveBatch = {};
       const casinoResultsBatch = {};
-      const batchSize = 5;
+      const batchSize = 8;
       const startIdx = (loopCount * batchSize) % POPULAR_CASINO_TABLES.length;
-      const batchGtypes = [];
+      const batchGtypes = ["superover2", "goal2"];
       for (let i = 0; i < batchSize; i++) {
-        batchGtypes.push(POPULAR_CASINO_TABLES[(startIdx + i) % POPULAR_CASINO_TABLES.length]);
+        const t = POPULAR_CASINO_TABLES[(startIdx + i) % POPULAR_CASINO_TABLES.length];
+        if (!batchGtypes.includes(t)) batchGtypes.push(t);
       }
 
       await Promise.all(batchGtypes.map(async (gtype) => {
         try {
           const live = await fetchRealCasinoTableLive(gtype).catch(() => null);
-          if (live) casinoLiveBatch[gtype] = live;
+          if (live) {
+            casinoLiveBatch[gtype] = live;
+            const norm = normalizeCasinoGtype(gtype);
+            if (norm && norm !== gtype) casinoLiveBatch[norm] = live;
+          }
           const res = await fetchRealCasinoLastResults(gtype).catch(() => null);
-          if (res && res.length > 0) casinoResultsBatch[gtype] = res;
+          if (res && res.length > 0) {
+            casinoResultsBatch[gtype] = res;
+            const norm = normalizeCasinoGtype(gtype);
+            if (norm && norm !== gtype) casinoResultsBatch[norm] = res;
+          }
         } catch (e) {}
       }));
 

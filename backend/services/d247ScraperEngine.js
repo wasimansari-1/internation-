@@ -786,6 +786,15 @@ export async function fetchRealSportHighlights(etid) {
     if (Number(etid) === 4) {
       const hasSuperOver = formatted.some(m => String(m.gmid).toLowerCase().includes('superover'));
       if (!hasSuperOver) {
+        const soLive = realDataStore.casinoLive["superover2"];
+        const bmMarket = soLive?.markets?.[0];
+        const indRunner = bmMarket?.section?.[0];
+        const engRunner = bmMarket?.section?.[1];
+        const indOdds = indRunner?.odds?.find(o => o.oname === "back1" || o.otype === "back");
+        const engOdds = engRunner?.odds?.find(o => o.oname === "back1" || o.otype === "back");
+        const indRate = indOdds && Number(indOdds.odds) > 0 ? Number(indOdds.odds) : 1.95;
+        const engRate = engOdds && Number(engOdds.odds) > 0 ? Number(engOdds.odds) : 1.95;
+
         formatted.unshift({
           gmid: "superover2",
           etid: 4,
@@ -799,13 +808,13 @@ export async function fetchRealSportHighlights(etid) {
           hasFancy: true,
           isVirtual: false,
           href: "/casino/superover2",
-          c1: { b: null, l: null },
+          c1: { b: indRate, l: Number((indRate + 0.02).toFixed(2)) },
           cX: { b: null, l: null },
-          c2: { b: null, l: null },
+          c2: { b: engRate, l: Number((engRate + 0.02).toFixed(2)) },
           matchOdds: [
-            { nat: "Super Over2", b1: null, l1: null },
+            { nat: "IND", b1: indRate, l1: Number((indRate + 0.02).toFixed(2)), bs1: "300K" },
             { nat: "The Draw", b1: null, l1: null },
-            { nat: "2", b1: null, l1: null }
+            { nat: "ENG", b1: engRate, l1: Number((engRate + 0.02).toFixed(2)), bs1: "300K" }
           ]
         });
       }
