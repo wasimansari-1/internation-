@@ -104,7 +104,30 @@ const BASE_96_TABLES = [
   { gtype: "fantan", gmid: "501801052", name: "Fan Tan Classic", category: "Special", minBet: 50, maxBet: 25000 },
   { gtype: "sidebetcity", gmid: "501801053", name: "Side Bet City 1985", category: "Poker", minBet: 100, maxBet: 25000 },
   { gtype: "megaball", gmid: "501801054", name: "Mega Ball 100x", category: "Lottery", minBet: 10, maxBet: 10000 },
-  { gtype: "craps", gmid: "501801055", name: "Craps Live Table", category: "Dice", minBet: 100, maxBet: 50000 }
+  { gtype: "craps", gmid: "501801055", name: "Craps Live Table", category: "Dice", minBet: 100, maxBet: 50000 },
+  { gtype: "muflisteen", gmid: "501801056", name: "Muflis Teen Patti", category: "Teen Patti", minBet: 100, maxBet: 50000 },
+  { gtype: "instantteen", gmid: "501801057", name: "Instant Teen Patti", category: "Teen Patti", minBet: 100, maxBet: 50000 },
+  { gtype: "openteen", gmid: "501801058", name: "Teen Patti Open", category: "Teen Patti", minBet: 100, maxBet: 50000 },
+  { gtype: "testteen", gmid: "501801059", name: "Teen Patti Test", category: "Teen Patti", minBet: 100, maxBet: 50000 },
+  { gtype: "superover1", gmid: "501801060", name: "Super Over 1", category: "Cricket", minBet: 100, maxBet: 25000 },
+  { gtype: "cric20", gmid: "501801061", name: "Cricket Match 20-20", category: "Cricket", minBet: 100, maxBet: 25000 },
+  { gtype: "poker1day", gmid: "501801062", name: "1 Day Poker", category: "Poker", minBet: 100, maxBet: 25000 },
+  { gtype: "card3judgement", gmid: "501801063", name: "3 Card Judgement", category: "Cards", minBet: 100, maxBet: 25000 },
+  { gtype: "raceto17", gmid: "501801064", name: "Race to 17", category: "Cards", minBet: 100, maxBet: 25000 },
+  { gtype: "trap", gmid: "501801065", name: "Trap Live", category: "Special", minBet: 100, maxBet: 25000 },
+  { gtype: "dt2", gmid: "501801066", name: "Dragon Tiger 2", category: "Dragon Tiger", minBet: 100, maxBet: 50000 },
+  { gtype: "teen1day", gmid: "501801067", name: "Teen Patti 1 Day", category: "Teen Patti", minBet: 100, maxBet: 50000 },
+  { gtype: "card32virtual", gmid: "501801068", name: "32 Cards Virtual", category: "32 Cards", minBet: 100, maxBet: 25000 },
+  { gtype: "turkishroulette", gmid: "501801069", name: "Turkish Roulette", category: "Roulette", minBet: 50, maxBet: 50000 },
+  { gtype: "lightningroulette", gmid: "501801070", name: "Lightning Roulette", category: "Roulette", minBet: 50, maxBet: 50000 },
+  { gtype: "crazytime", gmid: "501801071", name: "Crazy Time", category: "Wheel", minBet: 50, maxBet: 25000 },
+  { gtype: "monopoly", gmid: "501801072", name: "Monopoly Live", category: "Wheel", minBet: 50, maxBet: 25000 },
+  { gtype: "footballstudio", gmid: "501801073", name: "Football Studio", category: "Cards", minBet: 100, maxBet: 25000 },
+  { gtype: "bacbo", gmid: "501801074", name: "Bac Bo Live", category: "Dice", minBet: 100, maxBet: 50000 },
+  { gtype: "peekbaccarat", gmid: "501801075", name: "Peek Baccarat", category: "Baccarat", minBet: 100, maxBet: 50000 },
+  { gtype: "lightningdt", gmid: "501801076", name: "Lightning Dragon Tiger", category: "Dragon Tiger", minBet: 100, maxBet: 50000 },
+  { gtype: "videopoker", gmid: "501801077", name: "Video Poker Live", category: "Poker", minBet: 100, maxBet: 25000 },
+  { gtype: "balloonrace", gmid: "501801078", name: "Balloon Race", category: "Special", minBet: 50, maxBet: 25000 }
 ];
 
 // 100% Real Authentic Diamond247 Casino Tables Directory (Zero Dummy/Fake tables)
@@ -447,7 +470,7 @@ function generateFallbackData(path, payload) {
     const tableCycle = (Math.floor(now / 1000) + tableOffset) % 35;
     const tableLeftSec = Math.max(0, 30 - tableCycle);
     const tableRoundId = "193261" + (Math.floor(now / 35000) + tableOffset);
-    const isSuspended = tableLeftSec <= 4;
+    const isSuspended = tableLeftSec <= 0;
 
     // Distinct card sets per game
     const suits = ["♠", "♥", "♦", "♣"];

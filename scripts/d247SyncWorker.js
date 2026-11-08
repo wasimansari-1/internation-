@@ -12,6 +12,7 @@ import {
 import { getCasinoTableList } from "../backend/services/d247Service.js";
 
 const TARGET_VPS_URL = process.env.VPS_URL || "https://stream.chimneysolutions.info/api/d247/push-live";
+const TARGET_LOCAL_URL = process.env.LOCAL_URL || "http://127.0.0.1:5001/api/d247/push-live";
 const POLL_INTERVAL_MS = 1200;
 
 const POPULAR_CASINO_TABLES = [
@@ -139,30 +140,34 @@ async function runCasinoLoop() {
       }
 
       if (Object.keys(casinoLiveBatch).length > 0 || Object.keys(matchDetailsBatch).length > 0) {
-        const pushRes = await axios.post(TARGET_VPS_URL, {
+        const casinoPayload = {
           casinoLive: casinoLiveBatch,
           casinoResults: casinoResultsBatch,
           matchDetails: matchDetailsBatch
-        }, {
-          headers: { "Content-Type": "application/json" },
-          timeout: 4000
-        }).catch(() => null);
+        };
 
-        // Update active watch lists from VPS connected clients
-        if (pushRes?.data?.watchList && Array.isArray(pushRes.data.watchList)) {
-          clientWatchList = new Set(pushRes.data.watchList.map(g => normalizeCasinoGtype(g)));
+        const [pushRes, localRes] = await Promise.all([
+          axios.post(TARGET_VPS_URL, casinoPayload, { headers: { "Content-Type": "application/json" }, timeout: 4000 }).catch(() => null),
+          axios.post(TARGET_LOCAL_URL, casinoPayload, { headers: { "Content-Type": "application/json" }, timeout: 1500 }).catch(() => null)
+        ]);
+
+        const combinedRes = pushRes || localRes;
+
+        // Update active watch lists from connected clients
+        if (combinedRes?.data?.watchList && Array.isArray(combinedRes.data.watchList)) {
+          clientWatchList = new Set(combinedRes.data.watchList.map(g => normalizeCasinoGtype(g)));
         }
-        if (pushRes?.data?.activeCasino) {
-          currentActiveCasino = normalizeCasinoGtype(pushRes.data.activeCasino);
+        if (combinedRes?.data?.activeCasino) {
+          currentActiveCasino = normalizeCasinoGtype(combinedRes.data.activeCasino);
           clientWatchList.add(currentActiveCasino);
         } else {
           currentActiveCasino = null;
         }
-        if (pushRes?.data?.watchMatches && Array.isArray(pushRes.data.watchMatches)) {
-          clientWatchMatches = pushRes.data.watchMatches;
+        if (combinedRes?.data?.watchMatches && Array.isArray(combinedRes.data.watchMatches)) {
+          clientWatchMatches = combinedRes.data.watchMatches;
         }
-        if (pushRes?.data?.activeMatch) {
-          currentActiveMatch = pushRes.data.activeMatch;
+        if (combinedRes?.data?.activeMatch) {
+          currentActiveMatch = combinedRes.data.activeMatch;
         } else {
           currentActiveMatch = null;
         }
@@ -256,10 +261,10 @@ async function runSportsLoop() {
         }))
       };
 
-      const res = await axios.post(TARGET_VPS_URL, payload, {
-        headers: { "Content-Type": "application/json" },
-        timeout: 5000
-      });
+      await Promise.allSettled([
+        axios.post(TARGET_VPS_URL, payload, { headers: { "Content-Type": "application/json" }, timeout: 5000 }).catch(() => null),
+        axios.post(TARGET_LOCAL_URL, payload, { headers: { "Content-Type": "application/json" }, timeout: 2000 }).catch(() => null)
+      ]);
 
       console.log(`[Sports Sync #${count}] Pushed -> Cricket: ${cricketMatches.length}, Football: ${footballMatches.length}, Tennis: ${tennisMatches.length}, TT: ${(allSportsMatches[8] || []).length}, Horse: ${(allSportsMatches[10] || []).length}, Greyhound: ${(allSportsMatches[65] || []).length}`);
     } catch (err) {

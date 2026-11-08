@@ -80,13 +80,7 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
           setOddsData(data);
 
           const serverSec = Number(data.leftSec ?? 0);
-          const isRoundOver =
-            data.roundStatus === 'RESULT_DECLARED' ||
-            data.roundStatus === 'CARD_SCAN' ||
-            data.roundStatus === 'SUSPEND' ||
-            data.status === 'SUSPEND' ||
-            data.status === 'SUSPENDED' ||
-            serverSec <= 0;
+          const isRoundOver = serverSec <= 0 || data.roundStatus === 'RESULT_DECLARED';
 
           if (isRoundOver) {
             targetEndRef.current = 0;
@@ -378,15 +372,8 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
     return null;
   };
 
-  // Live API-driven suspension condition
-  const isTableSuspended =
-    oddsData?.status === 'SUSPEND' ||
-    oddsData?.status === 'SUSPENDED' ||
-    oddsData?.roundStatus === 'SUSPEND' ||
-    oddsData?.roundStatus === 'SUSPENDED' ||
-    oddsData?.roundStatus === 'RESULT_DECLARED' ||
-    (oddsData?.roundStatus && oddsData?.roundStatus !== 'PLACE_THE_BET') ||
-    timeLeft <= 0;
+  // Live API-driven suspension condition (Strictly suspend ONLY when timer reaches 0)
+  const isTableSuspended = timeLeft <= 0 || oddsData?.roundStatus === 'RESULT_DECLARED';
 
   const getDefaultMarketsForTable = () => {
     const name = (gameName || '').toUpperCase();

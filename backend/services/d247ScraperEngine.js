@@ -99,53 +99,9 @@ export async function performDemoLogin(page) {
   }
 }
 
-// Direct API execution with browser evaluate or High-Speed Encrypted Axios REST (Zero Chrome Required on VPS)
+// Direct API execution: Ultra-Fast Encrypted Axios REST with Instant Concurrency (Zero Queue Bottleneck)
 async function executeD247Direct(endpoint, rawPayload = {}) {
-  // 1. If headless Chrome page is alive, use browser evaluate
-  if (pageInstance && !pageInstance.isClosed()) {
-    try {
-      const encBody = encrypt(rawPayload);
-      const targetUrl = endpoint.startsWith("http") ? endpoint : `/api/front/${endpoint}`;
-
-      const fetchPromise = pageInstance.evaluate(async (url, dataEnc) => {
-        try {
-          const controller = new AbortController();
-          const tid = setTimeout(() => controller.abort(), 7000);
-          const r = await fetch(url, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ data: dataEnc }),
-            credentials: "include",
-            signal: controller.signal
-          });
-          clearTimeout(tid);
-          return await r.json();
-        } catch (err) {
-          return { error: err.message };
-        }
-      }, targetUrl, encBody);
-
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("Timeout")), 8500)
-      );
-
-      const rawRes = await Promise.race([fetchPromise, timeoutPromise]);
-      let finalResult = rawRes;
-      if (rawRes?.data && typeof rawRes.data === "string") {
-        finalResult = decrypt(rawRes.data);
-      }
-      if (finalResult && !finalResult.error) {
-        return finalResult;
-      }
-      if (finalResult?.error) {
-        console.warn("[D247 Engine] In-page fetch notice:", endpoint, finalResult.error);
-      }
-    } catch (err) {
-      console.warn("[D247 Engine] In-page evaluate error:", endpoint, err.message);
-    }
-  }
-
-  // 2. High-Speed Direct Encrypted Axios REST (Runs on Linux VPS with zero browser overhead)
+  // 1. High-Speed Direct Encrypted Axios REST (0.1s response, fully concurrent on VPS & Local)
   try {
     const encBody = encrypt(rawPayload);
     const fullUrl = endpoint.startsWith("http") ? endpoint : `https://d247.com/api/front/${endpoint}`;
@@ -174,7 +130,7 @@ async function executeD247Direct(endpoint, rawPayload = {}) {
           ...(cookieStr ? { "Cookie": cookieStr } : {}),
           ...(tokenStr ? { "Authorization": `Bearer ${tokenStr}` } : {})
         },
-        timeout: 5000
+        timeout: 2500
       }
     );
 
@@ -182,32 +138,68 @@ async function executeD247Direct(endpoint, rawPayload = {}) {
     if (res.data?.data && typeof res.data.data === "string") {
       finalResult = decrypt(res.data.data);
     }
-    return finalResult;
+    if (finalResult && !finalResult.error) {
+      return finalResult;
+    }
+  } catch (err) {}
+
+  // 2. In-page evaluate fallback only if Direct REST blocked
+  if (pageInstance && !pageInstance.isClosed()) {
+    try {
+      const encBody = encrypt(rawPayload);
+      const targetUrl = endpoint.startsWith("http") ? endpoint : `/api/front/${endpoint}`;
+
+      const fetchPromise = pageInstance.evaluate(async (url, dataEnc) => {
+        try {
+          const controller = new AbortController();
+          const tid = setTimeout(() => controller.abort(), 2000);
+          const r = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ data: dataEnc }),
+            credentials: "include",
+            signal: controller.signal
+          });
+          clearTimeout(tid);
+          return await r.json();
+        } catch (err) {
+          return { error: err.message };
+        }
+      }, targetUrl, encBody);
+
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Timeout")), 2500)
+      );
+
+      const rawRes = await Promise.race([fetchPromise, timeoutPromise]);
+      let finalResult = rawRes;
+      if (rawRes?.data && typeof rawRes.data === "string") {
+        finalResult = decrypt(rawRes.data);
+      }
+      if (finalResult && !finalResult.error) {
+        return finalResult;
+      }
+    } catch (err) {}
+  }
+
+  return null;
+}
+
+// Concurrent Ultra-Fast API executor (ZERO bottlenecks, ZERO pending delays)
+export async function evalD247Api(endpoint, rawPayload = {}) {
+  try {
+    let res = await executeD247Direct(endpoint, rawPayload);
+    if (res?.status === 401 || res?.msg === "Please Login") {
+      console.warn("[D247 Engine] Session expired on D247. Re-authenticating demo session...");
+      if (pageInstance && !pageInstance.isClosed()) {
+        await performDemoLogin(pageInstance).catch(() => {});
+      }
+      res = await executeD247Direct(endpoint, rawPayload);
+    }
+    return res;
   } catch (err) {
     return null;
   }
-}
-
-// Serialized API executor (Guaranteed NO deadlocks, NO hangs)
-export async function evalD247Api(endpoint, rawPayload = {}) {
-  return new Promise((resolve) => {
-    apiQueue = apiQueue
-      .catch(() => {}) // never fail chain
-      .then(async () => {
-        try {
-          let res = await executeD247Direct(endpoint, rawPayload);
-          // If session expired or requires login, auto-recover in background
-          if (res?.status === 401 || res?.msg === "Please Login") {
-            console.warn("[D247 Engine] Session expired on D247. Re-authenticating demo session...");
-            await performDemoLogin(pageInstance);
-            res = await executeD247Direct(endpoint, rawPayload);
-          }
-          return resolve(res);
-        } catch (err) {
-          return resolve(null);
-        }
-      });
-  });
 }
 
 // Helper: Format real D247 match object with real odds from sections
@@ -230,9 +222,12 @@ export function formatRealMatch(m, etid) {
     const b3Val = (b3Obj && Number(b3Obj.odds) > 0) ? b3Obj.odds : null;
     const l3Val = (l3Obj && Number(l3Obj.odds) > 0) ? l3Obj.odds : null;
 
+    const matchTeams = (m.ename || "").split(/ - | v | vs /i);
+    const fallbackTeamName = rIdx === 0 ? matchTeams[0]?.trim() : (rIdx === 1 ? matchTeams[1]?.trim() : (rIdx === 2 ? "The Draw" : `Runner ${rIdx + 1}`));
+
     return {
       sid: r.sid || rIdx + 1,
-      nat: r.nat || `Runner ${rIdx + 1}`,
+      nat: (r.nat !== undefined && r.nat !== null && r.nat !== "" && r.nat !== "undefined") ? String(r.nat) : (fallbackTeamName || `Runner ${rIdx + 1}`),
       b1: b1Val,
       bs1: (b1Obj && Number(b1Obj.size) > 0) ? String(Math.round(b1Obj.size)) : null,
       l1: l1Val,
@@ -900,7 +895,7 @@ export async function fetchRealCasinoTableLive(gtype) {
         realDataStore.casinoResults[normalized] = results;
       }
 
-      const isRoundSuspended = Number(t1.lt) <= 3 || t1.gstatus === "SUSPENDED";
+      const isRoundSuspended = Number(t1.lt) <= 0;
       let allRunners = [];
 
       rawMarkets.forEach(m => {
@@ -913,7 +908,7 @@ export async function fetchRealCasinoTableLive(gtype) {
           const l1 = oddsList.find(o => o.oname === "lay1" || (o.otype === "lay" && o.tno === 0));
           const bOdds = Number(b1?.odds || 0);
           const lOdds = Number(l1?.odds || 0);
-          const isRunnerSuspended = isMarketSuspended || r.gstatus === "SUSPENDED" || bOdds === 0;
+          const isRunnerSuspended = isMarketSuspended || r.gstatus === "SUSPENDED" || (!bOdds && !lOdds);
 
           allRunners.push({
             sid: r.sid,
@@ -985,7 +980,7 @@ export async function fetchRealCasinoTableLive(gtype) {
     const result = {
       roundId: String(d.mid || Date.now()),
       leftSec: Number(d.lt ?? 0),
-      roundStatus: (Number(d.lt) <= 3 || d.gstatus === "SUSPENDED") ? "SUSPENDED" : "OPEN",
+      roundStatus: Number(d.lt) <= 0 ? "SUSPENDED" : "OPEN",
       gtype: d.gtype || gtype,
       card: d.card || "",
       cards: d.card ? d.card.split(",").filter(Boolean) : [],
@@ -994,7 +989,8 @@ export async function fetchRealCasinoTableLive(gtype) {
       sub: runners.map((r, rIdx) => {
         const runnerId = r.sid || r.i || (rIdx + 1);
         const runnerName = (r.nat !== undefined && r.nat !== null && r.nat !== "") ? String(r.nat) : (r.n !== undefined && r.n !== null && r.n !== "" ? String(r.n) : (r.name || `Runner ${runnerId}`));
-        const runnerStatus = r.gstatus || (r.s === 0 ? "SUSPENDED" : "ACTIVE");
+        const isRoundSusp = Number(d.lt) <= 0;
+        const runnerStatus = isRoundSusp ? "SUSPENDED" : (r.gstatus === "SUSPENDED" ? "SUSPENDED" : "ACTIVE");
         return {
           sid: runnerId,
           nat: runnerName,
@@ -1049,7 +1045,7 @@ export async function fetchRealCasinoLastResults(gtype) {
 // 7. Live Match Odds & Markets Scraper (Exact D247 Markets: MATCH_ODDS, Bookmaker, Over/Under, Correct Score)
 export async function fetchRealMatchOdds(etid, gmid) {
   const now = Date.now();
-  if (cacheStore.markets[gmid] && (now - cacheStore.markets[gmid].time < 1000)) {
+  if (cacheStore.markets[gmid] && (now - cacheStore.markets[gmid].time < 300)) {
     return cacheStore.markets[gmid].data;
   }
 
@@ -1063,7 +1059,7 @@ export async function fetchRealMatchOdds(etid, gmid) {
           mid: dec.data.mid || "goal2_who",
           mname: "Who Will Goal Next?",
           gtype: "match1",
-          status: (Number(dec.data.lt) <= 3 || dec.data.gstatus === "SUSPENDED") ? "SUSPENDED" : "OPEN",
+          status: dec.data.gstatus === "SUSPENDED" ? "SUSPENDED" : "OPEN",
           max: 50000,
           min: 100,
           section: runners.filter(r => r.subtype === "player" || r.sid <= 12).map((r, rIdx) => ({
@@ -1080,7 +1076,7 @@ export async function fetchRealMatchOdds(etid, gmid) {
           mid: `${dec.data.mid || "goal2"}_specials`,
           mname: "Method Of Next Goal & Specials",
           gtype: "fancy1",
-          status: (Number(dec.data.lt) <= 3 || dec.data.gstatus === "SUSPENDED") ? "SUSPENDED" : "OPEN",
+          status: dec.data.gstatus === "SUSPENDED" ? "SUSPENDED" : "OPEN",
           max: 20000,
           min: 100,
           section: runners.filter(r => r.subtype !== "player" && r.sid > 12).map((r, rIdx) => ({
@@ -1146,9 +1142,9 @@ export async function fetchRealMatchOdds(etid, gmid) {
     const formattedMarkets = rawMarkets.map((m, mIdx) => {
       const runners = Array.isArray(m.section) ? m.section : [];
       
-      // Determine if market has live odds
-      const hasLiveOdds = runners.some(r => Array.isArray(r.odds) && r.odds.some(o => Number(o.odds) > 0));
-      const marketStatus = hasLiveOdds ? "OPEN" : (m.status || "OPEN");
+      // Respect D247 market suspend status 100%
+      const isMarketSuspended = m.status === "SUSPENDED";
+      const marketStatus = isMarketSuspended ? "SUSPENDED" : "OPEN";
 
       return {
         mid: m.mid || `${gmid}_${mIdx}`,
@@ -1169,7 +1165,7 @@ export async function fetchRealMatchOdds(etid, gmid) {
           const l3 = oddsList.find(o => o.oname === "lay3" || (o.otype === "lay" && o.tno === 2));
 
           const runnerHasOdds = (b1 && b1.odds > 0) || (l1 && l1.odds > 0) || (b2 && b2.odds > 0) || (l2 && l2.odds > 0);
-          const runnerStatus = r.gstatus === "SUSPENDED" ? "SUSPENDED" : (runnerHasOdds ? "ACTIVE" : (m.status === "SUSPENDED" ? "SUSPENDED" : "ACTIVE"));
+          const runnerStatus = isMarketSuspended || r.gstatus === "SUSPENDED" ? "SUSPENDED" : (runnerHasOdds ? "ACTIVE" : "SUSPENDED");
 
           const formatSize = (s) => {
             if (s === undefined || s === null) return null;

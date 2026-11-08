@@ -198,8 +198,9 @@ router.post("/push-live", (req, res) => {
   }
   if (casinoLive && typeof casinoLive === "object") {
     Object.assign(realDataStore.casinoLive, casinoLive);
-    // Instantly broadcast via SSE to all open table streams with 0.01s latency!
+    const nowTime = Date.now();
     for (const [gt, data] of Object.entries(casinoLive)) {
+      realDataStore.casinoLive[`${gt}_time`] = nowTime;
       broadcastCasinoLive(gt, data);
     }
   }
@@ -209,8 +210,9 @@ router.post("/push-live", (req, res) => {
   if (matchDetails && typeof matchDetails === "object") {
     if (!realDataStore.matchDetails) realDataStore.matchDetails = {};
     Object.assign(realDataStore.matchDetails, matchDetails);
-    // Instantly broadcast to open match SSE connections with 0.01s latency!
+    const nowTime = Date.now();
     for (const [gmid, data] of Object.entries(matchDetails)) {
+      realDataStore.matchDetails[`${gmid}_time`] = nowTime;
       for (const key of sportsSseSubscribers.keys()) {
         if (key.endsWith(`_${gmid}`) || key === String(gmid)) {
           broadcastSportsMatch(key, data);
@@ -428,7 +430,7 @@ router.get("/sports/odds/:etid/:gmid", async (req, res) => {
   if (String(gmid).toLowerCase().includes("superover")) {
     const soLive = realDataStore.casinoLive["superover2"];
     if (soLive && Array.isArray(soLive.markets) && soLive.markets.length > 0) {
-      const isRoundSusp = (Number(soLive.leftSec) <= 3 || soLive.roundStatus === "SUSPENDED");
+      const isRoundSusp = soLive.roundStatus === "SUSPENDED";
       const formatted = soLive.markets.map((m, mIdx) => {
         const isMarketSusp = isRoundSusp || m.status === "SUSPENDED";
         return {
@@ -444,7 +446,7 @@ router.get("/sports/odds/:etid/:gmid", async (req, res) => {
             const l1 = oddsList.find(o => o.oname === "lay1" || (o.otype === "lay" && o.tno === 0));
             const bOdds = b1 && Number(b1.odds) > 0 ? Number(b1.odds) : null;
             const lOdds = l1 && Number(l1.odds) > 0 ? Number(l1.odds) : null;
-            const isRunnerSusp = isMarketSusp || r.gstatus === "SUSPENDED" || !bOdds;
+            const isRunnerSusp = isMarketSusp || r.gstatus === "SUSPENDED" || (!bOdds && !lOdds);
             return {
               sid: r.sid || rIdx + 1,
               nat: r.nat || (rIdx === 0 ? "IND" : "ENG"),
@@ -470,7 +472,7 @@ router.get("/sports/odds/:etid/:gmid", async (req, res) => {
           mid: goalLive.roundId || "goal2_who",
           mname: "Who Will Goal Next?",
           gtype: "match1",
-          status: (Number(goalLive.leftSec) <= 3 || goalLive.roundStatus === "SUSPENDED") ? "SUSPENDED" : "OPEN",
+          status: goalLive.roundStatus === "SUSPENDED" ? "SUSPENDED" : "OPEN",
           max: 50000,
           min: 100,
           section: goalLive.sub.filter(r => r.subtype === "player" || r.sid <= 12).map((r, rIdx) => ({
@@ -488,7 +490,8 @@ router.get("/sports/odds/:etid/:gmid", async (req, res) => {
     }
   }
 
-  // 3. Fast path: Check if full multi-market details already cached in realDataStore
+  // 3. Fast path: If full market details are cached, ALWAYS return them (zero drop to 2-runner highlights!)
+  const now = Date.now();
   if (realDataStore.matchDetails && realDataStore.matchDetails[gmid]) {
     const cached = realDataStore.matchDetails[gmid];
     if (Array.isArray(cached) && cached.length > 0) {
@@ -496,12 +499,13 @@ router.get("/sports/odds/:etid/:gmid", async (req, res) => {
     }
   }
 
-  // 4. On-Demand Live Fetch from D247 REST (Fetches ALL markets: Bookmaker, Sets, Toss, Over/Under, etc.)
+  // 4. On-Demand Live Fetch from D247 REST (Instant live rates, instant suspend status)
   try {
     const { fetchRealMatchOdds } = await import("../services/d247ScraperEngine.js");
     const liveMarkets = await fetchRealMatchOdds(etid, gmid);
     if (Array.isArray(liveMarkets) && liveMarkets.length > 0) {
       realDataStore.matchDetails[gmid] = liveMarkets;
+      realDataStore.matchDetails[`${gmid}_time`] = Date.now();
       return res.json({ success: true, data: liveMarkets });
     }
   } catch (err) {}
@@ -560,16 +564,18 @@ router.get("/casino/live/:gtype", async (req, res) => {
   const normalized = normalizeCasinoGtype ? normalizeCasinoGtype(gtype) : gtype;
   realDataStore.lastRequestedCasino = { gtype: normalized, time: Date.now() };
 
-  // 1. Fast path: If live feed already synchronized into realDataStore
-  if (realDataStore.casinoLive[normalized] || realDataStore.casinoLive[gtype]) {
-    return res.json({ success: true, data: realDataStore.casinoLive[normalized] || realDataStore.casinoLive[gtype] });
+  // 1. Fast path: Always return cached live table data immediately
+  const cached = realDataStore.casinoLive[normalized] || realDataStore.casinoLive[gtype];
+  if (cached) {
+    return res.json({ success: true, data: cached });
   }
 
-  // 2. On-demand direct fetch if not yet cached
+  // 2. On-demand direct fetch for instant real-time live timer & odds
   try {
     const live = await fetchRealCasinoTableLive(gtype);
     if (live) {
       realDataStore.casinoLive[normalized] = live;
+      realDataStore.casinoLive[`${normalized}_time`] = Date.now();
       return res.json({ success: true, data: live });
     }
   } catch (e) {}
