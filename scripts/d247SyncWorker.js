@@ -221,6 +221,25 @@ async function runSportsLoop() {
           } catch (e) {}
         }
       }
+      const ttMatches = allSportsMatches[8] || [];
+      if (ttMatches.length > 0) {
+        const targetTT = ttMatches[count % Math.min(ttMatches.length, 6)];
+        if (targetTT?.gmid) {
+          try {
+            const odds = await fetchRealMatchOdds(8, targetTT.gmid).catch(() => null);
+            if (Array.isArray(odds) && odds.length > 0) matchDetailsBatch[targetTT.gmid] = odds;
+          } catch (e) {}
+        }
+      }
+      if (tennisMatches.length > 0) {
+        const targetTennis = tennisMatches[count % Math.min(tennisMatches.length, 6)];
+        if (targetTennis?.gmid) {
+          try {
+            const odds = await fetchRealMatchOdds(2, targetTennis.gmid).catch(() => null);
+            if (Array.isArray(odds) && odds.length > 0) matchDetailsBatch[targetTennis.gmid] = odds;
+          } catch (e) {}
+        }
+      }
 
       const payload = {
         sportsTree,

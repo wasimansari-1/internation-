@@ -488,7 +488,7 @@ router.get("/sports/odds/:etid/:gmid", async (req, res) => {
     }
   }
 
-  // 3. Check if full multi-market details already cached in realDataStore
+  // 3. Fast path: Check if full multi-market details already cached in realDataStore
   if (realDataStore.matchDetails && realDataStore.matchDetails[gmid]) {
     const cached = realDataStore.matchDetails[gmid];
     if (Array.isArray(cached) && cached.length > 0) {
@@ -496,7 +496,17 @@ router.get("/sports/odds/:etid/:gmid", async (req, res) => {
     }
   }
 
-  // 4. Fast path: check in-memory match odds from highlights ONLY IF valid non-null odds exist
+  // 4. On-Demand Live Fetch from D247 REST (Fetches ALL markets: Bookmaker, Sets, Toss, Over/Under, etc.)
+  try {
+    const { fetchRealMatchOdds } = await import("../services/d247ScraperEngine.js");
+    const liveMarkets = await fetchRealMatchOdds(etid, gmid);
+    if (Array.isArray(liveMarkets) && liveMarkets.length > 0) {
+      realDataStore.matchDetails[gmid] = liveMarkets;
+      return res.json({ success: true, data: liveMarkets });
+    }
+  } catch (err) {}
+
+  // 5. Fallback: check in-memory match odds from highlights ONLY IF valid non-null odds exist
   const existingMatches = realDataStore.sportsMatches[etid] || [];
   const found = existingMatches.find(m => String(m.gmid) === String(gmid));
   if (found && Array.isArray(found.matchOdds) && found.matchOdds.some(r => r.b1 !== null && r.b1 !== undefined)) {
@@ -512,7 +522,7 @@ router.get("/sports/odds/:etid/:gmid", async (req, res) => {
     return res.json({ success: true, data: defaultMarket });
   }
 
-  // 5. Zero-delay safe return: NEVER hang on VPS!
+  // 6. Zero-delay safe return: NEVER return dummy data!
   res.json({ success: true, data: [] });
 });
 
@@ -546,7 +556,7 @@ router.get("/casino/categories", async (req, res) => {
 // Real Live Casino Table (Countdown timer, round ID, real rates)
 router.get("/casino/live/:gtype", async (req, res) => {
   const { gtype } = req.params;
-  const { normalizeCasinoGtype } = await import("../services/d247ScraperEngine.js");
+  const { normalizeCasinoGtype, fetchRealCasinoTableLive } = await import("../services/d247ScraperEngine.js");
   const normalized = normalizeCasinoGtype ? normalizeCasinoGtype(gtype) : gtype;
   realDataStore.lastRequestedCasino = { gtype: normalized, time: Date.now() };
 
@@ -555,20 +565,37 @@ router.get("/casino/live/:gtype", async (req, res) => {
     return res.json({ success: true, data: realDataStore.casinoLive[normalized] || realDataStore.casinoLive[gtype] });
   }
 
-  // 2. Instant return if table live state pending synchronization
+  // 2. On-demand direct fetch if not yet cached
+  try {
+    const live = await fetchRealCasinoTableLive(gtype);
+    if (live) {
+      realDataStore.casinoLive[normalized] = live;
+      return res.json({ success: true, data: live });
+    }
+  } catch (e) {}
+
   res.json({ success: true, data: null });
 });
 
 // Real Round Winning Results
 router.get("/casino/results/:gtype", async (req, res) => {
   const { gtype } = req.params;
-  const { normalizeCasinoGtype } = await import("../services/d247ScraperEngine.js");
+  const { normalizeCasinoGtype, fetchRealCasinoLastResults } = await import("../services/d247ScraperEngine.js");
   const normalized = normalizeCasinoGtype ? normalizeCasinoGtype(gtype) : gtype;
 
   // 1. Instant fast path from store (0.001 ms)
   if (realDataStore.casinoResults[normalized] || realDataStore.casinoResults[gtype]) {
     return res.json({ success: true, data: { res: realDataStore.casinoResults[normalized] || realDataStore.casinoResults[gtype] } });
   }
+
+  // 2. On-demand direct fetch if not yet cached
+  try {
+    const results = await fetchRealCasinoLastResults(gtype);
+    if (Array.isArray(results) && results.length > 0) {
+      realDataStore.casinoResults[normalized] = results;
+      return res.json({ success: true, data: { res: results } });
+    }
+  } catch (e) {}
 
   res.json({ success: true, data: { res: [] } });
 });

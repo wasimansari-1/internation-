@@ -2604,7 +2604,8 @@ export default function DiamondExchangeView() {
                           onClick={() => {
                             setSelectedMatch(match);
                             const isSo = match.gmid === 'superover2' || (match.ename || '').toLowerCase().includes('super over');
-                            if (!isSo && Array.isArray(match.matchOdds) && match.matchOdds.length > 0) {
+                            const hasRealRunners = match.matchOdds?.some(r => r.nat && !r.nat.toLowerCase().startsWith('runner'));
+                            if (!isSo && hasRealRunners && Array.isArray(match.matchOdds) && match.matchOdds.length > 0) {
                               setMatchOddsData([{
                                 mid: `${match.gmid}_match_odds`,
                                 mname: 'MATCH_ODDS',
@@ -2617,7 +2618,7 @@ export default function DiamondExchangeView() {
                             } else {
                               setMatchOddsData(null);
                             }
-                            fetchMatchDetails(match.gmid);
+                            fetchMatchDetails(match.gmid, match.etid || sportsCategory);
                             if (isSo) {
                               fetchCasinoLive('superover2');
                               fetchCasinoResults('superover2');
