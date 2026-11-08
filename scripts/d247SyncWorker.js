@@ -4,12 +4,31 @@ import {
   realDataStore,
   fetchRealSportHighlights,
   fetchRealCasinoTables,
-  fetchRealSportsTree
+  fetchRealSportsTree,
+  fetchRealCasinoTableLive,
+  fetchRealCasinoLastResults
 } from "../backend/services/d247ScraperEngine.js";
 import { getCasinoTableList } from "../backend/services/d247Service.js";
 
 const TARGET_VPS_URL = process.env.VPS_URL || "https://stream.chimneysolutions.info/api/d247/push-live";
 const POLL_INTERVAL_MS = 2000;
+
+const POPULAR_CASINO_TABLES = [
+  "goal2",
+  "matka",
+  "worli3",
+  "lucky7",
+  "teen",
+  "superover2",
+  "dolidana",
+  "roulette",
+  "dragon_tiger",
+  "andar_bahar",
+  "32cards",
+  "baccarat",
+  "mogambo",
+  "lucky6"
+];
 
 async function runWorker() {
   console.log("==================================================================");
@@ -44,12 +63,32 @@ async function runWorker() {
         sportsTree = await fetchRealSportsTree().catch(() => sportsTree);
       }
 
+      // Continuously fetch live table states & results for popular casino games (round-robin)
+      const casinoLiveBatch = {};
+      const casinoResultsBatch = {};
+      const startIdx = (loopCount * 2) % POPULAR_CASINO_TABLES.length;
+      const batchGtypes = [
+        POPULAR_CASINO_TABLES[startIdx],
+        POPULAR_CASINO_TABLES[(startIdx + 1) % POPULAR_CASINO_TABLES.length]
+      ];
+
+      for (const gtype of batchGtypes) {
+        try {
+          const live = await fetchRealCasinoTableLive(gtype).catch(() => null);
+          if (live) casinoLiveBatch[gtype] = live;
+          const res = await fetchRealCasinoLastResults(gtype).catch(() => null);
+          if (res && res.length > 0) casinoResultsBatch[gtype] = res;
+        } catch (e) {}
+      }
+
       const payload = {
         sportsTree,
         cricketMatches,
         footballMatches,
         tennisMatches,
         casinoTables,
+        casinoLive: casinoLiveBatch,
+        casinoResults: casinoResultsBatch,
         latestEvents: cricketMatches.slice(0, 6).map(m => ({
           name: m.ename,
           sportId: 4,
@@ -62,7 +101,8 @@ async function runWorker() {
         timeout: 6000
       });
 
-      console.log(`[Sync Worker #${loopCount}] Pushed to VPS -> Cricket: ${cricketMatches.length} matches | Casino: ${casinoTables.length} tables | VPS matches: ${res.data.cricketCount}`);
+      const liveKeys = Object.keys(casinoLiveBatch).join(", ") || "none";
+      console.log(`[Sync Worker #${loopCount}] Pushed to VPS -> Cricket: ${cricketMatches.length} | Casino: ${casinoTables.length} tables | Live tables: [${liveKeys}] | VPS matches: ${res.data.cricketCount}`);
     } catch (err) {
       console.warn(`[Sync Worker Error #${loopCount}]:`, err.message);
     }

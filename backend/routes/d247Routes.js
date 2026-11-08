@@ -121,7 +121,7 @@ router.get("/debug/test-engine", async (req, res) => {
 
 // Live Feed Sync Bridge (Pushes 100% real D247 feed from residential node to production VPS)
 router.post("/push-live", (req, res) => {
-  const { sportsTree, cricketMatches, footballMatches, tennisMatches, casinoTables, latestEvents } = req.body;
+  const { sportsTree, cricketMatches, footballMatches, tennisMatches, casinoTables, latestEvents, casinoLive, casinoResults } = req.body;
   if (Array.isArray(sportsTree) && sportsTree.length > 0) {
     realDataStore.sportsTree = sportsTree;
   }
@@ -136,6 +136,12 @@ router.post("/push-live", (req, res) => {
   }
   if (Array.isArray(casinoTables) && casinoTables.length > 0) {
     realDataStore.casinoTables = casinoTables;
+  }
+  if (casinoLive && typeof casinoLive === "object") {
+    Object.assign(realDataStore.casinoLive, casinoLive);
+  }
+  if (casinoResults && typeof casinoResults === "object") {
+    Object.assign(realDataStore.casinoResults, casinoResults);
   }
   if (Array.isArray(latestEvents) && latestEvents.length > 0) {
     cachedLatestEvents = latestEvents;
@@ -270,10 +276,24 @@ router.get("/sports/detail-private/:etid/:gmid", async (req, res) => {
 
 router.get("/sports/odds/:etid/:gmid", async (req, res) => {
   const { etid, gmid } = req.params;
-  const realOdds = await fetchRealMatchOdds(etid, gmid);
-  if (realOdds) {
-    return res.json({ success: true, data: realOdds });
+  // 1. Fast path: check in-memory match odds
+  const existingMatches = realDataStore.sportsMatches[etid] || [];
+  const found = existingMatches.find(m => String(m.gmid) === String(gmid));
+  if (found && Array.isArray(found.matchOdds) && found.matchOdds.length > 0) {
+    return res.json({ success: true, data: found.matchOdds });
   }
+
+  // 2. Strict timeout race to prevent any VPS hang
+  try {
+    const realOdds = await Promise.race([
+      fetchRealMatchOdds(etid, gmid),
+      new Promise(resolve => setTimeout(() => resolve(null), 2500))
+    ]);
+    if (realOdds && realOdds.length > 0) {
+      return res.json({ success: true, data: realOdds });
+    }
+  } catch (e) {}
+
   const data = await getLiveMatchOdds(etid, gmid);
   res.json({ success: true, data });
 });
@@ -308,10 +328,24 @@ router.get("/casino/categories", async (req, res) => {
 // Real Live Casino Table (Countdown timer, round ID, real rates)
 router.get("/casino/live/:gtype", async (req, res) => {
   const { gtype } = req.params;
-  const realLive = await fetchRealCasinoTableLive(gtype);
-  if (realLive) {
-    return res.json({ success: true, data: realLive });
+
+  // 1. Fast path: If live feed already synchronized into realDataStore
+  if (realDataStore.casinoLive[gtype]) {
+    return res.json({ success: true, data: realDataStore.casinoLive[gtype] });
   }
+
+  // 2. Race against 2500ms timeout so VPS NEVER hangs with 504
+  try {
+    const realLive = await Promise.race([
+      fetchRealCasinoTableLive(gtype),
+      new Promise(resolve => setTimeout(() => resolve(null), 2500))
+    ]);
+    if (realLive) {
+      return res.json({ success: true, data: realLive });
+    }
+  } catch (e) {}
+
+  // 3. Instant fallback table generator (Zero delay)
   const data = await getCasinoTableLive(gtype);
   res.json({ success: true, data });
 });
@@ -319,8 +353,24 @@ router.get("/casino/live/:gtype", async (req, res) => {
 // Real Round Winning Results
 router.get("/casino/results/:gtype", async (req, res) => {
   const { gtype } = req.params;
-  const realResults = await fetchRealCasinoLastResults(gtype);
-  res.json({ success: true, data: { res: realResults || [] } });
+
+  // 1. Fast path: Check store
+  if (realDataStore.casinoResults[gtype]) {
+    return res.json({ success: true, data: { res: realDataStore.casinoResults[gtype] } });
+  }
+
+  // 2. Race against 2000ms timeout
+  try {
+    const realResults = await Promise.race([
+      fetchRealCasinoLastResults(gtype),
+      new Promise(resolve => setTimeout(() => resolve(null), 2000))
+    ]);
+    if (realResults) {
+      return res.json({ success: true, data: { res: realResults } });
+    }
+  } catch (e) {}
+
+  res.json({ success: true, data: { res: [] } });
 });
 
 // User profile & balance
