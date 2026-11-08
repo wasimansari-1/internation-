@@ -24,6 +24,41 @@ import {
 
 const router = express.Router();
 
+router.get("/debug/test-axios", async (req, res) => {
+  const { encrypt, decrypt } = await import("../services/d247ScraperEngine.js");
+  const axios = (await import("axios")).default;
+  const fs = (await import("fs")).default;
+  const path = (await import("path")).default;
+  const SESSION_FILE = path.resolve(process.cwd(), ".d247_session.json");
+  let cookieStr = "";
+  if (fs.existsSync(SESSION_FILE)) {
+    try { cookieStr = JSON.parse(fs.readFileSync(SESSION_FILE, "utf-8")).cookies || ""; } catch(e) {}
+  }
+  try {
+    const encBody = encrypt({ etid: 4, type: "all" });
+    const r = await axios.post("https://d247.com/api/front/highlighthomePrivate?etid=4", 
+      { data: encBody },
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "Origin": "https://d247.com",
+          "Referer": "https://d247.com/",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+          "Cookie": cookieStr
+        },
+        timeout: 8000
+      }
+    );
+    let dec = r.data;
+    if (r.data?.data && typeof r.data.data === "string") {
+      dec = decrypt(r.data.data);
+    }
+    res.json({ success: true, status: r.status, dataSample: dec ? (dec.data ? (Array.isArray(dec.data) ? dec.data.length : Object.keys(dec.data)) : dec) : null });
+  } catch (err) {
+    res.json({ success: false, error: err.message, status: err.response?.status, responseData: err.response?.data });
+  }
+});
+
 router.get("/debug/images", async (req, res) => {
   const result = await getDebugPageImages();
   res.json(result);
