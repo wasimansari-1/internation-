@@ -24,6 +24,23 @@ import {
 
 const router = express.Router();
 
+router.get("/debug/status", async (req, res) => {
+  const { getChromeExecutablePath, realDataStore } = await import("../services/d247ScraperEngine.js");
+  const fs = (await import("fs")).default;
+  const chromePath = getChromeExecutablePath();
+  res.json({
+    chromeDetected: chromePath,
+    hasGoogleChromeStable: fs.existsSync("/usr/bin/google-chrome-stable"),
+    hasGoogleChrome: fs.existsSync("/usr/bin/google-chrome"),
+    hasChromiumBrowser: fs.existsSync("/usr/bin/chromium-browser"),
+    hasChromium: fs.existsSync("/usr/bin/chromium"),
+    isEngineActive: realDataStore.isEngineActive,
+    cricketMatchesCount: (realDataStore.sportsMatches[4] || []).length,
+    casinoTablesCount: (realDataStore.casinoTables || []).length,
+    cookiesLength: (realDataStore.sessionCookies || "").length
+  });
+});
+
 router.get("/debug/test-axios", async (req, res) => {
   const { encrypt, decrypt } = await import("../services/d247ScraperEngine.js");
   const axios = (await import("axios")).default;
