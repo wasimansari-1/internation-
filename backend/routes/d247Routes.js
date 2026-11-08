@@ -86,8 +86,9 @@ router.get("/debug/page-info", async (req, res) => {
   try {
     const url = await evalInPage("window.location.href");
     const title = await evalInPage("document.title");
-    const text = await evalInPage("(document.body ? document.body.innerText : '').replace(/\\s+/g, ' ').slice(0, 200)");
+    const text = await evalInPage("(document.body ? document.body.innerText : '').replace(/\\s+/g, ' ').slice(0, 300)");
     const rowCount = await evalInPage("document.querySelectorAll('.bet-table-row').length");
+    const htmlSnippet = await evalInPage("(document.body ? document.body.innerHTML : '').replace(/\\s+/g, ' ').slice(0, 500)");
     const fetchTest = await evalInPage(`
       fetch('/api/front/highlighthomePrivate?etid=4', {
         method: 'POST',
@@ -95,7 +96,7 @@ router.get("/debug/page-info", async (req, res) => {
         body: JSON.stringify({ data: 'test' })
       }).then(r => ({ status: r.status, ok: r.ok, type: r.type })).catch(e => ({ error: e.message }))
     `);
-    res.json({ success: true, url, title, text, rowCount, fetchTest });
+    res.json({ success: true, url, title, text, htmlSnippet, rowCount, fetchTest });
   } catch (err) {
     res.json({ success: false, error: err.message });
   }
