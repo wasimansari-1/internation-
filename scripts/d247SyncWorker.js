@@ -63,6 +63,9 @@ let clientWatchList = new Set();
 let clientWatchMatches = [];
 
 // Dedicated ultra-speed loops: Casino & Active Match run at 400ms, Sports runs at 2500ms
+let currentActiveMatch = null;
+let currentActiveCasino = null;
+
 async function runCasinoLoop() {
   console.log("[Casino Engine] Starting real-time 400ms casino & active match live feed loop...");
   let count = 0;
@@ -73,8 +76,11 @@ async function runCasinoLoop() {
       const casinoResultsBatch = {};
       const matchDetailsBatch = {};
 
-      // 1. Always prioritize pinned tables + client watched tables
+      // 1. Always prioritize active casino + pinned tables + client watched tables
       const batchGtypes = ["superover2", "goal2"];
+      if (currentActiveCasino && !batchGtypes.includes(currentActiveCasino)) {
+        batchGtypes.unshift(currentActiveCasino);
+      }
       for (const watched of clientWatchList) {
         if (!batchGtypes.includes(watched)) batchGtypes.push(watched);
       }
@@ -109,16 +115,26 @@ async function runCasinoLoop() {
       }));
 
       // 3. Ultra-Fast Live Odds Scraper for Active Match open in user's browser (0.1s rate sync!)
+      const matchesToScrape = [];
+      if (currentActiveMatch && currentActiveMatch.gmid && currentActiveMatch.gmid !== 'superover2') {
+        matchesToScrape.push(currentActiveMatch);
+      }
       if (clientWatchMatches.length > 0) {
-        await Promise.all(clientWatchMatches.map(async (wm) => {
-          if (wm?.gmid && wm.gmid !== 'superover2') {
-            try {
-              const odds = await fetchRealMatchOdds(wm.etid || 4, wm.gmid).catch(() => null);
-              if (Array.isArray(odds) && odds.length > 0) {
-                matchDetailsBatch[wm.gmid] = odds;
-              }
-            } catch (e) {}
+        clientWatchMatches.forEach(wm => {
+          if (wm?.gmid && wm.gmid !== 'superover2' && !matchesToScrape.some(m => String(m.gmid) === String(wm.gmid))) {
+            matchesToScrape.push(wm);
           }
+        });
+      }
+
+      if (matchesToScrape.length > 0) {
+        await Promise.all(matchesToScrape.map(async (wm) => {
+          try {
+            const odds = await fetchRealMatchOdds(wm.etid || 4, wm.gmid).catch(() => null);
+            if (Array.isArray(odds) && odds.length > 0) {
+              matchDetailsBatch[wm.gmid] = odds;
+            }
+          } catch (e) {}
         }));
       }
 
@@ -136,8 +152,19 @@ async function runCasinoLoop() {
         if (pushRes?.data?.watchList && Array.isArray(pushRes.data.watchList)) {
           clientWatchList = new Set(pushRes.data.watchList.map(g => normalizeCasinoGtype(g)));
         }
+        if (pushRes?.data?.activeCasino) {
+          currentActiveCasino = normalizeCasinoGtype(pushRes.data.activeCasino);
+          clientWatchList.add(currentActiveCasino);
+        } else {
+          currentActiveCasino = null;
+        }
         if (pushRes?.data?.watchMatches && Array.isArray(pushRes.data.watchMatches)) {
           clientWatchMatches = pushRes.data.watchMatches;
+        }
+        if (pushRes?.data?.activeMatch) {
+          currentActiveMatch = pushRes.data.activeMatch;
+        } else {
+          currentActiveMatch = null;
         }
       }
     } catch (e) {}

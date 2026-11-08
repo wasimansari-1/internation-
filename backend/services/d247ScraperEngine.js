@@ -747,15 +747,11 @@ export async function fetchRealSportHighlights(etid) {
       }
     } else {
       formatted = rawList.map(m => formatRealMatch(m, etid));
-      // Sort matching D247: In-play matches first, then matches with active odds, then upcoming
+      // Preserve exact natural sequence from D247: In-play matches first, then competitions/upcoming
       formatted.sort((a, b) => {
         if (a.iplay && !b.iplay) return -1;
         if (!a.iplay && b.iplay) return 1;
-        const aOdds = (a.matchOdds || []).some(o => o.b1);
-        const bOdds = (b.matchOdds || []).some(o => o.b1);
-        if (aOdds && !bOdds) return -1;
-        if (!aOdds && bOdds) return 1;
-        return 0;
+        return 0; // Maintain exact natural order from D247 raw response
       });
     }
 
@@ -798,8 +794,8 @@ export async function fetchRealSportHighlights(etid) {
         const engRunner = bmMarket?.section?.[1];
         const indOdds = indRunner?.odds?.find(o => o.oname === "back1" || o.otype === "back");
         const engOdds = engRunner?.odds?.find(o => o.oname === "back1" || o.otype === "back");
-        const indRate = indOdds && Number(indOdds.odds) > 0 ? Number(indOdds.odds) : 1.95;
-        const engRate = engOdds && Number(engOdds.odds) > 0 ? Number(engOdds.odds) : 1.95;
+        const indRate = indOdds && Number(indOdds.odds) > 0 ? Number(indOdds.odds) : null;
+        const engRate = engOdds && Number(engOdds.odds) > 0 ? Number(engOdds.odds) : null;
 
         formatted.unshift({
           gmid: "superover2",
@@ -814,13 +810,13 @@ export async function fetchRealSportHighlights(etid) {
           hasFancy: true,
           isVirtual: false,
           href: "/casino/superover2",
-          c1: { b: indRate, l: Number((indRate + 0.02).toFixed(2)) },
+          c1: { b: indRate, l: indRate ? Number((indRate + 0.02).toFixed(2)) : null },
           cX: { b: null, l: null },
-          c2: { b: engRate, l: Number((engRate + 0.02).toFixed(2)) },
+          c2: { b: engRate, l: engRate ? Number((engRate + 0.02).toFixed(2)) : null },
           matchOdds: [
-            { nat: "IND", b1: indRate, l1: Number((indRate + 0.02).toFixed(2)), bs1: "300K" },
+            { nat: "IND", b1: indRate, l1: indRate ? Number((indRate + 0.02).toFixed(2)) : null, bs1: indRate ? "300K" : null },
             { nat: "The Draw", b1: null, l1: null },
-            { nat: "ENG", b1: engRate, l1: Number((engRate + 0.02).toFixed(2)), bs1: "300K" }
+            { nat: "ENG", b1: engRate, l1: engRate ? Number((engRate + 0.02).toFixed(2)) : null, bs1: engRate ? "300K" : null }
           ]
         });
       }
@@ -995,9 +991,9 @@ export async function fetchRealCasinoTableLive(gtype) {
       cards: d.card ? d.card.split(",").filter(Boolean) : [],
       remark: d.remark || d.rdesc || "",
       score: d.card || "0 0",
-      sub: runners.map(r => {
-        const runnerId = r.sid || r.i;
-        const runnerName = r.nat || (r.n !== undefined && r.n !== null ? String(r.n) : `Runner ${runnerId}`);
+      sub: runners.map((r, rIdx) => {
+        const runnerId = r.sid || r.i || (rIdx + 1);
+        const runnerName = (r.nat !== undefined && r.nat !== null && r.nat !== "") ? String(r.nat) : (r.n !== undefined && r.n !== null && r.n !== "" ? String(r.n) : (r.name || `Runner ${runnerId}`));
         const runnerStatus = r.gstatus || (r.s === 0 ? "SUSPENDED" : "ACTIVE");
         return {
           sid: runnerId,

@@ -568,6 +568,7 @@ export default function DiamondExchangeView() {
   // Live polling state
   const [balance, setBalance] = useState(1500.00);
   const [lastSync, setLastSync] = useState(Date.now());
+  const highlightsCacheRef = useRef({});
   const [isUpdating, setIsUpdating] = useState(false);
   const [betSuccessMsg, setBetSuccessMsg] = useState(null);
 
@@ -621,6 +622,7 @@ export default function DiamondExchangeView() {
       const res = await axios.get(`/api/d247/sports/highlights?etid=${etid}`);
       const raw = res.data?.data;
       const list = Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : []);
+      highlightsCacheRef.current[etid] = list;
       setSportsHighlights(list);
       if (selectedMatch) {
         const updated = list.find(m => String(m.gmid) === String(selectedMatch.gmid));
@@ -632,9 +634,10 @@ export default function DiamondExchangeView() {
   };
 
   // 2. Fetch Match Details & Session Markets
-  const fetchMatchDetails = async (gmid) => {
+  const fetchMatchDetails = async (gmid, targetCat) => {
     try {
-      const res = await axios.get(`/api/d247/sports/odds/${sportsCategory}/${gmid}`);
+      const cat = targetCat !== undefined ? targetCat : (selectedMatch?.etid || sportsCategory);
+      const res = await axios.get(`/api/d247/sports/odds/${cat}/${gmid}`);
       if (res.data?.success && res.data?.data) {
         let rawData = res.data.data;
         if (!Array.isArray(rawData) && rawData.markets) {
@@ -779,19 +782,25 @@ export default function DiamondExchangeView() {
     return () => clearInterval(interval);
   }, [activeCasinoTable]);
 
-  // Initial Load & Sports Category Switch
+  // Initial Load once on mount
   useEffect(() => {
-    setSelectedMatch(null);
-    setMatchOddsData(null);
-    setSportsHighlights([]);
-    setTvActive(false);
-    setTvStreamUrl(null);
-    setMatchGameDetail(null);
     checkSession();
     fetchSportsTree();
     fetchLatestEvents();
-    fetchSportsHighlights(sportsCategory);
     fetchCasinoTables();
+  }, []);
+
+  // Sports Category Switch (Instant cached switch, ZERO blank loader)
+  useEffect(() => {
+    setSelectedMatch(null);
+    setMatchOddsData(null);
+    setTvActive(false);
+    setTvStreamUrl(null);
+    setMatchGameDetail(null);
+    if (highlightsCacheRef.current[sportsCategory]) {
+      setSportsHighlights(highlightsCacheRef.current[sportsCategory]);
+    }
+    fetchSportsHighlights(sportsCategory);
   }, [sportsCategory]);
 
   // When selected match changes
@@ -839,7 +848,7 @@ export default function DiamondExchangeView() {
     };
   }, [sportsCategory, selectedMatch]);
 
-  // Ultra-Fast Real-Time Live SSE Stream for Open Casino Table (Instant socket-like push, ZERO polling, ZERO fluctuation)
+  // Ultra-Fast Real-Time Live SSE Stream + 1-Sec Tick for Open Casino Table (Zero Delay)
   useEffect(() => {
     if (!activeCasinoTable) return;
     const targetGtype = normalizeCasinoGtype(activeCasinoTable.gtype);
@@ -865,23 +874,28 @@ export default function DiamondExchangeView() {
         } catch (err) {}
       };
       eventSource.onerror = () => {
-        // Fallback polling if SSE disconnects
         fetchCasinoLive(targetGtype);
       };
     } catch (e) {}
 
-    // Faster winning results sync
+    // Dedicated 1-second interval for instant real-time casino rate update
+    const casinoLiveTick = setInterval(() => {
+      fetchCasinoLive(targetGtype);
+    }, 1000);
+
+    // Winning results sync every 4 seconds
     const casinoResultsTimer = setInterval(() => {
       fetchCasinoResults(targetGtype);
     }, 4000);
 
     return () => {
       if (eventSource) eventSource.close();
+      clearInterval(casinoLiveTick);
       clearInterval(casinoResultsTimer);
     };
   }, [activeCasinoTable?.gtype]);
 
-  // Ultra-Fast Real-Time Live SSE Stream for Super Over 2 (0.01s latency, ZERO polling, ZERO delay)
+  // Ultra-Fast Real-Time Live SSE Stream + 1-Sec Tick for Super Over 2
   useEffect(() => {
     if (!selectedMatch) return;
     const isSuperOver = selectedMatch.gmid === 'superover2' || (selectedMatch.ename || '').toLowerCase().includes('super over');
@@ -913,12 +927,17 @@ export default function DiamondExchangeView() {
       };
     } catch (e) {}
 
+    const soTick = setInterval(() => {
+      fetchCasinoLive('superover2');
+    }, 1000);
+
     return () => {
       if (eventSource) eventSource.close();
+      clearInterval(soTick);
     };
   }, [selectedMatch?.gmid]);
 
-  // Ultra-Fast Real-Time Live SSE Stream for Active Sports Match (0.01s latency, instant 1-3 ticks/sec matching D247)
+  // Ultra-Fast Real-Time Live SSE Stream + 1-Sec Tick for Active Sports Match (Instant rates matching D247)
   useEffect(() => {
     if (!selectedMatch) return;
     const isSuperOver = selectedMatch.gmid === 'superover2' || (selectedMatch.ename || '').toLowerCase().includes('super over');
@@ -946,8 +965,14 @@ export default function DiamondExchangeView() {
       };
     } catch (e) {}
 
+    // Dedicated 1-second interval for real-time sports odds tick (matching user request)
+    const matchOddsTick = setInterval(() => {
+      fetchMatchDetails(gmid);
+    }, 1000);
+
     return () => {
       if (eventSource) eventSource.close();
+      clearInterval(matchOddsTick);
     };
   }, [selectedMatch?.gmid, sportsCategory]);
 
@@ -2578,7 +2603,8 @@ export default function DiamondExchangeView() {
                           key={`match_${match.gmid || 'm'}_${mIdx}`}
                           onClick={() => {
                             setSelectedMatch(match);
-                            if (Array.isArray(match.matchOdds) && match.matchOdds.length > 0) {
+                            const isSo = match.gmid === 'superover2' || (match.ename || '').toLowerCase().includes('super over');
+                            if (!isSo && Array.isArray(match.matchOdds) && match.matchOdds.length > 0) {
                               setMatchOddsData([{
                                 mid: `${match.gmid}_match_odds`,
                                 mname: 'MATCH_ODDS',
@@ -2588,9 +2614,11 @@ export default function DiamondExchangeView() {
                                 min: 100,
                                 section: match.matchOdds
                               }]);
+                            } else {
+                              setMatchOddsData(null);
                             }
                             fetchMatchDetails(match.gmid);
-                            if (match.gmid === 'superover2' || (match.ename || '').toLowerCase().includes('super over')) {
+                            if (isSo) {
                               fetchCasinoLive('superover2');
                               fetchCasinoResults('superover2');
                             }
@@ -3062,9 +3090,16 @@ export default function DiamondExchangeView() {
                           {/* Runner Rows matching D247 */}
                           <div style={{ padding: '2px 0' }}>
                             {runners.map((runner, rIdx) => {
-                              const isSusp = runner.gstatus === 'SUSPENDED' || casinoLiveData.roundStatus === 'SUSPENDED' || (!runner.b && !runner.l);
+                              const isSusp = liveTimer <= 3 || runner.gstatus === 'SUSPENDED' || casinoLiveData?.roundStatus === 'SUSPENDED' || (!runner.b && !runner.l);
                               const minFormatted = runner.min ? `Min: ${Number(runner.min).toFixed(2)}` : 'Min: 100.00';
                               const maxFormatted = runner.max ? `Max: ${runner.max >= 100000 ? `${(runner.max/100000).toFixed(0)}L` : `${(runner.max/1000).toFixed(0)}K`}` : 'Max: 50K';
+                              const runnerTitle = (runner.nat !== undefined && runner.nat !== null && runner.nat !== '' && runner.nat !== 'undefined')
+                                ? String(runner.nat)
+                                : (runner.n !== undefined && runner.n !== null && runner.n !== '' && runner.n !== 'undefined'
+                                  ? String(runner.n)
+                                  : (runner.sid !== undefined && runner.sid !== null && runner.sid !== 'undefined'
+                                    ? `Runner ${runner.sid}`
+                                    : `Runner ${rIdx + 1}`));
 
                               return (
                                 <div
@@ -3080,7 +3115,7 @@ export default function DiamondExchangeView() {
                                 >
                                   {/* Runner Name */}
                                   <div style={{ fontWeight: 700, fontSize: '13px', color: '#f1f5f9' }}>
-                                    {runner.nat || (runner.n !== undefined && runner.n !== null ? String(runner.n) : (runner.sid !== undefined ? `Runner ${runner.sid}` : 'Runner'))}
+                                    {runnerTitle}
                                   </div>
 
                                   {/* Back & Lay Buttons */}

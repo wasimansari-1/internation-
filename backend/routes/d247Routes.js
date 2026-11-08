@@ -236,6 +236,8 @@ router.post("/push-live", (req, res) => {
       const parts = k.split("_");
       return parts.length === 2 ? { etid: Number(parts[0]), gmid: parts[1] } : { etid: 4, gmid: k };
     }),
+    activeMatch: (realDataStore.lastRequestedMatch && Date.now() - realDataStore.lastRequestedMatch.time < 30000) ? realDataStore.lastRequestedMatch : null,
+    activeCasino: (realDataStore.lastRequestedCasino && Date.now() - realDataStore.lastRequestedCasino.time < 30000) ? realDataStore.lastRequestedCasino.gtype : null,
     timestamp: realDataStore.lastUpdate
   });
 });
@@ -420,6 +422,7 @@ router.get("/sports/detail-private/:etid/:gmid", async (req, res) => {
 
 router.get("/sports/odds/:etid/:gmid", async (req, res) => {
   const { etid, gmid } = req.params;
+  realDataStore.lastRequestedMatch = { etid: Number(etid || 4), gmid: String(gmid), time: Date.now() };
 
   // 1. Dedicated live stream for Super Over2 (IND vs ENG Bookmaker & Fancy)
   if (String(gmid).toLowerCase().includes("superover")) {
@@ -545,6 +548,7 @@ router.get("/casino/live/:gtype", async (req, res) => {
   const { gtype } = req.params;
   const { normalizeCasinoGtype } = await import("../services/d247ScraperEngine.js");
   const normalized = normalizeCasinoGtype ? normalizeCasinoGtype(gtype) : gtype;
+  realDataStore.lastRequestedCasino = { gtype: normalized, time: Date.now() };
 
   // 1. Fast path: If live feed already synchronized into realDataStore
   if (realDataStore.casinoLive[normalized] || realDataStore.casinoLive[gtype]) {
