@@ -92,9 +92,13 @@ async function runCasinoLoop() {
             casinoLiveBatch[gtype] = live;
             const norm = normalizeCasinoGtype(gtype);
             if (norm && norm !== gtype) casinoLiveBatch[norm] = live;
+            if (Array.isArray(live.results) && live.results.length > 0) {
+              casinoResultsBatch[gtype] = live.results;
+              if (norm && norm !== gtype) casinoResultsBatch[norm] = live.results;
+            }
           }
           const res = await fetchRealCasinoLastResults(gtype).catch(() => null);
-          if (res && res.length > 0) {
+          if (res && res.length > 0 && !casinoResultsBatch[gtype]) {
             casinoResultsBatch[gtype] = res;
             const norm = normalizeCasinoGtype(gtype);
             if (norm && norm !== gtype) casinoResultsBatch[norm] = res;
@@ -118,7 +122,7 @@ async function runCasinoLoop() {
       }
     } catch (e) {}
 
-    await new Promise(r => setTimeout(r, 600));
+    await new Promise(r => setTimeout(r, 400));
   }
 }
 

@@ -881,7 +881,7 @@ export function normalizeCasinoGtype(gtype) {
 export async function fetchRealCasinoTableLive(gtype) {
   const normalized = normalizeCasinoGtype(gtype);
   const now = Date.now();
-  if (cacheStore.casino[gtype] && (now - cacheStore.casino[gtype].time < 400)) {
+  if (cacheStore.casino[gtype] && (now - cacheStore.casino[gtype].time < 100)) {
     return cacheStore.casino[gtype].data;
   }
 
@@ -894,26 +894,39 @@ export async function fetchRealCasinoTableLive(gtype) {
   if (dec && dec.data) {
     const d = dec.data;
     
-    // For superover2, t1 holds round info and t2 holds markets
+    // For superover2, t1 holds round info, t2 holds markets, t3 holds last results
     if (d.t1 && d.t2) {
       const t1 = d.t1;
       const rawMarkets = Array.isArray(d.t2) ? d.t2 : [];
+      const results = Array.isArray(d.t3) ? d.t3 : (Array.isArray(d.lastresults) ? d.lastresults : []);
+      if (results.length > 0) {
+        realDataStore.casinoResults[gtype] = results;
+        realDataStore.casinoResults[normalized] = results;
+      }
+
+      const isRoundSuspended = Number(t1.lt) <= 3 || t1.gstatus === "SUSPENDED";
       let allRunners = [];
 
       rawMarkets.forEach(m => {
         const runners = Array.isArray(m.section) ? m.section : [];
+        const isMarketSuspended = isRoundSuspended || m.status === "SUSPENDED";
+
         runners.forEach(r => {
           const oddsList = Array.isArray(r.odds) ? r.odds : [];
           const b1 = oddsList.find(o => o.oname === "back1" || (o.otype === "back" && o.tno === 0));
           const l1 = oddsList.find(o => o.oname === "lay1" || (o.otype === "lay" && o.tno === 0));
+          const bOdds = Number(b1?.odds || 0);
+          const lOdds = Number(l1?.odds || 0);
+          const isRunnerSuspended = isMarketSuspended || r.gstatus === "SUSPENDED" || bOdds === 0;
+
           allRunners.push({
             sid: r.sid,
             nat: r.nat || `Runner ${r.sid}`,
-            b: Number(b1?.odds || 0),
-            bs: Number(b1?.size || 0),
-            l: Number(l1?.odds || 0),
-            ls: Number(l1?.size || 0),
-            gstatus: r.gstatus || "ACTIVE",
+            b: isRunnerSuspended ? 0 : bOdds,
+            bs: isRunnerSuspended ? 0 : Number(b1?.size || 0),
+            l: isRunnerSuspended ? 0 : lOdds,
+            ls: isRunnerSuspended ? 0 : Number(l1?.size || 0),
+            gstatus: isRunnerSuspended ? "SUSPENDED" : "ACTIVE",
             min: m.min || 100,
             max: m.max || 100000,
             mname: m.mname,
@@ -925,13 +938,14 @@ export async function fetchRealCasinoTableLive(gtype) {
       const result = {
         roundId: String(t1.gmid || Date.now()),
         leftSec: Number(t1.lt ?? 0),
-        roundStatus: (Number(t1.lt) <= 3 || t1.gstatus === "SUSPENDED") ? "SUSPENDED" : "OPEN",
+        roundStatus: isRoundSuspended ? "SUSPENDED" : "OPEN",
         gtype: t1.gtype || gtype,
         card: t1.card || "",
         cards: t1.card ? t1.card.split("|").filter(Boolean) : [],
         ename: t1.ename || "IND Vs ENG Super Over2",
         markets: rawMarkets,
-        sub: allRunners
+        sub: allRunners,
+        results: results
       };
 
       realDataStore.casinoLive[gtype] = result;

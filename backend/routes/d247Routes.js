@@ -360,28 +360,35 @@ router.get("/sports/odds/:etid/:gmid", async (req, res) => {
   if (String(gmid).toLowerCase().includes("superover")) {
     const soLive = realDataStore.casinoLive["superover2"];
     if (soLive && Array.isArray(soLive.markets) && soLive.markets.length > 0) {
-      const formatted = soLive.markets.map((m, mIdx) => ({
-        mid: m.mid || `so_${mIdx}`,
-        mname: m.mname || (mIdx === 0 ? "Bookmaker" : "Fancy"),
-        gtype: m.gtype || "match",
-        status: (Number(soLive.leftSec) <= 3 || soLive.roundStatus === "SUSPENDED") ? "SUSPENDED" : "OPEN",
-        max: m.max || 300000,
-        min: m.min || 100,
-        section: (m.section || []).map((r, rIdx) => {
-          const oddsList = Array.isArray(r.odds) ? r.odds : [];
-          const b1 = oddsList.find(o => o.oname === "back1" || (o.otype === "back" && o.tno === 0));
-          const l1 = oddsList.find(o => o.oname === "lay1" || (o.otype === "lay" && o.tno === 0));
-          return {
-            sid: r.sid || rIdx + 1,
-            nat: r.nat || (rIdx === 0 ? "IND" : "ENG"),
-            gstatus: r.gstatus || "ACTIVE",
-            b1: b1 && Number(b1.odds) > 0 ? Number(b1.odds) : null,
-            bs1: b1 && Number(b1.size) > 0 ? String(Math.round(b1.size)) : "300K",
-            l1: l1 && Number(l1.odds) > 0 ? Number(l1.odds) : null,
-            ls1: l1 && Number(l1.size) > 0 ? String(Math.round(l1.size)) : "300K"
-          };
-        })
-      }));
+      const isRoundSusp = (Number(soLive.leftSec) <= 3 || soLive.roundStatus === "SUSPENDED");
+      const formatted = soLive.markets.map((m, mIdx) => {
+        const isMarketSusp = isRoundSusp || m.status === "SUSPENDED";
+        return {
+          mid: m.mid || `so_${mIdx}`,
+          mname: m.mname || (mIdx === 0 ? "Bookmaker" : "Fancy"),
+          gtype: m.gtype || "match",
+          status: isMarketSusp ? "SUSPENDED" : "OPEN",
+          max: m.max || 300000,
+          min: m.min || 100,
+          section: (m.section || []).map((r, rIdx) => {
+            const oddsList = Array.isArray(r.odds) ? r.odds : [];
+            const b1 = oddsList.find(o => o.oname === "back1" || (o.otype === "back" && o.tno === 0));
+            const l1 = oddsList.find(o => o.oname === "lay1" || (o.otype === "lay" && o.tno === 0));
+            const bOdds = b1 && Number(b1.odds) > 0 ? Number(b1.odds) : null;
+            const lOdds = l1 && Number(l1.odds) > 0 ? Number(l1.odds) : null;
+            const isRunnerSusp = isMarketSusp || r.gstatus === "SUSPENDED" || !bOdds;
+            return {
+              sid: r.sid || rIdx + 1,
+              nat: r.nat || (rIdx === 0 ? "IND" : "ENG"),
+              gstatus: isRunnerSusp ? "SUSPENDED" : "ACTIVE",
+              b1: isRunnerSusp ? null : bOdds,
+              bs1: isRunnerSusp ? null : (b1 && Number(b1.size) > 0 ? String(Math.round(b1.size)) : "300K"),
+              l1: isRunnerSusp ? null : lOdds,
+              ls1: isRunnerSusp ? null : (l1 && Number(l1.size) > 0 ? String(Math.round(l1.size)) : "300K")
+            };
+          })
+        };
+      });
       return res.json({ success: true, data: formatted });
     }
   }

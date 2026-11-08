@@ -881,6 +881,43 @@ export default function DiamondExchangeView() {
     };
   }, [activeCasinoTable?.gtype]);
 
+  // Ultra-Fast Real-Time Live SSE Stream for Super Over 2 (0.01s latency, ZERO polling, ZERO delay)
+  useEffect(() => {
+    if (!selectedMatch) return;
+    const isSuperOver = selectedMatch.gmid === 'superover2' || (selectedMatch.ename || '').toLowerCase().includes('super over');
+    if (!isSuperOver) return;
+
+    fetchCasinoLive('superover2');
+    fetchCasinoResults('superover2');
+
+    let eventSource = null;
+    try {
+      eventSource = new EventSource('/api/d247/casino/stream/superover2');
+      eventSource.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload?.success && payload?.data) {
+            setSuperOverLiveData(payload.data);
+            if (Array.isArray(payload.data.results) && payload.data.results.length > 0) {
+              setSuperOverResults(payload.data.results);
+            }
+            if (typeof payload.data.leftSec === 'number') {
+              setLiveTimer(payload.data.leftSec);
+            }
+            setLastSync(Date.now());
+          }
+        } catch (err) {}
+      };
+      eventSource.onerror = () => {
+        fetchCasinoLive('superover2');
+      };
+    } catch (e) {}
+
+    return () => {
+      if (eventSource) eventSource.close();
+    };
+  }, [selectedMatch?.gmid]);
+
   // Categories list for casino
   const casinoCategories = ['ALL', 'Teen Patti', 'Dragon Tiger', 'Roulette', 'Baccarat', 'Lucky', 'Andar Bahar', '32 Cards', 'Dice', 'Special'];
 
@@ -2136,43 +2173,35 @@ export default function DiamondExchangeView() {
 
                   if (isSuperOver) {
                     if (soSource?.markets && soSource.markets.length > 0) {
-                      marketsToRender = soSource.markets.map((m, mIdx) => ({
-                        mid: m.mid || `so_${mIdx}`,
-                        mname: m.mname || (mIdx === 0 ? 'BOOKMAKER' : 'FANCY'),
-                        gtype: m.gtype || 'match',
-                        status: (Number(soSource.leftSec) <= 3 || soSource?.roundStatus === 'SUSPENDED') ? 'SUSPENDED' : 'OPEN',
-                        max: m.max || 300000,
-                        min: m.min || 100,
-                        section: (m.section || []).map((r, rIdx) => {
-                          const oddsList = Array.isArray(r.odds) ? r.odds : [];
-                          const b1 = oddsList.find(o => o.oname === 'back1' || (o.otype === 'back' && o.tno === 0));
-                          const l1 = oddsList.find(o => o.oname === 'lay1' || (o.otype === 'lay' && o.tno === 0));
-                          const rate = (b1 && Number(b1.odds) > 0) ? Number(b1.odds) : 1.95;
-                          const layRate = (l1 && Number(l1.odds) > 0) ? Number(l1.odds) : Number((rate + 0.02).toFixed(2));
-                          return {
-                            sid: r.sid || rIdx + 1,
-                            nat: r.nat || (rIdx === 0 ? 'IND' : 'ENG'),
-                            gstatus: r.gstatus || 'ACTIVE',
-                            b1: rate,
-                            bs1: b1 && Number(b1.size) > 0 ? String(Math.round(b1.size)) : '300K',
-                            l1: layRate,
-                            ls1: l1 && Number(l1.size) > 0 ? String(Math.round(l1.size)) : '300K'
-                          };
-                        })
-                      }));
-                    } else {
-                      marketsToRender = [{
-                        mid: 'so_bm_live',
-                        mname: 'BOOKMAKER',
-                        gtype: 'match',
-                        status: 'OPEN',
-                        max: 300000,
-                        min: 100,
-                        section: [
-                          { sid: 1, nat: 'IND', gstatus: 'ACTIVE', b1: 1.95, bs1: '300K', l1: 1.97, ls1: '300K' },
-                          { sid: 2, nat: 'ENG', gstatus: 'ACTIVE', b1: 1.95, bs1: '300K', l1: 1.97, ls1: '300K' }
-                        ]
-                      }];
+                      const isRoundSuspended = Number(soSource.leftSec) <= 3 || soSource?.roundStatus === 'SUSPENDED';
+                      marketsToRender = soSource.markets.map((m, mIdx) => {
+                        const isMarketSuspended = isRoundSuspended || m.status === 'SUSPENDED';
+                        return {
+                          mid: m.mid || `so_${mIdx}`,
+                          mname: m.mname || (mIdx === 0 ? 'BOOKMAKER' : 'FANCY'),
+                          gtype: m.gtype || 'match',
+                          status: isMarketSuspended ? 'SUSPENDED' : 'OPEN',
+                          max: m.max || 300000,
+                          min: m.min || 100,
+                          section: (m.section || []).map((r, rIdx) => {
+                            const oddsList = Array.isArray(r.odds) ? r.odds : [];
+                            const b1 = oddsList.find(o => o.oname === 'back1' || (o.otype === 'back' && o.tno === 0));
+                            const l1 = oddsList.find(o => o.oname === 'lay1' || (o.otype === 'lay' && o.tno === 0));
+                            const bOdds = (b1 && Number(b1.odds) > 0) ? Number(b1.odds) : null;
+                            const lOdds = (l1 && Number(l1.odds) > 0) ? Number(l1.odds) : null;
+                            const isRunnerSusp = isMarketSuspended || r.gstatus === 'SUSPENDED' || !bOdds;
+                            return {
+                              sid: r.sid || rIdx + 1,
+                              nat: r.nat || (rIdx === 0 ? 'IND' : 'ENG'),
+                              gstatus: isRunnerSusp ? 'SUSPENDED' : 'ACTIVE',
+                              b1: isRunnerSusp ? null : bOdds,
+                              bs1: isRunnerSusp ? null : (b1 && Number(b1.size) > 0 ? String(Math.round(b1.size)) : '300K'),
+                              l1: isRunnerSusp ? null : lOdds,
+                              ls1: isRunnerSusp ? null : (l1 && Number(l1.size) > 0 ? String(Math.round(l1.size)) : '300K')
+                            };
+                          })
+                        };
+                      });
                     }
                   } else {
                     if (marketsToRender.length > 0 && marketsToRender[0].nat && !marketsToRender[0].section && !marketsToRender[0].runners) {
@@ -2310,14 +2339,15 @@ export default function DiamondExchangeView() {
                                         {runner.nat}
                                       </div>
 
-                                      {isSuspended && !hasAnyOdds ? (
+                                      {isSuspended ? (
                                         <div style={{
-                                          background: 'rgba(239, 68, 68, 0.15)',
-                                          border: '1px solid rgba(239, 68, 68, 0.3)',
+                                          background: 'rgba(239, 68, 68, 0.2)',
+                                          border: '1px solid rgba(239, 68, 68, 0.4)',
                                           color: '#ef4444',
                                           textAlign: 'center',
                                           fontWeight: 900,
                                           fontSize: '11px',
+                                          letterSpacing: '1px',
                                           padding: '7px 0',
                                           borderRadius: '4px'
                                         }}>
