@@ -81,6 +81,37 @@ router.get("/debug/images", async (req, res) => {
   res.json(result);
 });
 
+router.get("/debug/page-info", async (req, res) => {
+  const { evalInPage } = await import("../services/d247ScraperEngine.js");
+  try {
+    const url = await evalInPage("window.location.href");
+    const title = await evalInPage("document.title");
+    const text = await evalInPage("document.body ? document.body.innerText.slice(0, 400) : ''");
+    const rowCount = await evalInPage("document.querySelectorAll('.bet-table-row').length");
+    res.json({ success: true, url, title, text, rowCount });
+  } catch (err) {
+    res.json({ success: false, error: err.message });
+  }
+});
+
+router.get("/debug/test-engine", async (req, res) => {
+  const { evalD247Api, fetchRealSportHighlights } = await import("../services/d247ScraperEngine.js");
+  try {
+    const raw = await evalD247Api("highlighthomePrivate?etid=4", { etid: 4, type: "all" });
+    const matches = await fetchRealSportHighlights(4);
+    res.json({
+      success: true,
+      rawType: typeof raw,
+      rawIsArray: Array.isArray(raw?.data),
+      rawKeys: raw?.data ? (Array.isArray(raw.data) ? raw.data.length : Object.keys(raw.data)) : null,
+      matchesCount: (matches || []).length,
+      sampleMatch: matches?.[0] || null
+    });
+  } catch (err) {
+    res.json({ success: false, error: err.message });
+  }
+});
+
 // Session Management
 router.post("/session", (req, res) => {
   const { token, cookies, curlString, username } = req.body;
