@@ -1035,11 +1035,17 @@ export async function fetchRealCasinoTableLive(gtype) {
 // 6. Live Round Results Scraper
 export async function fetchRealCasinoLastResults(gtype) {
   const targetGtype = normalizeCasinoGtype(gtype);
-  const dec = await evalD247Api(`casino/lastresults2`, { ismob: 1, gType: targetGtype });
-  if (dec?.data?.res) {
-    realDataStore.casinoResults[gtype] = dec.data.res;
-    realDataStore.casinoResults[targetGtype] = dec.data.res;
-    return dec.data.res;
+  const dec = await evalD247Api(`casino/lastresults2?gtype=${targetGtype}`, {
+    ismob: 1,
+    gType: targetGtype,
+    type: targetGtype,
+    gtype: targetGtype
+  });
+  const results = dec?.data?.res || (Array.isArray(dec?.data) ? dec.data : []);
+  if (Array.isArray(results) && results.length > 0) {
+    realDataStore.casinoResults[gtype] = results;
+    realDataStore.casinoResults[targetGtype] = results;
+    return results;
   }
   return realDataStore.casinoResults[gtype] || realDataStore.casinoResults[targetGtype] || [];
 }

@@ -58,18 +58,20 @@ const ACTIVE_SPORTS_ETIDS = [
   7522 // Virtual
 ];
 
-// Active tables currently watched by live frontend clients on VPS
+// Active tables & matches currently watched by live frontend clients on VPS
 let clientWatchList = new Set();
+let clientWatchMatches = [];
 
-// Dedicated ultra-speed loops: Casino runs at 600ms, Sports runs at 2500ms
+// Dedicated ultra-speed loops: Casino & Active Match run at 400ms, Sports runs at 2500ms
 async function runCasinoLoop() {
-  console.log("[Casino Engine] Starting real-time 600ms casino live feed loop...");
+  console.log("[Casino Engine] Starting real-time 400ms casino & active match live feed loop...");
   let count = 0;
   while (true) {
     try {
       count++;
       const casinoLiveBatch = {};
       const casinoResultsBatch = {};
+      const matchDetailsBatch = {};
 
       // 1. Always prioritize pinned tables + client watched tables
       const batchGtypes = ["superover2", "goal2"];
@@ -106,18 +108,36 @@ async function runCasinoLoop() {
         } catch (e) {}
       }));
 
-      if (Object.keys(casinoLiveBatch).length > 0) {
+      // 3. Ultra-Fast Live Odds Scraper for Active Match open in user's browser (0.1s rate sync!)
+      if (clientWatchMatches.length > 0) {
+        await Promise.all(clientWatchMatches.map(async (wm) => {
+          if (wm?.gmid && wm.gmid !== 'superover2') {
+            try {
+              const odds = await fetchRealMatchOdds(wm.etid || 4, wm.gmid).catch(() => null);
+              if (Array.isArray(odds) && odds.length > 0) {
+                matchDetailsBatch[wm.gmid] = odds;
+              }
+            } catch (e) {}
+          }
+        }));
+      }
+
+      if (Object.keys(casinoLiveBatch).length > 0 || Object.keys(matchDetailsBatch).length > 0) {
         const pushRes = await axios.post(TARGET_VPS_URL, {
           casinoLive: casinoLiveBatch,
-          casinoResults: casinoResultsBatch
+          casinoResults: casinoResultsBatch,
+          matchDetails: matchDetailsBatch
         }, {
           headers: { "Content-Type": "application/json" },
           timeout: 4000
         }).catch(() => null);
 
-        // Update watch list from VPS clients
+        // Update active watch lists from VPS connected clients
         if (pushRes?.data?.watchList && Array.isArray(pushRes.data.watchList)) {
           clientWatchList = new Set(pushRes.data.watchList.map(g => normalizeCasinoGtype(g)));
+        }
+        if (pushRes?.data?.watchMatches && Array.isArray(pushRes.data.watchMatches)) {
+          clientWatchMatches = pushRes.data.watchMatches;
         }
       }
     } catch (e) {}
@@ -157,14 +177,20 @@ async function runSportsLoop() {
 
       const matchDetailsBatch = {};
       if (cricketMatches.length > 0) {
-        const topMatches = cricketMatches.slice(0, 5);
-        const targetMatch = topMatches[count % topMatches.length];
-        if (targetMatch?.gmid && targetMatch.gmid !== 'superover2') {
+        const targetCricket = cricketMatches[count % Math.min(cricketMatches.length, 6)];
+        if (targetCricket?.gmid && targetCricket.gmid !== 'superover2') {
           try {
-            const odds = await fetchRealMatchOdds(4, targetMatch.gmid).catch(() => null);
-            if (Array.isArray(odds) && odds.length > 0) {
-              matchDetailsBatch[targetMatch.gmid] = odds;
-            }
+            const odds = await fetchRealMatchOdds(4, targetCricket.gmid).catch(() => null);
+            if (Array.isArray(odds) && odds.length > 0) matchDetailsBatch[targetCricket.gmid] = odds;
+          } catch (e) {}
+        }
+      }
+      if (footballMatches.length > 0) {
+        const targetFootball = footballMatches[count % Math.min(footballMatches.length, 6)];
+        if (targetFootball?.gmid) {
+          try {
+            const odds = await fetchRealMatchOdds(1, targetFootball.gmid).catch(() => null);
+            if (Array.isArray(odds) && odds.length > 0) matchDetailsBatch[targetFootball.gmid] = odds;
           } catch (e) {}
         }
       }

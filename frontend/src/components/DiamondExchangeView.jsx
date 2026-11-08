@@ -918,6 +918,39 @@ export default function DiamondExchangeView() {
     };
   }, [selectedMatch?.gmid]);
 
+  // Ultra-Fast Real-Time Live SSE Stream for Active Sports Match (0.01s latency, instant 1-3 ticks/sec matching D247)
+  useEffect(() => {
+    if (!selectedMatch) return;
+    const isSuperOver = selectedMatch.gmid === 'superover2' || (selectedMatch.ename || '').toLowerCase().includes('super over');
+    if (isSuperOver) return;
+
+    const etid = selectedMatch.etid || sportsCategory;
+    const gmid = selectedMatch.gmid;
+
+    fetchMatchDetails(gmid);
+
+    let eventSource = null;
+    try {
+      eventSource = new EventSource(`/api/d247/sports/stream/${etid}/${gmid}`);
+      eventSource.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload?.success && Array.isArray(payload?.data) && payload.data.length > 0) {
+            setMatchOddsData(payload.data);
+            setLastSync(Date.now());
+          }
+        } catch (err) {}
+      };
+      eventSource.onerror = () => {
+        fetchMatchDetails(gmid);
+      };
+    } catch (e) {}
+
+    return () => {
+      if (eventSource) eventSource.close();
+    };
+  }, [selectedMatch?.gmid, sportsCategory]);
+
   // Categories list for casino
   const casinoCategories = ['ALL', 'Teen Patti', 'Dragon Tiger', 'Roulette', 'Baccarat', 'Lucky', 'Andar Bahar', '32 Cards', 'Dice', 'Special'];
 

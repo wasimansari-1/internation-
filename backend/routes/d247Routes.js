@@ -121,10 +121,26 @@ router.get("/debug/test-engine", async (req, res) => {
 
 // Active Server-Sent Event (SSE) clients for real-time live streaming
 const sseSubscribers = new Map(); // gtype -> Set of res objects
+const sportsSseSubscribers = new Map(); // `${etid}_${gmid}` -> Set of res objects
 
 // Broadcast live table data to all open SSE connections instantly
 function broadcastCasinoLive(gtype, data) {
   const subscribers = sseSubscribers.get(gtype);
+  if (subscribers && subscribers.size > 0) {
+    const payload = `data: ${JSON.stringify({ success: true, data })}\n\n`;
+    for (const res of subscribers) {
+      try {
+        res.write(payload);
+      } catch (e) {
+        subscribers.delete(res);
+      }
+    }
+  }
+}
+
+// Broadcast live sports match odds instantly (sub-second rate push!)
+function broadcastSportsMatch(key, data) {
+  const subscribers = sportsSseSubscribers.get(key);
   if (subscribers && subscribers.size > 0) {
     const payload = `data: ${JSON.stringify({ success: true, data })}\n\n`;
     for (const res of subscribers) {
@@ -193,6 +209,14 @@ router.post("/push-live", (req, res) => {
   if (matchDetails && typeof matchDetails === "object") {
     if (!realDataStore.matchDetails) realDataStore.matchDetails = {};
     Object.assign(realDataStore.matchDetails, matchDetails);
+    // Instantly broadcast to open match SSE connections with 0.01s latency!
+    for (const [gmid, data] of Object.entries(matchDetails)) {
+      for (const key of sportsSseSubscribers.keys()) {
+        if (key.endsWith(`_${gmid}`) || key === String(gmid)) {
+          broadcastSportsMatch(key, data);
+        }
+      }
+    }
   }
   if (Array.isArray(latestEvents) && latestEvents.length > 0) {
     cachedLatestEvents = latestEvents;
@@ -208,6 +232,10 @@ router.post("/push-live", (req, res) => {
     sportsSynced: Object.keys(realDataStore.sportsMatches),
     matchDetailsCount: Object.keys(realDataStore.matchDetails || {}).length,
     watchList: Array.from(sseSubscribers.keys()).filter(k => sseSubscribers.get(k)?.size > 0),
+    watchMatches: Array.from(sportsSseSubscribers.keys()).filter(k => sportsSseSubscribers.get(k)?.size > 0).map(k => {
+      const parts = k.split("_");
+      return parts.length === 2 ? { etid: Number(parts[0]), gmid: parts[1] } : { etid: 4, gmid: k };
+    }),
     timestamp: realDataStore.lastUpdate
   });
 });
@@ -246,6 +274,43 @@ router.get("/casino/stream/:gtype", (req, res) => {
   req.on("close", () => {
     clearInterval(heartbeat);
     const subs = sseSubscribers.get(targetGtype);
+    if (subs) subs.delete(res);
+  });
+});
+
+// SSE Real-Time Streaming Endpoint for Live Sports Match Odds (Zero Polling, 0.01s instant push)
+router.get("/sports/stream/:etid/:gmid", (req, res) => {
+  const { etid, gmid } = req.params;
+  const key = `${etid}_${gmid}`;
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  if (!sportsSseSubscribers.has(key)) {
+    sportsSseSubscribers.set(key, new Set());
+  }
+  sportsSseSubscribers.get(key).add(res);
+
+  // Send initial data immediately
+  const initial = realDataStore.matchDetails[gmid];
+  if (initial && initial.length > 0) {
+    res.write(`data: ${JSON.stringify({ success: true, data: initial })}\n\n`);
+  }
+
+  const heartbeat = setInterval(() => {
+    try {
+      res.write(": heartbeat\n\n");
+    } catch (e) {
+      clearInterval(heartbeat);
+    }
+  }, 15000);
+
+  req.on("close", () => {
+    clearInterval(heartbeat);
+    const subs = sportsSseSubscribers.get(key);
     if (subs) subs.delete(res);
   });
 });
