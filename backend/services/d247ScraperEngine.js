@@ -856,17 +856,35 @@ function startBackgroundPollLoop() {
   }, 4000);
 }
 
+export function normalizeCasinoGtype(gtype) {
+  if (!gtype) return gtype;
+  const g = String(gtype).toLowerCase().trim();
+  if (g === "dragon_tiger" || g === "dragontiger" || g === "dt") return "dt20";
+  if (g === "dt1day" || g === "dtfast") return "dt6";
+  if (g === "andar_bahar" || g === "andarbahar" || g === "ab") return "ab20";
+  if (g === "andar_bahar2" || g === "andarbahar2") return "abj";
+  if (g === "32cards" || g === "32card" || g === "32_cards") return "card32";
+  if (g === "32cardsb" || g === "32cardeu") return "card32eu";
+  if (g === "roulette" || g === "beachroulette") return "roulette11";
+  if (g === "viproulette") return "roulette12";
+  if (g === "poker" || g === "poker6player") return "poker";
+  if (g === "matka" || g === "worli") return "worli3";
+  if (g.includes("superover")) return "superover2";
+  return g;
+}
+
 // 5. Live Casino Table Scraper (Real mid, real lt countdown, real dealt cards, real sub array)
 export async function fetchRealCasinoTableLive(gtype) {
+  const normalized = normalizeCasinoGtype(gtype);
   const now = Date.now();
   if (cacheStore.casino[gtype] && (now - cacheStore.casino[gtype].time < 400)) {
     return cacheStore.casino[gtype].data;
   }
 
   // Handle Super Over2 and other tabdata-driven tables
-  const isSuperOver = gtype.toLowerCase().includes("superover");
-  const endpoint = isSuperOver ? `casino/tabdata?type=${gtype}` : `casino/data2?gtype=${gtype}`;
-  const payload = isSuperOver ? { ismob: 1, type: gtype } : { ismob: 1, type: gtype };
+  const isSuperOver = normalized.includes("superover");
+  const endpoint = isSuperOver ? `casino/tabdata?type=${normalized}` : `casino/data2?gtype=${normalized}`;
+  const payload = { ismob: 1, type: normalized };
 
   const dec = await evalD247Api(endpoint, payload);
   if (dec && dec.data) {
@@ -882,8 +900,8 @@ export async function fetchRealCasinoTableLive(gtype) {
         const runners = Array.isArray(m.section) ? m.section : [];
         runners.forEach(r => {
           const oddsList = Array.isArray(r.odds) ? r.odds : [];
-          const b1 = oddsList.find(o => o.oname === "back1" || o.otype === "back");
-          const l1 = oddsList.find(o => o.oname === "lay1" || o.otype === "lay");
+          const b1 = oddsList.find(o => o.oname === "back1" || (o.otype === "back" && o.tno === 0));
+          const l1 = oddsList.find(o => o.oname === "lay1" || (o.otype === "lay" && o.tno === 0));
           allRunners.push({
             sid: r.sid,
             nat: r.nat || `Runner ${r.sid}`,
@@ -913,15 +931,15 @@ export async function fetchRealCasinoTableLive(gtype) {
       };
 
       realDataStore.casinoLive[gtype] = result;
+      realDataStore.casinoLive[normalized] = result;
       cacheStore.casino[gtype] = { time: now, data: result };
       return result;
     }
 
     // Special handling for Matka Market (worli3 / matka)
-    if (gtype === 'worli3' || gtype === 'matka') {
+    if (normalized === 'worli3' || normalized === 'matka') {
       const matkaList = Array.isArray(d) ? d : (d && typeof d === 'object' ? Object.values(d) : []);
       const activeMid = matkaList[0]?.mid || Date.now();
-      const ptime = matkaList[0]?.ptime || "00:00:00";
       
       const result = {
         roundId: String(activeMid),
@@ -943,6 +961,7 @@ export async function fetchRealCasinoTableLive(gtype) {
       };
 
       realDataStore.casinoLive[gtype] = result;
+      realDataStore.casinoLive[normalized] = result;
       cacheStore.casino[gtype] = { time: now, data: result };
       return result;
     }
@@ -982,24 +1001,24 @@ export async function fetchRealCasinoTableLive(gtype) {
     };
 
     realDataStore.casinoLive[gtype] = result;
+    realDataStore.casinoLive[normalized] = result;
     cacheStore.casino[gtype] = { time: now, data: result };
     return result;
   }
 
-  return realDataStore.casinoLive[gtype] || null;
+  return realDataStore.casinoLive[gtype] || realDataStore.casinoLive[normalized] || null;
 }
 
 // 6. Live Round Results Scraper
 export async function fetchRealCasinoLastResults(gtype) {
-  let targetGtype = gtype;
-  if (gtype === 'matka') targetGtype = 'worli3';
-  if (gtype.toLowerCase().includes('superover')) targetGtype = 'superover2';
+  const targetGtype = normalizeCasinoGtype(gtype);
   const dec = await evalD247Api(`casino/lastresults2`, { ismob: 1, gType: targetGtype });
   if (dec?.data?.res) {
     realDataStore.casinoResults[gtype] = dec.data.res;
+    realDataStore.casinoResults[targetGtype] = dec.data.res;
     return dec.data.res;
   }
-  return realDataStore.casinoResults[gtype] || [];
+  return realDataStore.casinoResults[gtype] || realDataStore.casinoResults[targetGtype] || [];
 }
 
 // 7. Live Match Odds & Markets Scraper (Exact D247 Markets: MATCH_ODDS, Bookmaker, Over/Under, Correct Score)
