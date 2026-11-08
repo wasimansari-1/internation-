@@ -7,7 +7,8 @@ import {
   fetchRealSportsTree,
   fetchRealCasinoTableLive,
   fetchRealCasinoLastResults,
-  fetchRealMatchOdds
+  fetchRealMatchOdds,
+  normalizeCasinoGtype
 } from "../backend/services/d247ScraperEngine.js";
 import { getCasinoTableList } from "../backend/services/d247Service.js";
 
@@ -23,10 +24,16 @@ const POPULAR_CASINO_TABLES = [
   "card32",
   "card32eu",
   "roulette11",
+  "roulette12",
   "teen",
   "lucky7",
   "lucky7eu",
+  "lucky6",
   "baccarat",
+  "poker6",
+  "poker20",
+  "poker1day",
+  "poker",
   "dolidana",
   "mogambo",
   "aaa",
@@ -68,8 +75,10 @@ let currentActiveMatch = null;
 let currentActiveCasino = null;
 
 async function runCasinoLoop() {
-  console.log("[Casino Engine] Starting real-time 400ms casino & active match live feed loop...");
+  console.log("[Casino Engine] Starting real-time 300ms casino & active match live feed loop...");
   let count = 0;
+  let bgOffset = 0;
+
   while (true) {
     try {
       count++;
@@ -77,24 +86,31 @@ async function runCasinoLoop() {
       const casinoResultsBatch = {};
       const matchDetailsBatch = {};
 
-      // 1. Always prioritize active casino + pinned tables + client watched tables
-      const batchGtypes = ["superover2", "goal2"];
-      if (currentActiveCasino && !batchGtypes.includes(currentActiveCasino)) {
-        batchGtypes.unshift(currentActiveCasino);
-      }
-      for (const watched of clientWatchList) {
-        if (!batchGtypes.includes(watched)) batchGtypes.push(watched);
+      // 1. Identify Priority Tables (Client watched tables + Top core tables)
+      const topCoreTables = ["lucky7", "superover2", "poker6", "dt20", "goal2", "teen", "card32", "ab20"];
+      const prioritySet = new Set([
+        ...topCoreTables,
+        ...(currentActiveCasino ? [currentActiveCasino] : []),
+        ...clientWatchList
+      ]);
+      const priorityGtypes = Array.from(prioritySet);
+
+      // 2. Rotating background tables (4 tables per tick to prevent CDP/network congestion)
+      const backgroundGtypes = POPULAR_CASINO_TABLES.filter(g => !prioritySet.has(g));
+      const chunkCount = 4;
+      const rotatingGtypes = [];
+      if (backgroundGtypes.length > 0) {
+        for (let i = 0; i < chunkCount; i++) {
+          const idx = (bgOffset + i) % backgroundGtypes.length;
+          rotatingGtypes.push(backgroundGtypes[idx]);
+        }
+        bgOffset = (bgOffset + chunkCount) % backgroundGtypes.length;
       }
 
-      // 2. Add 4 rotating tables from catalog
-      const batchSize = 4;
-      const startIdx = (count * batchSize) % POPULAR_CASINO_TABLES.length;
-      for (let i = 0; i < batchSize; i++) {
-        const t = POPULAR_CASINO_TABLES[(startIdx + i) % POPULAR_CASINO_TABLES.length];
-        if (!batchGtypes.includes(t)) batchGtypes.push(t);
-      }
+      const tickGtypes = Array.from(new Set([...priorityGtypes, ...rotatingGtypes]));
+      const shouldFetchResults = (count % 12 === 0); // Results sync every ~3.5s
 
-      await Promise.all(batchGtypes.map(async (gtype) => {
+      await Promise.all(tickGtypes.map(async (gtype) => {
         try {
           const live = await fetchRealCasinoTableLive(gtype).catch(() => null);
           if (live) {
@@ -106,11 +122,13 @@ async function runCasinoLoop() {
               if (norm && norm !== gtype) casinoResultsBatch[norm] = live.results;
             }
           }
-          const res = await fetchRealCasinoLastResults(gtype).catch(() => null);
-          if (res && res.length > 0 && !casinoResultsBatch[gtype]) {
-            casinoResultsBatch[gtype] = res;
-            const norm = normalizeCasinoGtype(gtype);
-            if (norm && norm !== gtype) casinoResultsBatch[norm] = res;
+          if (shouldFetchResults) {
+            const res = await fetchRealCasinoLastResults(gtype).catch(() => null);
+            if (res && res.length > 0) {
+              casinoResultsBatch[gtype] = res;
+              const norm = normalizeCasinoGtype(gtype);
+              if (norm && norm !== gtype) casinoResultsBatch[norm] = res;
+            }
           }
         } catch (e) {}
       }));
@@ -147,8 +165,8 @@ async function runCasinoLoop() {
         };
 
         const [pushRes, localRes] = await Promise.all([
-          axios.post(TARGET_VPS_URL, casinoPayload, { headers: { "Content-Type": "application/json" }, timeout: 4000 }).catch(() => null),
-          axios.post(TARGET_LOCAL_URL, casinoPayload, { headers: { "Content-Type": "application/json" }, timeout: 1500 }).catch(() => null)
+          axios.post(TARGET_VPS_URL, casinoPayload, { headers: { "Content-Type": "application/json" }, timeout: 3000 }).catch(() => null),
+          axios.post(TARGET_LOCAL_URL, casinoPayload, { headers: { "Content-Type": "application/json" }, timeout: 1200 }).catch(() => null)
         ]);
 
         const combinedRes = pushRes || localRes;
@@ -171,10 +189,15 @@ async function runCasinoLoop() {
         } else {
           currentActiveMatch = null;
         }
+        if (count === 1 || count % 10 === 0) {
+          console.log(`[Casino Sync #${count}] Pushed ${Object.keys(casinoLiveBatch).length} tables | lucky7: RID ${casinoLiveBatch.lucky7?.roundId} (${casinoLiveBatch.lucky7?.leftSec}s, ${casinoLiveBatch.lucky7?.roundStatus}) | poker6: RID ${casinoLiveBatch.poker6?.roundId} (${casinoLiveBatch.poker6?.leftSec}s) | goal2: RID ${casinoLiveBatch.goal2?.roundId} (${casinoLiveBatch.goal2?.leftSec}s)`);
+        }
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error("[Casino Engine] Loop tick error:", e.message);
+    }
 
-    await new Promise(r => setTimeout(r, 180));
+    await new Promise(r => setTimeout(r, 220));
   }
 }
 

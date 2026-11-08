@@ -31,10 +31,14 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/api/$1"
+      "destination": "https://stream.chimneysolutions.info/api/$1"
     },
     {
-      "source": "/((?!api/|assets/|card/|favicon.ico).*)",
+      "source": "/w/(.*)",
+      "destination": "https://stream.chimneysolutions.info/w/$1"
+    },
+    {
+      "source": "/((?!api/|w/|assets/|card/|favicon.ico).*)",
       "destination": "/index.html"
     }
   ]

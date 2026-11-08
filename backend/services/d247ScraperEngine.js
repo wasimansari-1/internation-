@@ -862,7 +862,10 @@ export function normalizeCasinoGtype(gtype) {
   if (g === "32cardsb" || g === "32cardeu") return "card32eu";
   if (g === "roulette" || g === "beachroulette") return "roulette11";
   if (g === "viproulette") return "roulette12";
-  if (g === "poker" || g === "poker6player") return "poker";
+  if (g === "poker6player" || g === "poker6" || g === "6playerpoker" || g === "poker6players") return "poker6";
+  if (g === "poker20") return "poker20";
+  if (g === "poker1day") return "poker1day";
+  if (g === "poker") return "poker";
   if (g === "matka" || g === "worli") return "worli3";
   if (g.includes("superover")) return "superover2";
   return g;
@@ -998,6 +1001,12 @@ export async function fetchRealCasinoTableLive(gtype) {
         const runnerName = (r.nat !== undefined && r.nat !== null && r.nat !== "") ? String(r.nat) : (r.n !== undefined && r.n !== null && r.n !== "" ? String(r.n) : (r.name || `Runner ${runnerId}`));
         const isRoundSusp = Number(d.lt) <= 0;
         const runnerStatus = isRoundSusp ? "SUSPENDED" : (r.gstatus === "SUSPENDED" ? "SUSPENDED" : "ACTIVE");
+        let runnerSubtype = r.subtype || "main";
+        if (normalized === "poker6") {
+          if (Number(runnerId) >= 11 && Number(runnerId) <= 16) runnerSubtype = "hands";
+          else if (Number(runnerId) >= 21) runnerSubtype = "pattern";
+        }
+
         return {
           sid: runnerId,
           nat: runnerName,
@@ -1008,7 +1017,7 @@ export async function fetchRealCasinoTableLive(gtype) {
           gstatus: runnerStatus,
           min: r.min || 100,
           max: r.max || 100000,
-          subtype: r.subtype || "main"
+          subtype: runnerSubtype
         };
       }),
       odds: runners.reduce((acc, r) => {

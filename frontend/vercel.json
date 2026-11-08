@@ -1,7 +1,15 @@
 {
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/api/(.*)",
+      "destination": "https://stream.chimneysolutions.info/api/$1"
+    },
+    {
+      "source": "/w/(.*)",
+      "destination": "https://stream.chimneysolutions.info/w/$1"
+    },
+    {
+      "source": "/((?!api/|w/|assets/|card/|favicon.ico).*)",
       "destination": "/index.html"
     }
   ]

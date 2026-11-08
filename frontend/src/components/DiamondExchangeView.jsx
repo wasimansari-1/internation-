@@ -224,7 +224,9 @@ const normalizeCasinoGtype = (gtype) => {
   if (g === "32cardsb" || g === "32cardeu") return "card32eu";
   if (g === "roulette" || g === "beachroulette") return "roulette11";
   if (g === "viproulette") return "roulette12";
-  if (g === "poker" || g === "poker6player") return "poker";
+  if (g === "poker6player" || g === "poker6" || g === "6playerpoker" || g === "poker6players") return "poker6";
+  if (g === "poker20" || g === "poker1day") return "poker20";
+  if (g === "poker") return "poker";
   if (g === "matka" || g === "worli") return "worli3";
   if (g.includes("superover")) return "superover2";
   return g;
@@ -243,6 +245,8 @@ const groupRunnersBySubtype = (sub) => {
 };
 
 const getCasinoSectionTitle = (subtype, gtype) => {
+  if (subtype === 'hands') return 'Hands';
+  if (subtype === 'pattern') return 'Pattern';
   if (!subtype || subtype === 'main') {
     if (gtype === 'goal' || gtype === 'goal2') return 'Who Will Goal Next?';
     return 'Match Odds';
@@ -256,6 +260,12 @@ const getCasinoSectionTitle = (subtype, gtype) => {
 const getPillBadgeText = (r, gtype) => {
   const win = String(r.win || '');
   const gt = (gtype || '').toLowerCase();
+  if (gt.includes('poker6')) {
+    if (win.startsWith('1') && win.length === 2) {
+      return win.charAt(1);
+    }
+    return win || '1';
+  }
   if (gt.includes('worli') || gt.includes('matka')) {
     return win; // "Diamond", "World", "Taj", "Lords", "Riga", "Asia", "Gulf"
   }
@@ -299,6 +309,9 @@ const getPillBadgeText = (r, gtype) => {
 const getPillBadgeColor = (r, gtype) => {
   const win = String(r.win || '');
   const gt = (gtype || '').toLowerCase();
+  if (gt.includes('poker6')) {
+    return '#15803d'; // Green circle matching D247 screenshot Image 8
+  }
   if (gt.includes('worli') || gt.includes('matka')) {
     return '#334155'; // Dark Slate matching D247 Matka pills
   }
@@ -565,6 +578,7 @@ export default function DiamondExchangeView() {
   const [superOverTimer, setSuperOverTimer] = useState(15);
   const [matkaSubTab, setMatkaSubTab] = useState('Single');
   const [matkaChip, setMatkaChip] = useState(100);
+  const [poker6Tab, setPoker6Tab] = useState('hands');
 
   // Live polling state
   const [balance, setBalance] = useState(1500.00);
@@ -1023,6 +1037,35 @@ export default function DiamondExchangeView() {
     const cat = (activeCasinoTable.category || '').toLowerCase();
     const gtype = (activeCasinoTable.gtype || '').toLowerCase();
     const cardList = (casinoLiveData?.card || '').split(/[,|]/).map(s => s.trim()).filter(Boolean);
+
+    // 0. Poker 6 Players (Exact D247 layout)
+    if (gtype === 'poker6' || gtype === 'poker6player' || (activeCasinoTable?.name || '').toLowerCase().includes('6 player')) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', width: '100%' }}>
+          <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', flexWrap: 'wrap' }}>
+            {[1, 2, 3, 4, 5, 6].map(pNum => {
+              const card1 = cardList[(pNum - 1) * 2] || '1';
+              const card2 = cardList[(pNum - 1) * 2 + 1] || '1';
+              return (
+                <div key={pNum} style={{ textAlign: 'center', background: '#0a101d', padding: '4px 6px', borderRadius: '6px', border: '1px solid #1e293b' }}>
+                  <div style={{ fontSize: '10px', color: '#38bdf8', fontWeight: 800, marginBottom: '2px' }}>P{pNum}</div>
+                  <div style={{ display: 'flex', gap: '2px' }}>
+                    <CardDisplay cardStr={card1} />
+                    <CardDisplay cardStr={card2} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {cardList.length > 12 && (
+            <div style={{ display: 'flex', gap: '4px', alignItems: 'center', marginTop: '2px' }}>
+              <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 800, marginRight: '4px' }}>BOARD:</span>
+              {cardList.slice(12, 17).map((c, ci) => <CardDisplay key={ci} cardStr={c} />)}
+            </div>
+          )}
+        </div>
+      );
+    }
 
     // 1. Dragon Tiger
     if (cat.includes('dragon') || gtype.includes('dt')) {
@@ -3206,7 +3249,59 @@ export default function DiamondExchangeView() {
                   /* Real Live Runners / Propositions Table matching D247 */
                   Array.isArray(casinoLiveData?.sub) && casinoLiveData.sub.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                    {Object.entries(groupRunnersBySubtype(casinoLiveData.sub)).map(([subtype, runners], sIdx) => {
+                    {/* Poker 6 Players Tab Header matching D247 */}
+                    {(() => {
+                      const isPoker6 = (activeCasinoTable?.gtype === 'poker6' || activeCasinoTable?.gtype === 'poker6player' || (activeCasinoTable?.name || '').toLowerCase().includes('6 player'));
+                      if (!isPoker6) return null;
+                      return (
+                        <div style={{ display: 'flex', gap: '8px', background: '#131e33', padding: '6px', borderRadius: '8px', border: '1px solid #1e3a5f' }}>
+                          <button
+                            onClick={() => setPoker6Tab('hands')}
+                            style={{
+                              flex: 1,
+                              padding: '8px 16px',
+                              borderRadius: '6px',
+                              border: 'none',
+                              background: poker6Tab === 'hands' ? '#38bdf8' : 'transparent',
+                              color: poker6Tab === 'hands' ? '#0f172a' : '#94a3b8',
+                              fontWeight: 900,
+                              fontSize: '13px',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s'
+                            }}
+                          >
+                            Hands
+                          </button>
+                          <button
+                            onClick={() => setPoker6Tab('pattern')}
+                            style={{
+                              flex: 1,
+                              padding: '8px 16px',
+                              borderRadius: '6px',
+                              border: 'none',
+                              background: poker6Tab === 'pattern' ? '#38bdf8' : 'transparent',
+                              color: poker6Tab === 'pattern' ? '#0f172a' : '#94a3b8',
+                              fontWeight: 900,
+                              fontSize: '13px',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s'
+                            }}
+                          >
+                            Pattern
+                          </button>
+                        </div>
+                      );
+                    })()}
+
+                    {Object.entries(groupRunnersBySubtype(casinoLiveData.sub))
+                      .filter(([subtype]) => {
+                        const isPoker6 = (activeCasinoTable?.gtype === 'poker6' || activeCasinoTable?.gtype === 'poker6player' || (activeCasinoTable?.name || '').toLowerCase().includes('6 player'));
+                        if (isPoker6) {
+                          return subtype === poker6Tab;
+                        }
+                        return true;
+                      })
+                      .map(([subtype, runners], sIdx) => {
                       const sectionTitle = getCasinoSectionTitle(subtype, casinoLiveData.gtype);
                       return (
                         <div key={`csec_${subtype}_${sIdx}`} style={{

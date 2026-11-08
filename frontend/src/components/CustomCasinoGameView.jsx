@@ -143,7 +143,7 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
     };
 
     pollCasino();
-    const interval = setInterval(pollCasino, 700);
+    const interval = setInterval(pollCasino, 300);
 
     return () => {
       isMounted = false;
@@ -288,7 +288,7 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
         (c) => c !== undefined && c !== null
       );
     } else if (typeof val === 'string') {
-      list = [val];
+      list = val.split(/[,|]/).map(s => s.trim()).filter(Boolean);
     }
     if (list.length === 0) list = ['0'];
     return list;
