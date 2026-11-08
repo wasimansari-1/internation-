@@ -105,7 +105,7 @@ async function executeD247Direct(endpoint, rawPayload = {}) {
   if (pageInstance && !pageInstance.isClosed()) {
     try {
       const encBody = encrypt(rawPayload);
-      const fullUrl = endpoint.startsWith("http") ? endpoint : `https://d247.com/api/front/${endpoint}`;
+      const targetUrl = endpoint.startsWith("http") ? endpoint : `/api/front/${endpoint}`;
 
       const fetchPromise = pageInstance.evaluate(async (url, dataEnc) => {
         try {
@@ -123,7 +123,7 @@ async function executeD247Direct(endpoint, rawPayload = {}) {
         } catch (err) {
           return { error: err.message };
         }
-      }, fullUrl, encBody);
+      }, targetUrl, encBody);
 
       const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error("Timeout")), 8500)
@@ -137,8 +137,11 @@ async function executeD247Direct(endpoint, rawPayload = {}) {
       if (finalResult && !finalResult.error) {
         return finalResult;
       }
+      if (finalResult?.error) {
+        console.warn("[D247 Engine] In-page fetch notice:", endpoint, finalResult.error);
+      }
     } catch (err) {
-      // Fall through to direct REST
+      console.warn("[D247 Engine] In-page evaluate error:", endpoint, err.message);
     }
   }
 

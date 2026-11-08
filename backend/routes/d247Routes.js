@@ -86,9 +86,16 @@ router.get("/debug/page-info", async (req, res) => {
   try {
     const url = await evalInPage("window.location.href");
     const title = await evalInPage("document.title");
-    const text = await evalInPage("document.body ? document.body.innerText.slice(0, 400) : ''");
+    const text = await evalInPage("(document.body ? document.body.innerText : '').replace(/\\s+/g, ' ').slice(0, 200)");
     const rowCount = await evalInPage("document.querySelectorAll('.bet-table-row').length");
-    res.json({ success: true, url, title, text, rowCount });
+    const fetchTest = await evalInPage(`
+      fetch('/api/front/highlighthomePrivate?etid=4', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: 'test' })
+      }).then(r => ({ status: r.status, ok: r.ok, type: r.type })).catch(e => ({ error: e.message }))
+    `);
+    res.json({ success: true, url, title, text, rowCount, fetchTest });
   } catch (err) {
     res.json({ success: false, error: err.message });
   }
