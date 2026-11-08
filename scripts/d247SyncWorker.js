@@ -33,21 +33,53 @@ const POPULAR_CASINO_TABLES = [
   "worli3"
 ];
 
-// All active sports supported by D247
-const ACTIVE_SPORTS_ETIDS = [4, 1, 2, 8, 10, 65, 7522, 9, 11, 5, 12];
+// All active sports supported by D247 in exact sequence
+const ACTIVE_SPORTS_ETIDS = [
+  4,   // Cricket
+  1,   // Football
+  2,   // Tennis
+  8,   // Table Tennis
+  10,  // Horse Racing
+  65,  // Greyhound Racing
+  15,  // Basketball
+  69,  // Wrestling
+  18,  // Volleyball
+  59,  // Snooker
+  11,  // E Games
+  19,  // Ice Hockey
+  9,   // Futsal
+  22,  // Badminton
+  6,   // Boxing
+  3,   // Mixed Martial Arts
+  58,  // American Football
+  52,  // Motor Sports
+  66,  // Kabaddi
+  40,  // Politics
+  7522 // Virtual
+];
 
-// Dedicated high-speed loops: Casino runs at 800ms, Sports runs at 2500ms
+// Active tables currently watched by live frontend clients on VPS
+let clientWatchList = new Set();
+
+// Dedicated ultra-speed loops: Casino runs at 600ms, Sports runs at 2500ms
 async function runCasinoLoop() {
-  console.log("[Casino Engine] Starting real-time 800ms casino live feed loop...");
+  console.log("[Casino Engine] Starting real-time 600ms casino live feed loop...");
   let count = 0;
   while (true) {
     try {
       count++;
       const casinoLiveBatch = {};
       const casinoResultsBatch = {};
-      const batchSize = 6;
-      const startIdx = (count * batchSize) % POPULAR_CASINO_TABLES.length;
+
+      // 1. Always prioritize pinned tables + client watched tables
       const batchGtypes = ["superover2", "goal2"];
+      for (const watched of clientWatchList) {
+        if (!batchGtypes.includes(watched)) batchGtypes.push(watched);
+      }
+
+      // 2. Add 4 rotating tables from catalog
+      const batchSize = 4;
+      const startIdx = (count * batchSize) % POPULAR_CASINO_TABLES.length;
       for (let i = 0; i < batchSize; i++) {
         const t = POPULAR_CASINO_TABLES[(startIdx + i) % POPULAR_CASINO_TABLES.length];
         if (!batchGtypes.includes(t)) batchGtypes.push(t);
@@ -71,17 +103,22 @@ async function runCasinoLoop() {
       }));
 
       if (Object.keys(casinoLiveBatch).length > 0) {
-        await axios.post(TARGET_VPS_URL, {
+        const pushRes = await axios.post(TARGET_VPS_URL, {
           casinoLive: casinoLiveBatch,
           casinoResults: casinoResultsBatch
         }, {
           headers: { "Content-Type": "application/json" },
           timeout: 4000
         }).catch(() => null);
+
+        // Update watch list from VPS clients
+        if (pushRes?.data?.watchList && Array.isArray(pushRes.data.watchList)) {
+          clientWatchList = new Set(pushRes.data.watchList.map(g => normalizeCasinoGtype(g)));
+        }
       }
     } catch (e) {}
 
-    await new Promise(r => setTimeout(r, 800));
+    await new Promise(r => setTimeout(r, 600));
   }
 }
 

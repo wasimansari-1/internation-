@@ -207,6 +207,7 @@ router.post("/push-live", (req, res) => {
     casinoCount: (realDataStore.casinoTables || []).length,
     sportsSynced: Object.keys(realDataStore.sportsMatches),
     matchDetailsCount: Object.keys(realDataStore.matchDetails || {}).length,
+    watchList: Array.from(sseSubscribers.keys()).filter(k => sseSubscribers.get(k)?.size > 0),
     timestamp: realDataStore.lastUpdate
   });
 });
