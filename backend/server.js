@@ -18,6 +18,8 @@ import casinoRouter from "./routes/casinoRoutes.js";
 import streamRouter from "./routes/streamRoutes.js";
 import adminRouter from "./routes/adminRoutes.js";
 import wingoRouter from "./routes/wingoRoutes.js";
+import d247Router from "./routes/d247Routes.js";
+import { startD247Engine } from "./services/d247ScraperEngine.js";
 import { proxyRequest } from "./services/authService.js";
 import { getClientIp, nativeHttpsAgent } from "./services/streamService.js";
 import axios from "axios";
@@ -96,6 +98,7 @@ app.use("/api/casino", casinoRouter);
 app.use("/api/stream", streamRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/wingo", wingoRouter);
+app.use("/api/d247", d247Router);
 
 // Universal proxy for /w/* (WebRTC stream signaling, ping, and player telemetry)
 app.all("/w/*", async (req, res) => {
@@ -226,21 +229,28 @@ app.get("/assets/:file", (req, res) => {
   if (fs.existsSync(assetsDir)) {
     const files = fs.readdirSync(assetsDir);
     if (req.params.file.endsWith(".js")) {
-      const fallbackJs = files.find(
-        (f) => f.startsWith("index-") && f.endsWith(".js"),
+      const jsFiles = files.filter(
+        (f) => f.startsWith("index-") && f.endsWith(".js")
       );
-      if (fallbackJs) {
+      if (jsFiles.length > 0) {
+        // Always pick the newest build by modified time
+        const newestJs = jsFiles.sort((a, b) => {
+          return fs.statSync(path.join(assetsDir, b)).mtimeMs - fs.statSync(path.join(assetsDir, a)).mtimeMs;
+        })[0];
         res.setHeader("Content-Type", "application/javascript; charset=utf-8");
-        return res.sendFile(path.join(assetsDir, fallbackJs));
+        return res.sendFile(path.join(assetsDir, newestJs));
       }
     }
     if (req.params.file.endsWith(".css")) {
-      const fallbackCss = files.find(
-        (f) => f.startsWith("index-") && f.endsWith(".css"),
+      const cssFiles = files.filter(
+        (f) => f.startsWith("index-") && f.endsWith(".css")
       );
-      if (fallbackCss) {
+      if (cssFiles.length > 0) {
+        const newestCss = cssFiles.sort((a, b) => {
+          return fs.statSync(path.join(assetsDir, b)).mtimeMs - fs.statSync(path.join(assetsDir, a)).mtimeMs;
+        })[0];
         res.setHeader("Content-Type", "text/css; charset=utf-8");
-        return res.sendFile(path.join(assetsDir, fallbackCss));
+        return res.sendFile(path.join(assetsDir, newestCss));
       }
     }
   }
@@ -270,6 +280,10 @@ app.get("*", (req, res, next) => {
 if (!process.env.VERCEL) {
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`🚀 Modular Backend Server running on http://0.0.0.0:${PORT}`);
+    // Boot autonomous real-time D247 scraper engine
+    startD247Engine().catch((err) => {
+      console.warn("[D247 Engine] Failed to boot scraper engine:", err.message);
+    });
   });
 }
 
