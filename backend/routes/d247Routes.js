@@ -119,6 +119,39 @@ router.get("/debug/test-engine", async (req, res) => {
   }
 });
 
+// Live Feed Sync Bridge (Pushes 100% real D247 feed from residential node to production VPS)
+router.post("/push-live", (req, res) => {
+  const { sportsTree, cricketMatches, footballMatches, tennisMatches, casinoTables, latestEvents } = req.body;
+  if (Array.isArray(sportsTree) && sportsTree.length > 0) {
+    realDataStore.sportsTree = sportsTree;
+  }
+  if (Array.isArray(cricketMatches) && cricketMatches.length > 0) {
+    realDataStore.sportsMatches[4] = cricketMatches;
+  }
+  if (Array.isArray(footballMatches) && footballMatches.length > 0) {
+    realDataStore.sportsMatches[1] = footballMatches;
+  }
+  if (Array.isArray(tennisMatches) && tennisMatches.length > 0) {
+    realDataStore.sportsMatches[2] = tennisMatches;
+  }
+  if (Array.isArray(casinoTables) && casinoTables.length > 0) {
+    realDataStore.casinoTables = casinoTables;
+  }
+  if (Array.isArray(latestEvents) && latestEvents.length > 0) {
+    cachedLatestEvents = latestEvents;
+    lastEventsFetchTime = Date.now();
+  }
+  realDataStore.lastUpdate = Date.now();
+  realDataStore.isEngineActive = true;
+  res.json({
+    success: true,
+    message: "Live stream synchronized successfully!",
+    cricketCount: (realDataStore.sportsMatches[4] || []).length,
+    casinoCount: (realDataStore.casinoTables || []).length,
+    timestamp: realDataStore.lastUpdate
+  });
+});
+
 // Session Management
 router.post("/session", (req, res) => {
   const { token, cookies, curlString, username } = req.body;
