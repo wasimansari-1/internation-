@@ -3,6 +3,7 @@ import CryptoJS from "crypto-js";
 import axios from "axios";
 import fs from "fs";
 import path from "path";
+import { getD247HttpsAgent, isWarpProxyAvailable } from "./socks5Agent.js";
 
 // Multi-Platform Chrome Path Auto-Detection (Guarantees zero-configuration deployment on Linux VPS, Mac, and Windows)
 export function getChromeExecutablePath() {
@@ -144,9 +145,64 @@ export async function performDemoLogin(page) {
   return loginPromise;
 }
 
+// Direct Zero-Browser Demo Login via Encrypted REST
+export async function performDemoLoginDirect() {
+  try {
+    const encBody = encrypt({ ismob: 1 });
+    const httpsAgent = await getD247HttpsAgent().catch(() => undefined);
+    const res = await axios.post(
+      "https://d247.com/api/front/demo-login",
+      { data: encBody },
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "Origin": "https://d247.com",
+          "Referer": "https://d247.com/",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+        },
+        httpsAgent: httpsAgent || undefined,
+        proxy: false,
+        timeout: 4000
+      }
+    );
+
+    let data = res.data;
+    if (res.data?.data && typeof res.data.data === "string") {
+      data = decrypt(res.data.data);
+    }
+
+    const setCookies = res.headers["set-cookie"];
+    let cookieStr = "";
+    if (Array.isArray(setCookies)) {
+      cookieStr = setCookies.map(c => c.split(";")[0]).join("; ");
+      realDataStore.sessionCookies = cookieStr;
+    }
+
+    const token = data?.data?.token || data?.token;
+    if (token) {
+      realDataStore.authToken = token;
+    }
+
+    if (cookieStr || token) {
+      try {
+        fs.writeFileSync(SESSION_FILE, JSON.stringify({
+          cookies: realDataStore.sessionCookies || cookieStr,
+          token: realDataStore.authToken || token,
+          lastUpdate: Date.now()
+        }, null, 2));
+      } catch (e) {}
+      console.log(`[D247 Engine] Direct Demo Login Successful! (Zero Browser Mode)`);
+      return true;
+    }
+  } catch (err) {
+    console.warn("[D247 Engine] Direct Demo Login attempt:", err.message);
+  }
+  return false;
+}
+
 // Direct API execution: Ultra-Fast Encrypted Axios REST with Instant Concurrency (Zero Queue Bottleneck)
 async function executeD247Direct(endpoint, rawPayload = {}) {
-  // 1. High-Speed Direct Encrypted Axios REST (0.1s response, fully concurrent on VPS & Local)
+  // 1. High-Speed Direct Encrypted Axios REST (0.1s response, fully concurrent on VPS & Local via Cloudflare WARP)
   try {
     const encBody = encrypt(rawPayload);
     const fullUrl = endpoint.startsWith("http") ? endpoint : `https://d247.com/api/front/${endpoint}`;
@@ -163,6 +219,8 @@ async function executeD247Direct(endpoint, rawPayload = {}) {
       } catch (e) {}
     }
 
+    const httpsAgent = await getD247HttpsAgent().catch(() => undefined);
+
     const res = await axios.post(
       fullUrl,
       { data: encBody },
@@ -175,7 +233,9 @@ async function executeD247Direct(endpoint, rawPayload = {}) {
           ...(cookieStr ? { "Cookie": cookieStr } : {}),
           ...(tokenStr ? { "Authorization": `Bearer ${tokenStr}` } : {})
         },
-        timeout: 2500
+        httpsAgent: httpsAgent || undefined,
+        proxy: false,
+        timeout: 3000
       }
     );
 
@@ -235,8 +295,9 @@ export async function evalD247Api(endpoint, rawPayload = {}) {
   try {
     let res = await executeD247Direct(endpoint, rawPayload);
     if ((res?.status === 401 || res?.msg === "Please Login") && !isStarting) {
-      console.warn("[D247 Engine] Session expired on D247. Re-authenticating demo session...");
-      if (pageInstance && !pageInstance.isClosed()) {
+      console.warn("[D247 Engine] Session expired on D247. Re-authenticating demo session via Direct REST...");
+      const directLoginOk = await performDemoLoginDirect().catch(() => false);
+      if (!directLoginOk && pageInstance && !pageInstance.isClosed()) {
         await performDemoLogin(pageInstance).catch(() => {});
         const cookies = await pageInstance.cookies();
         if (cookies && cookies.length > 0) {
@@ -315,15 +376,19 @@ export function formatRealMatch(m, etid) {
   };
 }
 
-// 1. Initialize Headless Chrome Real Scraper Engine
+// 1. Initialize Autonomous D247 Engine (Auto-detects Cloudflare WARP for 100% Zero-Browser Direct REST Bypass)
 export async function startD247Engine() {
   if (isStarting || browserInstance) return;
   isStarting = true;
 
+  // Check if Cloudflare WARP SOCKS5 proxy on port 40000 is active or browser disabled
+  const isWarpActive = await isWarpProxyAvailable("127.0.0.1", 40000).catch(() => false);
   const chromePath = getChromeExecutablePath();
-  if (!chromePath) {
-    console.log("[D247 Engine] Notice: Headless Chrome binary not found on this environment.");
-    console.log("[D247 Engine] Activating Zero-Chrome High-Speed Encrypted REST Engine (VPS Optimized)...");
+  const forceDirectRest = isWarpActive || process.env.NO_BROWSER === "true" || process.env.DIRECT_REST === "true" || !chromePath;
+
+  if (forceDirectRest) {
+    console.log(`[D247 Engine] >>> ZERO-BROWSER DIRECT REST ENGINE ACTIVATED <<< (WARP SOCKS5: ${isWarpActive ? "127.0.0.1:40000" : "DIRECT"})`);
+    console.log("[D247 Engine] 100% Direct Cloudflare Bypass Active - Chrome & Puppeteer are COMPLETELY BYPASSED!");
     
     // Load stored session credentials from disk
     try {
@@ -331,9 +396,13 @@ export async function startD247Engine() {
         const stored = JSON.parse(fs.readFileSync(SESSION_FILE, "utf-8"));
         if (stored.cookies) realDataStore.sessionCookies = stored.cookies;
         if (stored.token) realDataStore.authToken = stored.token;
-        console.log(`[D247 Engine] Loaded session credentials (cookie length: ${(realDataStore.sessionCookies || "").length})`);
+        console.log(`[D247 Engine] Loaded session credentials (token: ${realDataStore.authToken ? "ok" : "none"})`);
       }
     } catch (e) {}
+
+    if (!realDataStore.sessionCookies && !realDataStore.authToken) {
+      await performDemoLoginDirect().catch(() => {});
+    }
 
     realDataStore.isEngineActive = true;
 
@@ -342,7 +411,7 @@ export async function startD247Engine() {
     await fetchRealCasinoTables().catch(() => {});
     await refreshAllSports().catch(() => {});
 
-    // Start 24/7 background polling loop on VPS
+    // Start 24/7 background polling loop
     startBackgroundPollLoop();
     isStarting = false;
     return;
@@ -1342,6 +1411,7 @@ export async function fetchRealMatchOdds(etid, gmid) {
           status: m.status || "OPEN",
           max: m.max || 300000,
           min: m.min || 100,
+          rem: m.rem || m.remark || m.rdesc || m.news || "",
           section: runners.map((r, rIdx) => {
             const oddsList = Array.isArray(r.odds) ? r.odds : [];
             const b1 = oddsList.find(o => o.oname === "back1" || (o.otype === "back" && o.tno === 0));
@@ -1385,7 +1455,7 @@ export async function fetchRealMatchOdds(etid, gmid) {
         status: marketStatus,
         max: m.maxb || m.max || 100000,
         min: m.min || 100,
-        rem: m.rem || "",
+        rem: m.rem || m.remark || m.rdesc || m.news || m.mdesc || m.desc || "",
         section: runners.map((r, rIdx) => {
           const oddsList = Array.isArray(r.odds) ? r.odds : [];
           

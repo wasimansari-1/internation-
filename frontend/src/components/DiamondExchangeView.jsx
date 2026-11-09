@@ -871,24 +871,26 @@ export default function DiamondExchangeView() {
     } catch (err) {}
   };
 
-  // Sync casino timer with STRICT MONOTONIC COUNTDOWN (Never jump backwards within same round!)
+  // Sync casino timer with STRICT MONOTONIC COUNTDOWN
   useEffect(() => {
     if (!activeCasinoTable || !casinoLiveData || typeof casinoLiveData.leftSec !== 'number') return;
     const incomingSec = Number(casinoLiveData.leftSec);
     const roundId = String(casinoLiveData.roundId || '');
 
     // 1. If brand new round started or timer reset: initialize new countdown
-    if (casinoRoundIdRef.current !== roundId || incomingSec > liveTimer + 3) {
+    if (casinoRoundIdRef.current !== roundId || incomingSec > liveTimer + 2) {
       casinoRoundIdRef.current = roundId;
       setLiveTimer(incomingSec);
       return;
     }
 
-    // 2. Same round: Only sync DOWNWARDS, NEVER jump backwards up (prevents 13->12->13->12 bounce!)
+    // 2. Same round: sync smoothly without premature zero-locking
     setLiveTimer(prev => {
-      if (incomingSec > 0 && incomingSec < prev) {
-        return incomingSec;
-      }
+      if (incomingSec <= 0) return 0;
+      // If local countdown ran ahead to 0 prematurely, sync to server
+      if (prev <= 0 && incomingSec > 0) return incomingSec;
+      // If drifted by >= 2 seconds, sync to server
+      if (Math.abs(prev - incomingSec) >= 2) return incomingSec;
       return prev;
     });
   }, [activeCasinoTable, casinoLiveData?.roundId, casinoLiveData?.leftSec]);
@@ -916,9 +918,11 @@ export default function DiamondExchangeView() {
     }
 
     setSuperOverTimer(prev => {
-      if (incomingSec > 0 && incomingSec < prev) {
-        return incomingSec;
-      }
+      if (incomingSec <= 0) return 0;
+      // If local countdown ran ahead to 0 prematurely while server has time left: sync to incomingSec
+      if (prev <= 0 && incomingSec > 0) return incomingSec;
+      // If drifted by >= 2 seconds, sync to incomingSec
+      if (Math.abs(prev - incomingSec) >= 2) return incomingSec;
       return prev;
     });
   }, [selectedMatch, superOverLiveData?.roundId, superOverLiveData?.leftSec]);
@@ -2325,35 +2329,24 @@ export default function DiamondExchangeView() {
                           </div>
                         </div>
 
-                        {/* Live Super Over Balls Timeline below Timer */}
-                        {((superOverLiveData || casinoLiveData)?.card ? (superOverLiveData || casinoLiveData).card.split('|').filter(Boolean) : []).length > 0 && (
-                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
-                            {((superOverLiveData || casinoLiveData).card.split('|').filter(Boolean)).map((num, ni) => (
-                              <div key={ni} style={{
-                                background: '#1e293b',
-                                border: '1px solid #38bdf8',
-                                color: '#ffffff',
-                                width: '32px',
-                                height: '32px',
-                                borderRadius: '6px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                fontSize: '14px',
-                                fontWeight: 900,
-                                boxShadow: '0 2px 8px rgba(56, 189, 248, 0.3)'
-                              }}>
-                                {num}
-                              </div>
-                            ))}
+                        {/* Round status indicator below timer */}
+                        {superOverTimer <= 0 && (
+                          <div style={{
+                            color: '#ef4444',
+                            fontSize: '11px',
+                            fontWeight: 800,
+                            letterSpacing: '1px',
+                            background: 'rgba(239, 68, 68, 0.15)',
+                            padding: '3px 10px',
+                            borderRadius: '4px',
+                            border: '1px solid rgba(239, 68, 68, 0.3)'
+                          }}>
+                            ROUND SUSPENDED
                           </div>
                         )}
-                        <div style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 700 }}>
-                          {superOverTimer <= 0 ? 'ROUND SUSPENDED' : 'Live Super Over Balls Timeline'}
-                        </div>
                       </div>
 
-                      {/* Last Result Pills matching D247 */}
+                      {/* Last Result Pills matching D247 Image 3 */}
                       <div style={{
                         background: '#0d1522',
                         borderTop: '1px solid #1e293b',
@@ -2365,9 +2358,9 @@ export default function DiamondExchangeView() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                           <span style={{ fontSize: '11px', fontWeight: 800, color: '#94a3b8' }}>Last Result</span>
                           <div style={{ display: 'flex', gap: '6px' }}>
-                            {[...((superOverResults.length > 0 ? superOverResults : casinoResults) || [])].slice(0, 10).reverse().map((r, ri) => {
-                              const letter = r.win === '1' ? 'I' : (r.win === '2' ? 'E' : (r.win === '0' ? 'T' : r.win));
-                              const bg = r.win === '1' ? '#0284c7' : (r.win === '2' ? '#334155' : '#15803d');
+                            {((superOverResults.length > 0 ? superOverResults : casinoResults) || []).slice(0, 10).map((r, ri) => {
+                              const letter = r.win === '1' ? 'I' : (r.win === '2' ? 'E' : (r.win === '0' ? 'T' : (r.win || 'I')));
+                              const bg = r.win === '0' ? '#16a34a' : '#166534';
                               return (
                                 <div
                                   key={ri}
@@ -2879,18 +2872,33 @@ export default function DiamondExchangeView() {
                                       </div>
 
                                       {isSuspended ? (
-                                        <div style={{
-                                          background: 'rgba(239, 68, 68, 0.2)',
-                                          border: '1px solid rgba(239, 68, 68, 0.4)',
-                                          color: '#ef4444',
-                                          textAlign: 'center',
-                                          fontWeight: 900,
-                                          fontSize: '11px',
-                                          letterSpacing: '1px',
-                                          padding: '7px 0',
-                                          borderRadius: '4px'
-                                        }}>
-                                          SUSPENDED
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                                          <div style={{
+                                            background: '#1e293b',
+                                            border: '1px solid rgba(239, 68, 68, 0.25)',
+                                            borderRadius: '4px',
+                                            height: '36px',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            alignItems: 'center',
+                                            justifyContent: 'center'
+                                          }}>
+                                            <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 700 }}>-</span>
+                                            <span style={{ fontSize: '9px', color: '#ef4444', fontWeight: 900, letterSpacing: '0.5px' }}>SUSPENDED</span>
+                                          </div>
+                                          <div style={{
+                                            background: '#1e293b',
+                                            border: '1px solid rgba(239, 68, 68, 0.25)',
+                                            borderRadius: '4px',
+                                            height: '36px',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            alignItems: 'center',
+                                            justifyContent: 'center'
+                                          }}>
+                                            <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 700 }}>-</span>
+                                            <span style={{ fontSize: '9px', color: '#ef4444', fontWeight: 900, letterSpacing: '0.5px' }}>SUSPENDED</span>
+                                          </div>
                                         </div>
                                       ) : (
                                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
@@ -3753,7 +3761,7 @@ export default function DiamondExchangeView() {
                     </button>
                   </div>
                   <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '4px' }}>
-                    {[...casinoResults].slice(0, 10).reverse().map((r, i) => {
+                    {casinoResults.slice(0, 10).map((r, i) => {
                       const badgeText = getPillBadgeText(r, activeCasinoTable?.gtype);
                       const badgeColor = getPillBadgeColor(r, activeCasinoTable?.gtype);
                       return (
