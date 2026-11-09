@@ -182,9 +182,9 @@ export async function d247Post(path, rawPayload = {}) {
   return generateFallbackData(path, rawPayload);
 }
 
-export function setD247Session({ token, cookies, curlString, username = "Demo", userAgent }) {
+export function setD247Session({ token, cookies, curlString, username = "Demo", userAgent, secChUa, secChUaPlatform }) {
   if (curlString) {
-    // Extract cookie from cURL string or raw headers
+    // Extract cookie from cURL string or raw headers (-b or -H 'cookie:')
     const cookieMatch = curlString.match(/cookie:\s*([^'\r\n]+)/i) || curlString.match(/-H\s+['"]cookie:\s*([^'"]+)['"]/i) || curlString.match(/-b\s+['"]([^'"]+)['"]/i);
     if (cookieMatch) {
       cookies = cookieMatch[1].trim();
@@ -197,11 +197,21 @@ export function setD247Session({ token, cookies, curlString, username = "Demo", 
     if (uaMatch) {
       userAgent = uaMatch[1].trim();
     }
+    const secUaMatch = curlString.match(/sec-ch-ua:\s*([^'\r\n]+)/i) || curlString.match(/-H\s+['"]sec-ch-ua:\s*([^'"]+)['"]/i);
+    if (secUaMatch) {
+      secChUa = secUaMatch[1].trim();
+    }
+    const secPlatMatch = curlString.match(/sec-ch-ua-platform:\s*([^'\r\n]+)/i) || curlString.match(/-H\s+['"]sec-ch-ua-platform:\s*([^'"]+)['"]/i);
+    if (secPlatMatch) {
+      secChUaPlatform = secPlatMatch[1].trim();
+    }
   }
 
   if (token) d247Session.token = token;
   if (cookies) d247Session.cookies = cookies;
   if (userAgent) d247Session.userAgent = userAgent;
+  if (secChUa) d247Session.secChUa = secChUa;
+  if (secChUaPlatform) d247Session.secChUaPlatform = secChUaPlatform;
   if (username) d247Session.username = username;
   d247Session.lastLogin = Date.now();
   d247Session.status = (d247Session.cookies || d247Session.token) ? "LIVE_CONNECTED" : "DEMO_ACTIVE";
@@ -218,6 +228,8 @@ export function setD247Session({ token, cookies, curlString, username = "Demo", 
     if (cookies) realDataStore.sessionCookies = cookies;
     if (token) realDataStore.authToken = token;
     if (userAgent) realDataStore.userAgent = userAgent;
+    if (secChUa) realDataStore.secChUa = secChUa;
+    if (secChUaPlatform) realDataStore.secChUaPlatform = secChUaPlatform;
     if (reloadSession) reloadSession();
   }).catch(() => {});
 }

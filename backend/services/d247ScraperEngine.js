@@ -46,6 +46,8 @@ export const realDataStore = {
   sessionCookies: "",
   authToken: "",
   userAgent: "",
+  secChUa: "",
+  secChUaPlatform: "",
   isEngineActive: false,
   lastUpdate: Date.now()
 };
@@ -65,6 +67,8 @@ export function reloadSession() {
         if (stored.cookies) realDataStore.sessionCookies = stored.cookies;
         if (stored.token) realDataStore.authToken = stored.token;
         if (stored.userAgent) realDataStore.userAgent = stored.userAgent;
+        if (stored.secChUa) realDataStore.secChUa = stored.secChUa;
+        if (stored.secChUaPlatform) realDataStore.secChUaPlatform = stored.secChUaPlatform;
       }
     } catch (e) {}
   }
@@ -150,13 +154,13 @@ async function executeD247Direct(endpoint, rawPayload = {}) {
         headers: {
           "Content-Type": "application/json",
           "Accept": "application/json, text/plain, */*",
-          "Accept-Language": "en-US,en;q=0.9",
+          "Accept-Language": "en-US,en;q=0.9,ms;q=0.8,hi;q=0.7",
           "Origin": "https://d247.com",
-          "Referer": "https://d247.com/",
+          "Referer": "https://d247.com/home",
           "User-Agent": uaStr,
-          "sec-ch-ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+          "sec-ch-ua": realDataStore.secChUa || '"Not:A-Brand";v="8", "Chromium";v="156", "Google Chrome";v="156"',
           "sec-ch-ua-mobile": "?0",
-          "sec-ch-ua-platform": uaStr.includes("Mac") ? '"macOS"' : '"Windows"',
+          "sec-ch-ua-platform": realDataStore.secChUaPlatform || (uaStr.includes("Mac") ? '"macOS"' : '"Windows"'),
           "sec-fetch-dest": "empty",
           "sec-fetch-mode": "cors",
           "sec-fetch-site": "same-origin",
