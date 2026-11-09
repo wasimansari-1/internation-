@@ -75,28 +75,73 @@ let pageInstance = null;
 let isStarting = false;
 let apiQueue = Promise.resolve();
 
-// Helper to perform in-browser demo login with verification
-export async function performDemoLogin(page) {
-  if (!page || page.isClosed()) return false;
-  try {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const isAlreadyLoggedIn = await page.evaluate(() => {
-        return Boolean(document.body.innerText.includes("Balance:") || document.body.innerText.includes("Demo"));
-      });
-      if (isAlreadyLoggedIn) return true;
+let loginPromise = null;
 
-      await page.evaluate(() => {
-        const btn = Array.from(document.querySelectorAll("button, a")).find(b =>
-          b.innerText.toLowerCase().includes("demo")
+// Helper to perform in-browser demo login with verification (Protected by Mutex)
+export async function performDemoLogin(page) {
+  if (loginPromise) return loginPromise;
+  loginPromise = (async () => {
+    if (!page || page.isClosed()) return false;
+    try {
+      // Check if already on /home or logged in
+      const isAlreadyLoggedIn = await page.evaluate(() => {
+        return Boolean(
+          window.location.pathname.includes("/home") ||
+          document.body.innerText.includes("Balance:") ||
+          document.body.innerText.includes("Exp:")
         );
-        if (btn) btn.click();
-      });
-      await new Promise(r => setTimeout(r, 2000));
+      }).catch(() => false);
+
+      if (isAlreadyLoggedIn) {
+        console.log("[D247 Engine] Verified active logged in session!");
+        return true;
+      }
+
+      // If on another page but not logged in, navigate to https://d247.com/
+      const currentUrl = page.url();
+      if (!currentUrl.endsWith("d247.com/") && !currentUrl.endsWith("d247.com")) {
+        console.log("[D247 Engine] Navigating to https://d247.com/ for login...");
+        await page.goto("https://d247.com/", { waitUntil: "networkidle2", timeout: 25000 }).catch(() => {});
+      }
+
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const foundBtn = await page.evaluate(() => {
+          const btn = Array.from(document.querySelectorAll("button")).find(b => {
+            const t = (b.innerText || b.value || "").toLowerCase().trim();
+            return t.includes("demo");
+          });
+          if (btn) {
+            btn.click();
+            return true;
+          }
+          return false;
+        }).catch(() => false);
+
+        if (foundBtn) {
+          console.log("[D247 Engine] Clicked 'Login with demo ID' button!");
+          await new Promise(r => setTimeout(r, 4000));
+          const isLoggedInNow = await page.evaluate(() => {
+            return Boolean(
+              window.location.pathname.includes("/home") ||
+              document.body.innerText.includes("Balance:") ||
+              document.body.innerText.includes("Exp:")
+            );
+          }).catch(() => false);
+          if (isLoggedInNow) {
+            console.log("[D247 Engine] Demo login successful! User is now on /home");
+            return true;
+          }
+        }
+        await new Promise(r => setTimeout(r, 2000));
+      }
+      return false;
+    } catch (e) {
+      return false;
     }
-    return true;
-  } catch (e) {
-    return false;
-  }
+  })().finally(() => {
+    loginPromise = null;
+  });
+  return loginPromise;
 }
 
 // Direct API execution: Ultra-Fast Encrypted Axios REST with Instant Concurrency (Zero Queue Bottleneck)
@@ -189,10 +234,21 @@ async function executeD247Direct(endpoint, rawPayload = {}) {
 export async function evalD247Api(endpoint, rawPayload = {}) {
   try {
     let res = await executeD247Direct(endpoint, rawPayload);
-    if (res?.status === 401 || res?.msg === "Please Login") {
+    if ((res?.status === 401 || res?.msg === "Please Login") && !isStarting) {
       console.warn("[D247 Engine] Session expired on D247. Re-authenticating demo session...");
       if (pageInstance && !pageInstance.isClosed()) {
         await performDemoLogin(pageInstance).catch(() => {});
+        const cookies = await pageInstance.cookies();
+        if (cookies && cookies.length > 0) {
+          realDataStore.sessionCookies = cookies.map(c => `${c.name}=${c.value}`).join("; ");
+          try {
+            fs.writeFileSync(SESSION_FILE, JSON.stringify({
+              cookies: realDataStore.sessionCookies,
+              token: realDataStore.authToken,
+              lastUpdate: Date.now()
+            }, null, 2));
+          } catch (e) {}
+        }
       }
       res = await executeD247Direct(endpoint, rawPayload);
     }
@@ -321,9 +377,11 @@ export async function startD247Engine() {
       }
     } catch (e) {}
 
+    const isHeadless = process.env.HEADLESS === "true" || (process.platform !== "darwin" && !process.env.DISPLAY);
+    console.log(`[D247 Engine] Launching Chrome Engine (Visible Chrome Viewer: ${!isHeadless})...`);
     browserInstance = await puppeteer.launch({
       executablePath: chromePath,
-      headless: "new",
+      headless: isHeadless ? "new" : false,
       args: launchArgs
     });
 
@@ -346,12 +404,10 @@ export async function startD247Engine() {
 
     // Use native Chrome User-Agent matched to the exact OS & Chrome version
     const defaultUa = await browserInstance.userAgent();
-    const cleanUa = defaultUa.replace("HeadlessChrome", "Chrome");
-    await pageInstance.setUserAgent(cleanUa);
-    await pageInstance.setExtraHTTPHeaders({
-      "Accept-Language": "en-US,en;q=0.9",
-      "sec-ch-ua-platform": process.platform === "darwin" ? '"macOS"' : '"Linux"'
-    });
+    if (defaultUa.includes("HeadlessChrome")) {
+      const cleanUa = defaultUa.replace("HeadlessChrome", "Chrome");
+      await pageInstance.setUserAgent(cleanUa);
+    }
 
     // Passive response interceptor for initial payload collection
     pageInstance.on("response", async (res) => {
@@ -420,64 +476,34 @@ export async function startD247Engine() {
       } catch (err) {}
     });
 
-    // Pre-load session cookies into browser before navigation
-    if (fs.existsSync(SESSION_FILE)) {
-      try {
-        const stored = JSON.parse(fs.readFileSync(SESSION_FILE, "utf-8"));
-        const cookieStr = stored.cookies || realDataStore.sessionCookies || "";
-        if (cookieStr) {
-          const cookieList = cookieStr.split(";").map(c => {
-            const [name, ...val] = c.trim().split("=");
-            if (!name) return null;
-            return {
-              name: name.trim(),
-              value: val.join("=").trim(),
-              domain: ".d247.com",
-              path: "/"
-            };
-          }).filter(Boolean);
-          if (cookieList.length > 0) {
-            await pageInstance.setCookie(...cookieList);
-            console.log(`[D247 Engine] Injected ${cookieList.length} session cookies into Chrome.`);
-          }
-        }
-      } catch (ce) {}
-    }
-
     try {
       console.log("[D247 Engine] Loading https://d247.com/ ...");
-      await pageInstance.goto("https://d247.com/", { waitUntil: "domcontentloaded", timeout: 25000 });
+      await pageInstance.goto("https://d247.com/", { waitUntil: "networkidle2", timeout: 30000 });
       
       let pageTitle = await pageInstance.title();
       console.log(`[D247 Engine] Landed on ${pageInstance.url()} | Title: ${pageTitle}`);
 
-      // If "Reload a page" or "Access Denied" is encountered, reload as instructed by the page
-      if (pageTitle.toLowerCase().includes("denied") || pageTitle.toLowerCase().includes("reload")) {
-        console.warn("[D247 Engine] Notice: Reloading page to clear gate...");
-        await new Promise(r => setTimeout(r, 2000));
-        await pageInstance.reload({ waitUntil: "domcontentloaded", timeout: 20000 }).catch(() => {});
-        pageTitle = await pageInstance.title();
-        console.log(`[D247 Engine] Title after reload: ${pageTitle}`);
-      }
-
       console.log("[D247 Engine] Performing In-Browser Demo Login...");
       await performDemoLogin(pageInstance).catch(() => {});
+      await new Promise(r => setTimeout(r, 3000));
 
-      // Only save session cookies if not blocked
-      if (!pageTitle.toLowerCase().includes("denied") && !pageTitle.toLowerCase().includes("reload")) {
-        const cookies = await pageInstance.cookies();
-        if (cookies && cookies.length > 0) {
-          realDataStore.sessionCookies = cookies.map(c => `${c.name}=${c.value}`).join("; ");
-        }
-        console.log(`[D247 Engine] Engine Online! Cookies Captured: ${cookies?.length || 0}`);
-        try {
-          fs.writeFileSync(SESSION_FILE, JSON.stringify({
-            cookies: realDataStore.sessionCookies,
-            token: realDataStore.authToken,
-            lastUpdate: Date.now()
-          }, null, 2));
-        } catch (e) {}
+      const cookies = await pageInstance.cookies();
+      if (cookies && cookies.length > 0) {
+        realDataStore.sessionCookies = cookies.map(c => `${c.name}=${c.value}`).join("; ");
       }
+      const token = await pageInstance.evaluate(() => {
+        return localStorage.getItem("token") || localStorage.getItem("g_token") || localStorage.getItem("user_token") || null;
+      }).catch(() => null);
+      if (token) realDataStore.authToken = token;
+
+      console.log(`[D247 Engine] Engine Online! Cookies Captured: ${cookies?.length || 0}`);
+      try {
+        fs.writeFileSync(SESSION_FILE, JSON.stringify({
+          cookies: realDataStore.sessionCookies,
+          token: realDataStore.authToken,
+          lastUpdate: Date.now()
+        }, null, 2));
+      } catch (e) {}
       realDataStore.isEngineActive = true;
     } catch (navErr) {
       console.warn("[D247 Engine] Initial navigation notice:", navErr.message);
@@ -506,8 +532,10 @@ export async function startD247Engine() {
   }
 }
 
-// 24/7 Self-Healing Watchdog Engine
+// 24/7 Self-Healing Watchdog Engine (Guarantees zero blocks & lifetime persistence)
 let watchdogTimer = null;
+let lastSessionRefresh = Date.now();
+
 function startAutonomousWatchdog() {
   if (watchdogTimer) return;
   watchdogTimer = setInterval(async () => {
@@ -519,7 +547,16 @@ function startAutonomousWatchdog() {
           pageInstance.evaluate(() => 1).catch(() => null),
           new Promise(r => setTimeout(() => r(null), 2500))
         ]);
-        if (ping === 1) isHealthy = true;
+        if (ping === 1) {
+          isHealthy = true;
+
+          // Proactively renew demo session every 2 hours before 4-hour token expiry
+          if (Date.now() - lastSessionRefresh > 2 * 60 * 60 * 1000 && !isStarting) {
+            lastSessionRefresh = Date.now();
+            console.log("[D247 Watchdog] Proactively refreshing 2-hour demo session...");
+            await performDemoLogin(pageInstance).catch(() => {});
+          }
+        }
       }
 
       if (!isHealthy && !isStarting) {
@@ -908,13 +945,35 @@ export function normalizeCasinoGtype(gtype) {
   return g;
 }
 
+// Persistent Table State Tracker to guarantee 100% smooth, monotonic, zero-fluctuation casino data
+const tableStateTracker = new Map();
+
 // 5. Live Casino Table Scraper (Real mid, real lt countdown, real dealt cards, real sub array)
 export async function fetchRealCasinoTableLive(gtype) {
   const normalized = normalizeCasinoGtype(gtype);
   const now = Date.now();
-  const cached = cacheStore.casino[gtype] || cacheStore.casino[normalized];
-  if (cached && (now - cached.time < 150) && cached.data?.roundStatus !== "SUSPENDED") {
-    return cached.data;
+
+  let tracker = tableStateTracker.get(normalized);
+  if (!tracker) {
+    tracker = {
+      roundId: "",
+      initialLeftSec: 0,
+      leftSecReceivedAt: now,
+      lastComputedSec: 0,
+      roundStatus: "OPEN",
+      card: "",
+      cards: [],
+      sub: [],
+      odds: {},
+      markets: [],
+      ename: "",
+      results: [],
+      remark: "",
+      score: "0 0",
+      gtype: normalized,
+      lastUpdated: now
+    };
+    tableStateTracker.set(normalized, tracker);
   }
 
   // Handle Super Over2 and other tabdata-driven tables
@@ -936,9 +995,7 @@ export async function fetchRealCasinoTableLive(gtype) {
         realDataStore.casinoResults[normalized] = results;
       }
 
-      const isRoundSuspended = Number(t1.lt) <= 0 && t1.status === "SUSPENDED";
       let allRunners = [];
-
       rawMarkets.forEach(m => {
         const runners = Array.isArray(m.section) ? m.section : [];
         const isMarketSuspended = m.status === "SUSPENDED";
@@ -969,18 +1026,61 @@ export async function fetchRealCasinoTableLive(gtype) {
 
       const rawCards = t1.card || "";
       const parsedCards = rawCards ? rawCards.split(/[,|]/).map(s => s.trim()).filter(Boolean) : [];
+      const incomingRoundId = String(t1.gmid || tracker.roundId || Date.now());
+      const rawLt = Number(t1.lt ?? 0);
+
+      // Check for round transition
+      if (tracker.roundId !== incomingRoundId) {
+        tracker.roundId = incomingRoundId;
+        tracker.initialLeftSec = rawLt;
+        tracker.leftSecReceivedAt = now;
+        tracker.lastComputedSec = rawLt;
+        tracker.roundStatus = (rawLt <= 0 || t1.status === "SUSPENDED") ? "SUSPENDED" : "OPEN";
+        tracker.card = rawCards;
+        tracker.cards = parsedCards;
+        if (allRunners.length > 0) tracker.sub = allRunners;
+        if (rawMarkets.length > 0) tracker.markets = rawMarkets;
+        if (results.length > 0) tracker.results = results;
+        tracker.ename = t1.ename || tracker.ename || "IND Vs ENG Super Over2";
+        tracker.gtype = t1.gtype || gtype;
+        tracker.lastUpdated = now;
+      } else {
+        // Same round: Strictly monotonic timer using wall-clock elapsed time
+        const elapsed = Math.floor((now - tracker.leftSecReceivedAt) / 1000);
+        let computedSec = Math.max(0, tracker.initialLeftSec - elapsed);
+        if (rawLt > 0 && rawLt < computedSec) {
+          tracker.initialLeftSec = rawLt;
+          tracker.leftSecReceivedAt = now;
+          computedSec = rawLt;
+        }
+        if (tracker.lastComputedSec !== undefined && computedSec > tracker.lastComputedSec) {
+          computedSec = tracker.lastComputedSec;
+        }
+        tracker.lastComputedSec = computedSec;
+        tracker.roundStatus = (computedSec <= 0 || t1.status === "SUSPENDED") ? "SUSPENDED" : "OPEN";
+
+        // Dealt card preservation: never overwrite with blank mid-round
+        if (rawCards && rawCards.trim() !== "" && rawCards !== "1") {
+          tracker.card = rawCards;
+          tracker.cards = parsedCards;
+        }
+        if (allRunners.length > 0) tracker.sub = allRunners;
+        if (rawMarkets.length > 0) tracker.markets = rawMarkets;
+        if (results.length > 0) tracker.results = results;
+        tracker.lastUpdated = now;
+      }
 
       const result = {
-        roundId: String(t1.gmid || Date.now()),
-        leftSec: Number(t1.lt ?? 0),
-        roundStatus: isRoundSuspended ? "SUSPENDED" : "OPEN",
-        gtype: t1.gtype || gtype,
-        card: rawCards,
-        cards: parsedCards,
-        ename: t1.ename || "IND Vs ENG Super Over2",
-        markets: rawMarkets,
-        sub: allRunners,
-        results: results
+        roundId: tracker.roundId,
+        leftSec: tracker.lastComputedSec,
+        roundStatus: tracker.roundStatus,
+        gtype: tracker.gtype || gtype,
+        card: tracker.card,
+        cards: tracker.cards,
+        ename: tracker.ename || "IND Vs ENG Super Over2",
+        markets: tracker.markets,
+        sub: tracker.sub,
+        results: tracker.results
       };
 
       realDataStore.casinoLive[gtype] = result;
@@ -992,7 +1092,7 @@ export async function fetchRealCasinoTableLive(gtype) {
     // Special handling for Matka Market (worli3 / matka)
     if (normalized === 'worli3' || normalized === 'matka') {
       const matkaList = Array.isArray(d) ? d : (d && typeof d === 'object' ? Object.values(d) : []);
-      const activeMid = matkaList[0]?.mid || Date.now();
+      const activeMid = matkaList[0]?.mid || tracker.roundId || Date.now();
       
       const result = {
         roundId: String(activeMid),
@@ -1019,58 +1119,136 @@ export async function fetchRealCasinoTableLive(gtype) {
       return result;
     }
 
+    // Standard Casino Tables (Lucky7, Poker, Roulette, Dragon Tiger, Teen Patti, etc.)
     const runners = Array.isArray(d.sub) ? d.sub : [];
-    
     const rawCardStr = d.card || "";
     const parsedCardList = rawCardStr ? rawCardStr.split(/[,|]/).map(s => s.trim()).filter(Boolean) : [];
+    const incomingRoundId = String(d.mid || tracker.roundId || Date.now());
+    const rawLt = Number(d.lt ?? (d.leftSec ?? 0));
+    const isSuspended = (d.status === "SUSPENDED" || (rawLt <= 0 && d.gstatus === "SUSPENDED"));
+
+    const mappedRunners = runners.map((r, rIdx) => {
+      const runnerId = r.sid || r.i || (rIdx + 1);
+      const runnerName = (r.nat !== undefined && r.nat !== null && r.nat !== "") ? String(r.nat) : (r.n !== undefined && r.n !== null && r.n !== "" ? String(r.n) : (r.name || `Runner ${runnerId}`));
+      const isRunnerSusp = (r.gstatus === "SUSPENDED" || r.status === "SUSPENDED");
+      let runnerSubtype = r.subtype || "main";
+      if (normalized === "poker6") {
+        if (Number(runnerId) >= 11 && Number(runnerId) <= 16) runnerSubtype = "hands";
+        else if (Number(runnerId) >= 21) runnerSubtype = "pattern";
+      }
+
+      return {
+        sid: runnerId,
+        nat: runnerName,
+        b: Number(r.b || 0),
+        bs: Number(r.bs || 0),
+        l: Number(r.l || 0),
+        ls: Number(r.ls || 0),
+        gstatus: isRunnerSusp ? "SUSPENDED" : "ACTIVE",
+        min: r.min || 100,
+        max: r.max || 100000,
+        subtype: runnerSubtype
+      };
+    });
+
+    const mappedOdds = runners.reduce((acc, r) => {
+      const key = r.nat?.toLowerCase().replace(/\s+/g, "") || `r_${r.sid}`;
+      acc[key] = {
+        rate: Number(r.b || 0),
+        layRate: Number(r.l || 0),
+        status: r.gstatus || "ACTIVE"
+      };
+      return acc;
+    }, {});
+
+    // Check for round transition
+    if (tracker.roundId !== incomingRoundId) {
+      tracker.roundId = incomingRoundId;
+      tracker.initialLeftSec = rawLt;
+      tracker.leftSecReceivedAt = now;
+      tracker.lastComputedSec = rawLt;
+      tracker.roundStatus = (rawLt <= 0 || isSuspended) ? "SUSPENDED" : "OPEN";
+      tracker.card = rawCardStr;
+      tracker.cards = parsedCardList;
+      if (mappedRunners.length > 0) tracker.sub = mappedRunners;
+      tracker.odds = mappedOdds;
+      tracker.remark = d.remark || d.rdesc || "";
+      tracker.score = d.card || "0 0";
+      tracker.gtype = d.gtype || gtype;
+      tracker.lastUpdated = now;
+    } else {
+      // Same round: Strictly monotonic timer using wall-clock elapsed time
+      const elapsed = Math.floor((now - tracker.leftSecReceivedAt) / 1000);
+      let computedSec = Math.max(0, tracker.initialLeftSec - elapsed);
+      if (rawLt > 0 && rawLt < computedSec) {
+        tracker.initialLeftSec = rawLt;
+        tracker.leftSecReceivedAt = now;
+        computedSec = rawLt;
+      }
+      if (tracker.lastComputedSec !== undefined && computedSec > tracker.lastComputedSec) {
+        computedSec = tracker.lastComputedSec;
+      }
+      tracker.lastComputedSec = computedSec;
+      tracker.roundStatus = (computedSec <= 0 || isSuspended) ? "SUSPENDED" : "OPEN";
+
+      // Dealt card preservation: NEVER overwrite with blank mid-round
+      if (rawCardStr && rawCardStr.trim() !== "" && rawCardStr !== "1") {
+        tracker.card = rawCardStr;
+        tracker.cards = parsedCardList;
+      }
+      // Runner preservation: NEVER wipe runners array to empty mid-round
+      if (mappedRunners.length > 0) {
+        tracker.sub = mappedRunners;
+        tracker.odds = mappedOdds;
+      }
+      if (d.remark || d.rdesc) tracker.remark = d.remark || d.rdesc;
+      if (d.card) tracker.score = d.card;
+      tracker.lastUpdated = now;
+    }
 
     const result = {
-      roundId: String(d.mid || Date.now()),
-      leftSec: Number(d.lt ?? (d.leftSec ?? 0)),
-      roundStatus: (d.status === "SUSPENDED" || (Number(d.lt) <= 0 && d.gstatus === "SUSPENDED")) ? "SUSPENDED" : "OPEN",
-      gtype: d.gtype || gtype,
-      card: rawCardStr,
-      cards: parsedCardList,
-      remark: d.remark || d.rdesc || "",
-      score: d.card || "0 0",
-      sub: runners.map((r, rIdx) => {
-        const runnerId = r.sid || r.i || (rIdx + 1);
-        const runnerName = (r.nat !== undefined && r.nat !== null && r.nat !== "") ? String(r.nat) : (r.n !== undefined && r.n !== null && r.n !== "" ? String(r.n) : (r.name || `Runner ${runnerId}`));
-        const isRunnerSusp = (r.gstatus === "SUSPENDED" || r.status === "SUSPENDED");
-        let runnerSubtype = r.subtype || "main";
-        if (normalized === "poker6") {
-          if (Number(runnerId) >= 11 && Number(runnerId) <= 16) runnerSubtype = "hands";
-          else if (Number(runnerId) >= 21) runnerSubtype = "pattern";
-        }
-
-        return {
-          sid: runnerId,
-          nat: runnerName,
-          b: Number(r.b || 0),
-          bs: Number(r.bs || 0),
-          l: Number(r.l || 0),
-          ls: Number(r.ls || 0),
-          gstatus: isRunnerSusp ? "SUSPENDED" : "ACTIVE",
-          min: r.min || 100,
-          max: r.max || 100000,
-          subtype: runnerSubtype
-        };
-      }),
-      odds: runners.reduce((acc, r) => {
-        const key = r.nat?.toLowerCase().replace(/\s+/g, "") || `r_${r.sid}`;
-        acc[key] = {
-          rate: Number(r.b || 0),
-          layRate: Number(r.l || 0),
-          status: r.gstatus || "ACTIVE"
-        };
-        return acc;
-      }, {})
+      roundId: tracker.roundId,
+      leftSec: tracker.lastComputedSec,
+      roundStatus: tracker.roundStatus,
+      gtype: tracker.gtype || gtype,
+      card: tracker.card,
+      cards: tracker.cards,
+      remark: tracker.remark,
+      score: tracker.score,
+      sub: tracker.sub,
+      odds: tracker.odds
     };
 
     realDataStore.casinoLive[gtype] = result;
     realDataStore.casinoLive[normalized] = result;
     cacheStore.casino[gtype] = { time: now, data: result };
     return result;
+  }
+
+  // Graceful fallback: return smooth monotonic tracker state even on temporary network drop
+  if (tracker.roundId) {
+    const elapsed = Math.floor((now - tracker.leftSecReceivedAt) / 1000);
+    let computedSec = Math.max(0, tracker.initialLeftSec - elapsed);
+    if (tracker.lastComputedSec !== undefined && computedSec > tracker.lastComputedSec) {
+      computedSec = tracker.lastComputedSec;
+    }
+    tracker.lastComputedSec = computedSec;
+    if (computedSec <= 0) tracker.roundStatus = "SUSPENDED";
+
+    return {
+      roundId: tracker.roundId,
+      leftSec: tracker.lastComputedSec,
+      roundStatus: tracker.roundStatus,
+      gtype: tracker.gtype || gtype,
+      card: tracker.card,
+      cards: tracker.cards,
+      remark: tracker.remark,
+      score: tracker.score,
+      sub: tracker.sub,
+      odds: tracker.odds,
+      markets: tracker.markets || [],
+      results: tracker.results || []
+    };
   }
 
   return realDataStore.casinoLive[gtype] || realDataStore.casinoLive[normalized] || null;
@@ -1253,4 +1431,8 @@ export async function fetchRealMatchOdds(etid, gmid) {
   }
 
   return realDataStore.matchDetails[gmid] || null;
+}
+
+export function getPageInstance() {
+  return pageInstance;
 }

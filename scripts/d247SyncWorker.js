@@ -107,19 +107,24 @@ async function runCasinoLoop() {
         "worli",
         "aaa"
       ];
+      // 1. Identify Priority Tables (Active user table + client watch list + top 2 core games)
       if (realDataStore.lastRequestedCasino?.gtype) {
         clientWatchList.add(realDataStore.lastRequestedCasino.gtype);
       }
-      const prioritySet = new Set([
-        ...topCoreTables,
-        ...(currentActiveCasino ? [currentActiveCasino] : []),
-        ...clientWatchList
-      ]);
+      const prioritySet = new Set();
+      if (currentActiveCasino) prioritySet.add(currentActiveCasino);
+      if (clientWatchList.size > 0) {
+        clientWatchList.forEach(g => prioritySet.add(g));
+      }
+      // Top core games always refreshed for home page tickers
+      prioritySet.add("superover2");
+      prioritySet.add("lucky7");
+      prioritySet.add("goal2");
       const priorityGtypes = Array.from(prioritySet);
 
-      // 2. Rotating background tables (8 tables per tick to refresh all 81 tables continuously)
+      // 2. Rotating background tables: 4 tables per tick to refresh all 81 tables continuously without flooding D247
       const backgroundGtypes = POPULAR_CASINO_TABLES.filter(g => !prioritySet.has(g));
-      const chunkCount = 8;
+      const chunkCount = 4; // Fast 4-table rotation = keeps all 81 tables continuously fresh
       const rotatingGtypes = [];
       if (backgroundGtypes.length > 0) {
         for (let i = 0; i < chunkCount; i++) {
@@ -130,7 +135,7 @@ async function runCasinoLoop() {
       }
 
       const tickGtypes = Array.from(new Set([...priorityGtypes, ...rotatingGtypes]));
-      const shouldFetchResults = (count % 12 === 0); // Results sync every ~3.5s
+      const shouldFetchResults = (count % 8 === 0); // Results sync every ~2.5s
 
       await Promise.all(tickGtypes.map(async (gtype) => {
         try {
@@ -306,12 +311,16 @@ async function runSportsLoop() {
         }))
       };
 
-      await Promise.allSettled([
-        axios.post(TARGET_VPS_URL, payload, { headers: { "Content-Type": "application/json" }, timeout: 5000 }).catch(() => null),
-        axios.post(TARGET_LOCAL_URL, payload, { headers: { "Content-Type": "application/json" }, timeout: 2000 }).catch(() => null)
-      ]);
+      if (cricketMatches.length > 0 || footballMatches.length > 0 || tennisMatches.length > 0) {
+        await Promise.allSettled([
+          axios.post(TARGET_VPS_URL, payload, { headers: { "Content-Type": "application/json" }, timeout: 5000 }).catch(() => null),
+          axios.post(TARGET_LOCAL_URL, payload, { headers: { "Content-Type": "application/json" }, timeout: 2000 }).catch(() => null)
+        ]);
 
-      console.log(`[Sports Sync #${count}] Pushed -> Cricket: ${cricketMatches.length}, Football: ${footballMatches.length}, Tennis: ${tennisMatches.length}, TT: ${(allSportsMatches[8] || []).length}, Horse: ${(allSportsMatches[10] || []).length}, Greyhound: ${(allSportsMatches[65] || []).length}`);
+        console.log(`[Sports Sync #${count}] Pushed -> Cricket: ${cricketMatches.length}, Football: ${footballMatches.length}, Tennis: ${tennisMatches.length}, TT: ${(allSportsMatches[8] || []).length}, Horse: ${(allSportsMatches[10] || []).length}, Greyhound: ${(allSportsMatches[65] || []).length}`);
+      } else {
+        console.warn(`[Sports Sync #${count}] Notice: 0 matches received (retaining existing data in store).`);
+      }
     } catch (err) {
       console.warn(`[Sports Sync Error #${count}]:`, err.message);
     }
@@ -320,7 +329,12 @@ async function runSportsLoop() {
   }
 }
 
-async function runWorker() {
+let isWorkerRunning = false;
+
+export async function startSyncWorker() {
+  if (isWorkerRunning) return;
+  isWorkerRunning = true;
+
   console.log("==================================================================");
   console.log("   D247 DUAL-CORE ULTRA-SPEED RESIDENTIAL BRIDGE -> PRODUCTION VPS ");
   console.log(`   Target: ${TARGET_VPS_URL}`);
@@ -335,10 +349,13 @@ async function runWorker() {
   console.log("[Sync Worker] Chrome engine is online! Launching dual parallel workers...");
   // Launch both loops in parallel
   Promise.all([
-    runCasinoLoop(),
-    runSportsLoop()
+    runCasinoLoop().catch(e => console.error("Casino loop error:", e)),
+    runSportsLoop().catch(e => console.error("Sports loop error:", e))
   ]);
 }
 
-runWorker();
+// Auto-run if executed directly via CLI
+if (process.argv[1]?.includes("d247SyncWorker.js")) {
+  startSyncWorker();
+}
 

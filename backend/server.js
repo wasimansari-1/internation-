@@ -286,9 +286,15 @@ app.get("*", (req, res, next) => {
 if (!process.env.VERCEL) {
   const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`🚀 Modular Backend Server running on http://0.0.0.0:${PORT}`);
-    // Boot autonomous real-time D247 scraper engine in background safely
-    startD247Engine().catch((err) => {
-      console.warn("[D247 Engine] Failed to boot scraper engine:", err.message);
+    // Boot autonomous real-time D247 scraper engine & dual sync worker (local + VPS push)
+    import("../scripts/d247SyncWorker.js").then(m => {
+      m.startSyncWorker().catch((err) => {
+        console.warn("[Sync Worker] Failed to start:", err.message);
+      });
+    }).catch(e => {
+      startD247Engine().catch((err) => {
+        console.warn("[D247 Engine] Failed to boot scraper engine:", err.message);
+      });
     });
   });
 

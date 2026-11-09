@@ -633,6 +633,10 @@ export default function DiamondExchangeView() {
   const activeGmidRef = useRef(null);
   const activeCasinoTableRef = useRef(null);
   activeCasinoTableRef.current = activeCasinoTable;
+  const isCasinoFetchingRef = useRef(false);
+  const isMatchFetchingRef = useRef(false);
+  const casinoRoundIdRef = useRef(null);
+  const superOverRoundIdRef = useRef(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [betSuccessMsg, setBetSuccessMsg] = useState(null);
 
@@ -699,10 +703,12 @@ export default function DiamondExchangeView() {
 
   // 2. Fetch Match Details & Session Markets
   const fetchMatchDetails = async (gmid, targetCat) => {
+    if (isMatchFetchingRef.current) return;
+    isMatchFetchingRef.current = true;
     try {
       activeGmidRef.current = String(gmid);
       const cat = targetCat !== undefined ? targetCat : (selectedMatch?.etid || sportsCategory);
-      const res = await axios.get(`/api/d247/sports/odds/${cat}/${gmid}`);
+      const res = await axios.get(`/api/d247/sports/odds/${cat}/${gmid}`, { timeout: 3500 });
       if (activeGmidRef.current !== String(gmid)) return;
       if (res.data?.success && res.data?.data) {
         let rawData = res.data.data;
@@ -743,6 +749,8 @@ export default function DiamondExchangeView() {
       }
     } catch (err) {
       console.warn('Error fetching match odds:', err.message);
+    } finally {
+      isMatchFetchingRef.current = false;
     }
   };
 
@@ -799,6 +807,8 @@ export default function DiamondExchangeView() {
 
   // 4. Fetch Active Casino Live Data (Every 1000ms for instant real-time odds)
   const fetchCasinoLive = async (gtype) => {
+    if (isCasinoFetchingRef.current) return;
+    isCasinoFetchingRef.current = true;
     try {
       const targetGtype = normalizeCasinoGtype(gtype);
       const currentActive = normalizeCasinoGtype(activeCasinoTableRef.current?.gtype);
@@ -806,20 +816,32 @@ export default function DiamondExchangeView() {
         return; // Guard against stale in-flight response when user switched tables
       }
       setIsUpdating(true);
-      const liveRes = await axios.get(`/api/d247/casino/live/${targetGtype}`);
+      const liveRes = await axios.get(`/api/d247/casino/live/${targetGtype}`, { timeout: 3500 });
       // Re-check after async network return
       const currentStillActive = normalizeCasinoGtype(activeCasinoTableRef.current?.gtype);
       if (targetGtype !== currentStillActive && targetGtype !== 'superover2') {
         return; // Drop stale packet!
       }
       if (liveRes.data?.success && liveRes.data?.data) {
+        const incoming = liveRes.data.data;
         if (targetGtype === 'superover2') {
-          setSuperOverLiveData(liveRes.data.data);
+          setSuperOverLiveData(incoming);
         } else {
-          setCasinoLiveData(liveRes.data.data);
-          if (typeof liveRes.data.data.leftSec === 'number') {
-            setLiveTimer(liveRes.data.data.leftSec);
-          }
+          setCasinoLiveData(prev => {
+            if (!prev) return incoming;
+            const prevCards = prev.cards || [];
+            const newCards = incoming.cards || [];
+            const preserveCards = prev.roundId === incoming.roundId && (!incoming.card || newCards.length === 0 || incoming.card === '1') && prevCards.length > 0;
+            const prevSub = prev.sub || [];
+            const newSub = incoming.sub || [];
+            const preserveSub = prev.roundId === incoming.roundId && newSub.length === 0 && prevSub.length > 0;
+            return {
+              ...incoming,
+              card: preserveCards ? prev.card : incoming.card,
+              cards: preserveCards ? prevCards : incoming.cards,
+              sub: preserveSub ? prevSub : incoming.sub
+            };
+          });
         }
       }
       setLastSync(Date.now());
@@ -827,6 +849,7 @@ export default function DiamondExchangeView() {
       console.warn('Error fetching live casino table:', err.message);
     } finally {
       setIsUpdating(false);
+      isCasinoFetchingRef.current = false;
     }
   };
 
@@ -852,12 +875,27 @@ export default function DiamondExchangeView() {
     } catch (err) {}
   };
 
-  // Sync casino timer ONLY with casinoLiveData.leftSec
+  // Sync casino timer with STRICT MONOTONIC COUNTDOWN (Never jump backwards within same round!)
   useEffect(() => {
-    if (activeCasinoTable && casinoLiveData && typeof casinoLiveData.leftSec === 'number') {
-      setLiveTimer(casinoLiveData.leftSec);
+    if (!activeCasinoTable || !casinoLiveData || typeof casinoLiveData.leftSec !== 'number') return;
+    const incomingSec = Number(casinoLiveData.leftSec);
+    const roundId = String(casinoLiveData.roundId || '');
+
+    // 1. If brand new round started: initialize new countdown
+    if (casinoRoundIdRef.current !== roundId) {
+      casinoRoundIdRef.current = roundId;
+      setLiveTimer(incomingSec);
+      return;
     }
-  }, [activeCasinoTable, casinoLiveData?.leftSec, casinoLiveData?.roundId]);
+
+    // 2. Same round: Only sync DOWNWARDS, NEVER jump backwards up (prevents 13->12->13->12 bounce!)
+    setLiveTimer(prev => {
+      if (incomingSec > 0 && incomingSec < prev) {
+        return incomingSec;
+      }
+      return prev;
+    });
+  }, [activeCasinoTable, casinoLiveData?.roundId, casinoLiveData?.leftSec]);
 
   // Smooth 1-second countdown tick for active casino table
   useEffect(() => {
@@ -868,13 +906,26 @@ export default function DiamondExchangeView() {
     return () => clearInterval(interval);
   }, [activeCasinoTable]);
 
-  // Sync Super Over timer ONLY with superOverLiveData.leftSec
+  // Sync Super Over timer with STRICT MONOTONIC COUNTDOWN
   useEffect(() => {
     const isSuperOver = selectedMatch?.gmid === 'superover2' || (selectedMatch?.ename || '').toLowerCase().includes('super over');
-    if (isSuperOver && superOverLiveData && typeof superOverLiveData.leftSec === 'number') {
-      setSuperOverTimer(superOverLiveData.leftSec);
+    if (!isSuperOver || !superOverLiveData || typeof superOverLiveData.leftSec !== 'number') return;
+    const incomingSec = Number(superOverLiveData.leftSec);
+    const roundId = String(superOverLiveData.roundId || '');
+
+    if (superOverRoundIdRef.current !== roundId) {
+      superOverRoundIdRef.current = roundId;
+      setSuperOverTimer(incomingSec);
+      return;
     }
-  }, [selectedMatch, superOverLiveData?.leftSec, superOverLiveData?.roundId]);
+
+    setSuperOverTimer(prev => {
+      if (incomingSec > 0 && incomingSec < prev) {
+        return incomingSec;
+      }
+      return prev;
+    });
+  }, [selectedMatch, superOverLiveData?.roundId, superOverLiveData?.leftSec]);
 
   // Smooth 1-second countdown tick for Super Over 2
   useEffect(() => {
@@ -929,17 +980,6 @@ export default function DiamondExchangeView() {
   useEffect(() => {
     const sportsTimer = setInterval(() => {
       fetchSportsHighlights();
-      if (selectedMatch) {
-        fetchMatchDetails(selectedMatch.gmid);
-        if (selectedMatch.gmid === 'superover2' || (selectedMatch.ename || '').toLowerCase().includes('super over')) {
-          fetchCasinoLive('superover2');
-          fetchCasinoResults('superover2');
-        }
-        if (selectedMatch.gmid === 'goal2' || (selectedMatch.ename || '').toLowerCase().includes('goal')) {
-          fetchCasinoLive('goal2');
-          fetchCasinoResults('goal2');
-        }
-      }
     }, 2500);
 
     const eventsTimer = setInterval(() => {
@@ -950,7 +990,7 @@ export default function DiamondExchangeView() {
       clearInterval(sportsTimer);
       clearInterval(eventsTimer);
     };
-  }, [sportsCategory, selectedMatch]);
+  }, [sportsCategory]);
 
   // Ultra-Fast Real-Time Live SSE Stream + 1-Sec Tick for Open Casino Table (Zero Delay)
   useEffect(() => {
@@ -958,6 +998,7 @@ export default function DiamondExchangeView() {
       setCasinoLiveData(null);
       setCasinoResults([]);
       setLiveTimer(0);
+      casinoRoundIdRef.current = null;
       return;
     }
     const targetGtype = normalizeCasinoGtype(activeCasinoTable.gtype);
@@ -966,6 +1007,7 @@ export default function DiamondExchangeView() {
     setCasinoLiveData(null);
     setCasinoResults([]);
     setLiveTimer(0);
+    casinoRoundIdRef.current = null;
 
     // Initial instant HTTP fetch
     fetchCasinoLive(targetGtype);
@@ -982,10 +1024,22 @@ export default function DiamondExchangeView() {
 
           const payload = JSON.parse(event.data);
           if (payload?.success && payload?.data) {
-            setCasinoLiveData(payload.data);
-            if (typeof payload.data.leftSec === 'number') {
-              setLiveTimer(payload.data.leftSec);
-            }
+            const incoming = payload.data;
+            setCasinoLiveData(prev => {
+              if (!prev) return incoming;
+              const prevCards = prev.cards || [];
+              const newCards = incoming.cards || [];
+              const preserveCards = prev.roundId === incoming.roundId && (!incoming.card || newCards.length === 0 || incoming.card === '1') && prevCards.length > 0;
+              const prevSub = prev.sub || [];
+              const newSub = incoming.sub || [];
+              const preserveSub = prev.roundId === incoming.roundId && newSub.length === 0 && prevSub.length > 0;
+              return {
+                ...incoming,
+                card: preserveCards ? prev.card : incoming.card,
+                cards: preserveCards ? prevCards : incoming.cards,
+                sub: preserveSub ? prevSub : incoming.sub
+              };
+            });
             setLastSync(Date.now());
           }
         } catch (err) {}
@@ -995,10 +1049,10 @@ export default function DiamondExchangeView() {
       };
     } catch (e) {}
 
-    // Dedicated ultra-fast 350ms interval for instant real-time casino card flip & rate update
+    // Backup HTTP poll every 1500ms (SSE handles real-time push, zero socket queue congestion)
     const casinoLiveTick = setInterval(() => {
       fetchCasinoLive(targetGtype);
-    }, 350);
+    }, 1500);
 
     // Winning results sync every 4 seconds
     const casinoResultsTimer = setInterval(() => {
@@ -1032,9 +1086,6 @@ export default function DiamondExchangeView() {
             if (Array.isArray(payload.data.results) && payload.data.results.length > 0) {
               setSuperOverResults(payload.data.results);
             }
-            if (typeof payload.data.leftSec === 'number') {
-              setSuperOverTimer(payload.data.leftSec);
-            }
             setLastSync(Date.now());
           }
         } catch (err) {}
@@ -1046,7 +1097,7 @@ export default function DiamondExchangeView() {
 
     const soTick = setInterval(() => {
       fetchCasinoLive('superover2');
-    }, 350);
+    }, 1500);
 
     return () => {
       if (eventSource) eventSource.close();
@@ -1082,10 +1133,10 @@ export default function DiamondExchangeView() {
       };
     } catch (e) {}
 
-    // Dedicated 1-second interval for real-time sports odds tick (matching user request)
+    // Dedicated backup interval for sports odds tick
     const matchOddsTick = setInterval(() => {
       fetchMatchDetails(gmid);
-    }, 1000);
+    }, 1500);
 
     return () => {
       if (eventSource) eventSource.close();
@@ -3001,7 +3052,20 @@ export default function DiamondExchangeView() {
                           onClick={() => {
                             activeGmidRef.current = String(match.gmid);
                             setSelectedMatch(match);
-                            setMatchOddsData(null);
+                            // Instant 0.000s pre-fill from match highlights (zero pending delay)
+                            if (match.matchOdds && match.matchOdds.length > 0) {
+                              setMatchOddsData([{
+                                mid: `${match.gmid}_match_odds`,
+                                mname: 'MATCH_ODDS',
+                                gtype: 'match',
+                                status: match.status === 'STARTED' ? 'OPEN' : 'OPEN',
+                                max: 1000000,
+                                min: 100,
+                                section: match.matchOdds
+                              }]);
+                            } else {
+                              setMatchOddsData(null);
+                            }
                             setMatchGameDetail(null);
                             const isSo = match.gmid === 'superover2' || (match.ename || '').toLowerCase().includes('super over');
                             fetchMatchDetails(match.gmid, match.etid || sportsCategory);
@@ -3836,9 +3900,6 @@ export default function DiamondExchangeView() {
                     {/* Action Button */}
                     <button
                       onClick={() => {
-                        setCasinoLiveData(null);
-                        setCasinoResults([]);
-                        setLiveTimer(0);
                         setActiveCasinoTable(table);
                         activeCasinoTableRef.current = table;
                         window.scrollTo({ top: 180, behavior: 'smooth' });
