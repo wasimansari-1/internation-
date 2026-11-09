@@ -45,12 +45,30 @@ export const realDataStore = {
   matchDetails: {},
   sessionCookies: "",
   authToken: "",
+  userAgent: "",
   isEngineActive: false,
   lastUpdate: Date.now()
 };
 
 let isStarting = false;
 let apiQueue = Promise.resolve();
+let lastSessionMtime = 0;
+let restErrorCounter = 0;
+
+export function reloadSession() {
+  if (fs.existsSync(SESSION_FILE)) {
+    try {
+      const stat = fs.statSync(SESSION_FILE);
+      if (stat.mtimeMs !== lastSessionMtime) {
+        lastSessionMtime = stat.mtimeMs;
+        const stored = JSON.parse(fs.readFileSync(SESSION_FILE, "utf-8"));
+        if (stored.cookies) realDataStore.sessionCookies = stored.cookies;
+        if (stored.token) realDataStore.authToken = stored.token;
+        if (stored.userAgent) realDataStore.userAgent = stored.userAgent;
+      }
+    } catch (e) {}
+  }
+}
 
 export async function performDemoLogin() {
   return await performDemoLoginDirect();
@@ -118,17 +136,10 @@ async function executeD247Direct(endpoint, rawPayload = {}) {
     const encBody = encrypt(rawPayload);
     const fullUrl = endpoint.startsWith("http") ? endpoint : `https://d247.com/api/front/${endpoint}`;
 
+    reloadSession();
     let cookieStr = realDataStore.sessionCookies;
     let tokenStr = realDataStore.authToken;
-    if (!cookieStr && fs.existsSync(SESSION_FILE)) {
-      try {
-        const stored = JSON.parse(fs.readFileSync(SESSION_FILE, "utf-8"));
-        cookieStr = stored.cookies || "";
-        tokenStr = stored.token || "";
-        realDataStore.sessionCookies = cookieStr;
-        realDataStore.authToken = tokenStr;
-      } catch (e) {}
-    }
+    let uaStr = realDataStore.userAgent || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
     const httpsAgent = await getD247HttpsAgent().catch(() => undefined);
 
@@ -138,15 +149,23 @@ async function executeD247Direct(endpoint, rawPayload = {}) {
       {
         headers: {
           "Content-Type": "application/json",
+          "Accept": "application/json, text/plain, */*",
+          "Accept-Language": "en-US,en;q=0.9",
           "Origin": "https://d247.com",
           "Referer": "https://d247.com/",
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+          "User-Agent": uaStr,
+          "sec-ch-ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+          "sec-ch-ua-mobile": "?0",
+          "sec-ch-ua-platform": uaStr.includes("Mac") ? '"macOS"' : '"Windows"',
+          "sec-fetch-dest": "empty",
+          "sec-fetch-mode": "cors",
+          "sec-fetch-site": "same-origin",
           ...(cookieStr ? { "Cookie": cookieStr } : {}),
-          ...(tokenStr ? { "Authorization": `Bearer ${tokenStr}` } : {})
+          ...(tokenStr ? { "Authorization": `Bearer ${tokenStr}`, "token": tokenStr } : {})
         },
         httpsAgent: httpsAgent || undefined,
         proxy: false,
-        timeout: 3000
+        timeout: 4000
       }
     );
 
@@ -157,7 +176,11 @@ async function executeD247Direct(endpoint, rawPayload = {}) {
     if (finalResult && !finalResult.error) {
       return finalResult;
     }
-  } catch (err) {}
+  } catch (err) {
+    if (process.env.DEBUG || (restErrorCounter++ % 20 === 0)) {
+      console.warn(`[D247 REST Error] ${endpoint}: ${err.response?.status || err.message}`);
+    }
+  }
 
   return null;
 }

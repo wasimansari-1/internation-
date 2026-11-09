@@ -347,13 +347,75 @@ router.get("/sports/stream/:etid/:gmid", (req, res) => {
 
 // Session Management
 router.post("/session", (req, res) => {
-  const { token, cookies, curlString, username } = req.body;
-  setD247Session({ token, cookies, curlString, username });
+  const { token, cookies, curlString, username, userAgent } = req.body;
+  const effectiveUA = userAgent || req.headers["user-agent"];
+  setD247Session({ token, cookies, curlString, username, userAgent: effectiveUA });
   res.json({ success: true, session: getD247Session() });
 });
 
 router.get("/session", (req, res) => {
   res.json({ success: true, session: getD247Session() });
+});
+
+// Comprehensive D247 Upstream Diagnostic Probe Endpoint
+router.get("/probe", async (req, res) => {
+  const { evalD247Api, realDataStore } = await import("../services/d247ScraperEngine.js");
+  const results = {};
+
+  try {
+    const highlightsRes = await evalD247Api("highlighthomePrivate?etid=4", { etid: 4, type: "all" });
+    results.highlightsCricket = {
+      ok: Boolean(highlightsRes && highlightsRes.data),
+      count: highlightsRes?.data?.t1 ? (highlightsRes.data.t1.length + (highlightsRes.data.t2 || []).length) : 0,
+      sample: highlightsRes?.data?.t1?.[0]?.ename || null
+    };
+  } catch (e) {
+    results.highlightsCricket = { ok: false, error: e.message };
+  }
+
+  try {
+    const tablesRes = await evalD247Api("casino/tablelist", {});
+    const tables = tablesRes?.data?.t1 || tablesRes?.data || [];
+    results.casinoTables = {
+      ok: Array.isArray(tables) && tables.length > 0,
+      count: tables.length,
+      sample: tables[0]?.ename || tables[0]?.gname || null
+    };
+  } catch (e) {
+    results.casinoTables = { ok: false, error: e.message };
+  }
+
+  try {
+    const goalRes = await evalD247Api("casino/data2?gtype=goal2", { ismob: 1, type: "goal2" });
+    results.goal2 = {
+      ok: Boolean(goalRes && goalRes.data),
+      roundId: goalRes?.data?.mid,
+      leftSec: goalRes?.data?.lt,
+      status: goalRes?.data?.status,
+      runnersCount: (goalRes?.data?.sub || []).length
+    };
+  } catch (e) {
+    results.goal2 = { ok: false, error: e.message };
+  }
+
+  try {
+    const superoverRes = await evalD247Api("casino/tabdata?type=superover2", { ismob: 1, type: "superover2" });
+    results.superover2 = {
+      ok: Boolean(superoverRes && superoverRes.data),
+      roundId: superoverRes?.data?.t1?.gmid,
+      leftSec: superoverRes?.data?.t1?.lt,
+      marketsCount: (superoverRes?.data?.t2 || []).length
+    };
+  } catch (e) {
+    results.superover2 = { ok: false, error: e.message };
+  }
+
+  res.json({
+    hasCookies: Boolean(realDataStore.sessionCookies),
+    hasToken: Boolean(realDataStore.authToken),
+    hasUserAgent: Boolean(realDataStore.userAgent),
+    results
+  });
 });
 
 // Sports Tree / Tab Header (All sports in exact D247 sequence)

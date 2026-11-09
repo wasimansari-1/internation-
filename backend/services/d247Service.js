@@ -182,31 +182,44 @@ export async function d247Post(path, rawPayload = {}) {
   return generateFallbackData(path, rawPayload);
 }
 
-export function setD247Session({ token, cookies, curlString, username = "Demo" }) {
+export function setD247Session({ token, cookies, curlString, username = "Demo", userAgent }) {
   if (curlString) {
     // Extract cookie from cURL string or raw headers
-    const cookieMatch = curlString.match(/cookie:\s*([^'\r\n]+)/i) || curlString.match(/-H\s+['"]cookie:\s*([^'"]+)['"]/i);
+    const cookieMatch = curlString.match(/cookie:\s*([^'\r\n]+)/i) || curlString.match(/-H\s+['"]cookie:\s*([^'"]+)['"]/i) || curlString.match(/-b\s+['"]([^'"]+)['"]/i);
     if (cookieMatch) {
       cookies = cookieMatch[1].trim();
     }
-    const tokenMatch = curlString.match(/authorization:\s*Bearer\s*([^'\r\n]+)/i) || curlString.match(/-H\s+['"]authorization:\s*Bearer\s*([^'"]+)['"]/i);
+    const tokenMatch = curlString.match(/authorization:\s*Bearer\s*([^'\r\n]+)/i) || curlString.match(/-H\s+['"]authorization:\s*Bearer\s*([^'"]+)['"]/i) || curlString.match(/token:\s*([a-zA-Z0-9-]+)/i) || curlString.match(/-H\s+['"]token:\s*([^'"]+)['"]/i);
     if (tokenMatch) {
       token = tokenMatch[1].trim();
+    }
+    const uaMatch = curlString.match(/user-agent:\s*([^'\r\n]+)/i) || curlString.match(/-H\s+['"]user-agent:\s*([^'"]+)['"]/i) || curlString.match(/-A\s+['"]([^'"]+)['"]/i);
+    if (uaMatch) {
+      userAgent = uaMatch[1].trim();
     }
   }
 
   if (token) d247Session.token = token;
   if (cookies) d247Session.cookies = cookies;
+  if (userAgent) d247Session.userAgent = userAgent;
   if (username) d247Session.username = username;
   d247Session.lastLogin = Date.now();
   d247Session.status = (d247Session.cookies || d247Session.token) ? "LIVE_CONNECTED" : "DEMO_ACTIVE";
 
   try {
     fs.writeFileSync(SESSION_FILE, JSON.stringify(d247Session, null, 2));
-    console.log("[D247] Live session saved to disk! Status:", d247Session.status, "Cookie length:", (d247Session.cookies || "").length);
+    console.log("[D247] Live session saved to disk! Status:", d247Session.status, "Cookie length:", (d247Session.cookies || "").length, "HasToken:", Boolean(d247Session.token), "HasUA:", Boolean(d247Session.userAgent));
   } catch (err) {
     console.warn("[D247] Failed to save session to disk:", err.message);
   }
+
+  // Immediately synchronize in-memory scraper engine
+  import("./d247ScraperEngine.js").then(({ realDataStore, reloadSession }) => {
+    if (cookies) realDataStore.sessionCookies = cookies;
+    if (token) realDataStore.authToken = token;
+    if (userAgent) realDataStore.userAgent = userAgent;
+    if (reloadSession) reloadSession();
+  }).catch(() => {});
 }
 
 export function getD247Session() {
