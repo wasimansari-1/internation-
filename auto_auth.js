@@ -1,4 +1,4 @@
-import puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer-core';
 import fs from 'fs';
 import path from 'path';
 import axios from 'axios';
@@ -20,9 +20,14 @@ function decrypt(ciphertext) {
 async function runAutoAuth() {
   console.log('[AutoAuth] Starting Autonomous 1-Shot Authenticator...');
 
-  const chromePath = fs.existsSync('/usr/bin/google-chrome-stable') 
-    ? '/usr/bin/google-chrome-stable' 
-    : (fs.existsSync('/usr/bin/google-chrome') ? '/usr/bin/google-chrome' : (fs.existsSync('/usr/bin/chromium-browser') ? '/usr/bin/chromium-browser' : null));
+  const candidates = [
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/google-chrome',
+    '/usr/bin/chromium-browser',
+    '/usr/bin/chromium',
+    '/snap/bin/chromium'
+  ];
+  let chromePath = candidates.find(c => fs.existsSync(c)) || null;
 
   const launchArgs = [
     '--no-sandbox',
@@ -30,8 +35,25 @@ async function runAutoAuth() {
     '--disable-dev-shm-usage',
     '--disable-gpu',
     '--no-zygote',
+    '--disable-blink-features=AutomationControlled',
     '--window-size=1280,800'
   ];
+
+  try {
+    const net = await import('net');
+    const isWarpActive = await new Promise(resolve => {
+      const client = net.createConnection({ port: 40000, host: '127.0.0.1' }, () => {
+        client.destroy();
+        resolve(true);
+      });
+      client.on('error', () => resolve(false));
+      client.setTimeout(400, () => { client.destroy(); resolve(false); });
+    });
+    if (isWarpActive) {
+      launchArgs.push('--proxy-server=socks5://127.0.0.1:40000');
+      console.log('[AutoAuth] Routing through Cloudflare WARP proxy on 127.0.0.1:40000');
+    }
+  } catch (e) {}
 
   console.log(`[AutoAuth] Launching 1-shot headless browser (Path: ${chromePath || 'default'})...`);
   const browser = await puppeteer.launch({
@@ -141,3 +163,4 @@ async function runAutoAuth() {
 }
 
 runAutoAuth().catch(e => console.error('[AutoAuth Fatal]', e));
+
