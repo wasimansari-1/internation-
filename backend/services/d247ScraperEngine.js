@@ -1026,12 +1026,13 @@ export async function fetchRealCasinoTableLive(gtype) {
 
       const rawCards = t1.card || "";
       const parsedCards = rawCards ? rawCards.split(/[,|]/).map(s => s.trim()).filter(Boolean) : [];
-      const incomingRoundId = String(t1.gmid || tracker.roundId || Date.now());
+      const activeMid = rawMarkets[0]?.mid ? String(rawMarkets[0].mid) : String(t1.gmid || tracker.roundId || Date.now());
       const rawLt = Number(t1.lt ?? 0);
+      const isNewRoundOrBall = (tracker.roundId !== activeMid) || (rawLt > (tracker.lastComputedSec || 0) + 3);
 
-      // Check for round transition
-      if (tracker.roundId !== incomingRoundId) {
-        tracker.roundId = incomingRoundId;
+      // Check for round transition or new ball countdown
+      if (isNewRoundOrBall) {
+        tracker.roundId = activeMid;
         tracker.initialLeftSec = rawLt;
         tracker.leftSecReceivedAt = now;
         tracker.lastComputedSec = rawLt;
@@ -1161,8 +1162,9 @@ export async function fetchRealCasinoTableLive(gtype) {
       return acc;
     }, {});
 
-    // Check for round transition
-    if (tracker.roundId !== incomingRoundId) {
+    // Check for round transition: roundId changed OR timer jumped back up by > 3s (dealer reset countdown)
+    const isNewRound = (tracker.roundId !== incomingRoundId) || (rawLt > (tracker.lastComputedSec || 0) + 3);
+    if (isNewRound) {
       tracker.roundId = incomingRoundId;
       tracker.initialLeftSec = rawLt;
       tracker.leftSecReceivedAt = now;
@@ -1383,6 +1385,7 @@ export async function fetchRealMatchOdds(etid, gmid) {
         status: marketStatus,
         max: m.maxb || m.max || 100000,
         min: m.min || 100,
+        rem: m.rem || "",
         section: runners.map((r, rIdx) => {
           const oddsList = Array.isArray(r.odds) ? r.odds : [];
           

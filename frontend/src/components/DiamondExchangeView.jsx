@@ -3,7 +3,7 @@ import axios from 'axios';
 import { 
   RefreshCw, Search, Shield, Play, Flame, Tv, ArrowUpRight, 
   ArrowDownRight, ChevronRight, Activity, Award, Clock, DollarSign,
-  TrendingUp, Eye, Sparkles, AlertCircle, X
+  TrendingUp, Eye, Sparkles, AlertCircle, X, Volume2
 } from 'lucide-react';
 
 // 100% Real D247 Card Parser (Parses codes like "QCC", "2HH", "5DD", "ACC", "1")
@@ -831,15 +831,11 @@ export default function DiamondExchangeView() {
             if (!prev) return incoming;
             const prevCards = prev.cards || [];
             const newCards = incoming.cards || [];
-            const preserveCards = prev.roundId === incoming.roundId && (!incoming.card || newCards.length === 0 || incoming.card === '1') && prevCards.length > 0;
-            const prevSub = prev.sub || [];
-            const newSub = incoming.sub || [];
-            const preserveSub = prev.roundId === incoming.roundId && newSub.length === 0 && prevSub.length > 0;
+            const preserveCards = prev.roundId === incoming.roundId && (!incoming.card || newCards.length === 0) && prevCards.length > 0;
             return {
               ...incoming,
               card: preserveCards ? prev.card : incoming.card,
-              cards: preserveCards ? prevCards : incoming.cards,
-              sub: preserveSub ? prevSub : incoming.sub
+              cards: preserveCards ? prevCards : incoming.cards
             };
           });
         }
@@ -881,8 +877,8 @@ export default function DiamondExchangeView() {
     const incomingSec = Number(casinoLiveData.leftSec);
     const roundId = String(casinoLiveData.roundId || '');
 
-    // 1. If brand new round started: initialize new countdown
-    if (casinoRoundIdRef.current !== roundId) {
+    // 1. If brand new round started or timer reset: initialize new countdown
+    if (casinoRoundIdRef.current !== roundId || incomingSec > liveTimer + 3) {
       casinoRoundIdRef.current = roundId;
       setLiveTimer(incomingSec);
       return;
@@ -913,7 +909,7 @@ export default function DiamondExchangeView() {
     const incomingSec = Number(superOverLiveData.leftSec);
     const roundId = String(superOverLiveData.roundId || '');
 
-    if (superOverRoundIdRef.current !== roundId) {
+    if (superOverRoundIdRef.current !== roundId || incomingSec > superOverTimer + 2) {
       superOverRoundIdRef.current = roundId;
       setSuperOverTimer(incomingSec);
       return;
@@ -998,7 +994,6 @@ export default function DiamondExchangeView() {
       setCasinoLiveData(null);
       setCasinoResults([]);
       setLiveTimer(0);
-      casinoRoundIdRef.current = null;
       return;
     }
     const targetGtype = normalizeCasinoGtype(activeCasinoTable.gtype);
@@ -1007,7 +1002,6 @@ export default function DiamondExchangeView() {
     setCasinoLiveData(null);
     setCasinoResults([]);
     setLiveTimer(0);
-    casinoRoundIdRef.current = null;
 
     // Initial instant HTTP fetch
     fetchCasinoLive(targetGtype);
@@ -1029,15 +1023,11 @@ export default function DiamondExchangeView() {
               if (!prev) return incoming;
               const prevCards = prev.cards || [];
               const newCards = incoming.cards || [];
-              const preserveCards = prev.roundId === incoming.roundId && (!incoming.card || newCards.length === 0 || incoming.card === '1') && prevCards.length > 0;
-              const prevSub = prev.sub || [];
-              const newSub = incoming.sub || [];
-              const preserveSub = prev.roundId === incoming.roundId && newSub.length === 0 && prevSub.length > 0;
+              const preserveCards = prev.roundId === incoming.roundId && (!incoming.card || newCards.length === 0) && prevCards.length > 0;
               return {
                 ...incoming,
                 card: preserveCards ? prev.card : incoming.card,
-                cards: preserveCards ? prevCards : incoming.cards,
-                sub: preserveSub ? prevSub : incoming.sub
+                cards: preserveCards ? prevCards : incoming.cards
               };
             });
             setLastSync(Date.now());
@@ -2375,7 +2365,7 @@ export default function DiamondExchangeView() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                           <span style={{ fontSize: '11px', fontWeight: 800, color: '#94a3b8' }}>Last Result</span>
                           <div style={{ display: 'flex', gap: '6px' }}>
-                            {((superOverResults.length > 0 ? superOverResults : casinoResults) || []).slice(0, 10).map((r, ri) => {
+                            {[...((superOverResults.length > 0 ? superOverResults : casinoResults) || [])].slice(0, 10).reverse().map((r, ri) => {
                               const letter = r.win === '1' ? 'I' : (r.win === '2' ? 'E' : (r.win === '0' ? 'T' : r.win));
                               const bg = r.win === '1' ? '#0284c7' : (r.win === '2' ? '#334155' : '#15803d');
                               return (
@@ -2667,7 +2657,30 @@ export default function DiamondExchangeView() {
                   );
                 }
 
-                return null;
+                // For real live matches (Cricket, Tennis, Soccer, etc.), render the verified live Scoreboard
+                const sportId = String(selectedMatch.etid || sportsCategory || '4');
+                return (
+                  <div style={{
+                    width: '100%',
+                    marginBottom: '16px',
+                    borderRadius: '10px',
+                    overflow: 'hidden',
+                    border: '1px solid #1e3a5f',
+                    background: '#0b1120',
+                    boxShadow: '0 4px 15px rgba(0,0,0,0.3)'
+                  }}>
+                    <iframe
+                      src={`/api/sports/scoreboard-frame/${selectedMatch.gmid}?sportId=${sportId}`}
+                      title="Live Scoreboard"
+                      style={{
+                        width: '100%',
+                        height: '145px',
+                        border: 'none',
+                        display: 'block'
+                      }}
+                    />
+                  </div>
+                );
               })()}
 
               {/* Dynamic Markets List from Real D247 gamedataPrivate */}
@@ -2787,6 +2800,26 @@ export default function DiamondExchangeView() {
                           </span>
                         </div>
                       </div>
+
+                      {/* News / Remark Ticker matching D247 Image 4 */}
+                      {market.rem && market.rem.trim() !== '' && (
+                        <div style={{
+                          background: 'rgba(56, 189, 248, 0.08)',
+                          borderBottom: '1px solid rgba(56, 189, 248, 0.2)',
+                          padding: '6px 14px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          color: '#38bdf8',
+                          fontSize: '11px',
+                          fontWeight: 600
+                        }}>
+                          <Volume2 size={13} style={{ flexShrink: 0 }} />
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {market.rem}
+                          </span>
+                        </div>
+                      )}
 
                       {/* Check if market is 2-column (Bookmaker, Fancy1, Normal Fancy) or 6-ladder Match Odds */}
                       {(() => {
@@ -3720,7 +3753,7 @@ export default function DiamondExchangeView() {
                     </button>
                   </div>
                   <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '4px' }}>
-                    {casinoResults.map((r, i) => {
+                    {[...casinoResults].slice(0, 10).reverse().map((r, i) => {
                       const badgeText = getPillBadgeText(r, activeCasinoTable?.gtype);
                       const badgeColor = getPillBadgeColor(r, activeCasinoTable?.gtype);
                       return (
