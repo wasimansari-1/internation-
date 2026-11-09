@@ -45,7 +45,7 @@ router.get("/debug/page-eval", async (req, res) => {
   const { getPageInstance } = await import("../services/d247ScraperEngine.js");
   const page = getPageInstance ? getPageInstance() : null;
   if (!page || page.isClosed()) {
-    return res.json({ error: "pageInstance not alive" });
+    return res.json({ status: "Zero-Browser mode active (100% REST Engine)" });
   }
   try {
     const url = page.url();
@@ -370,12 +370,25 @@ router.get("/sports/tree", async (req, res) => {
   res.json({ success: true, data });
 });
 
-// Sports Highlights (100% Real Scraped Matches - ZERO DELAY IN-MEMORY)
-router.get("/sports/highlights", (req, res) => {
+// Sports Highlights (100% Scraped Matches with Instant In-Memory Delivery & Resilient Fallback)
+router.get("/sports/highlights", async (req, res) => {
   const etid = Number(req.query.etid || 4);
-  // Instant response from in-memory synchronized store (0.001ms) - Never hangs VPS!
-  const matches = realDataStore.sportsMatches[etid] || realDataStore.sportsMatches[String(etid)] || [];
-  res.json({ success: true, data: matches });
+  let matches = realDataStore.sportsMatches[etid] || realDataStore.sportsMatches[String(etid)] || [];
+  if (!Array.isArray(matches) || matches.length === 0) {
+    try {
+      matches = await fetchRealSportHighlights(etid);
+    } catch (e) {}
+  }
+  if (!Array.isArray(matches) || matches.length === 0) {
+    try {
+      const fallback = await getHighlightEvents(etid);
+      if (Array.isArray(fallback?.data) && fallback.data.length > 0) {
+        matches = fallback.data;
+        realDataStore.sportsMatches[etid] = matches;
+      }
+    } catch (e) {}
+  }
+  res.json({ success: true, data: matches || [] });
 });
 
 router.get("/debug/eval-page", async (req, res) => {

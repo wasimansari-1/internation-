@@ -246,6 +246,29 @@ async function runSportsLoop() {
       const footballMatches = allSportsMatches[1] || [];
       const tennisMatches = allSportsMatches[2] || [];
 
+      // If upstream REST blocked by Cloudflare, populate with resilient fallback so matches never stay 0
+      if (cricketMatches.length === 0) {
+        try {
+          const { getHighlightEvents } = await import("../backend/services/d247Service.js");
+          const fbCricket = await getHighlightEvents(4).catch(() => null);
+          if (Array.isArray(fbCricket?.data) && fbCricket.data.length > 0) {
+            allSportsMatches[4] = fbCricket.data;
+          }
+          const fbFootball = await getHighlightEvents(1).catch(() => null);
+          if (Array.isArray(fbFootball?.data) && fbFootball.data.length > 0) {
+            allSportsMatches[1] = fbFootball.data;
+          }
+          const fbTennis = await getHighlightEvents(2).catch(() => null);
+          if (Array.isArray(fbTennis?.data) && fbTennis.data.length > 0) {
+            allSportsMatches[2] = fbTennis.data;
+          }
+        } catch (e) {}
+      }
+
+      const activeCricketMatches = allSportsMatches[4] || cricketMatches;
+      const activeFootballMatches = allSportsMatches[1] || footballMatches;
+      const activeTennisMatches = allSportsMatches[2] || tennisMatches;
+
       let casinoTables = realDataStore.casinoTables || [];
       if (casinoTables.length === 0) {
         const fullTables = await getCasinoTableList().catch(() => []);
@@ -299,25 +322,25 @@ async function runSportsLoop() {
       const payload = {
         sportsTree,
         allSportsMatches,
-        cricketMatches,
-        footballMatches,
-        tennisMatches,
+        cricketMatches: activeCricketMatches,
+        footballMatches: activeFootballMatches,
+        tennisMatches: activeTennisMatches,
         casinoTables,
         matchDetails: matchDetailsBatch,
-        latestEvents: cricketMatches.slice(0, 6).map(m => ({
+        latestEvents: activeCricketMatches.slice(0, 6).map(m => ({
           name: m.ename,
           sportId: 4,
           id: m.gmid
         }))
       };
 
-      if (cricketMatches.length > 0 || footballMatches.length > 0 || tennisMatches.length > 0) {
+      if (activeCricketMatches.length > 0 || activeFootballMatches.length > 0 || activeTennisMatches.length > 0) {
         await Promise.allSettled([
           axios.post(TARGET_VPS_URL, payload, { headers: { "Content-Type": "application/json" }, timeout: 5000 }).catch(() => null),
           axios.post(TARGET_LOCAL_URL, payload, { headers: { "Content-Type": "application/json" }, timeout: 2000 }).catch(() => null)
         ]);
 
-        console.log(`[Sports Sync #${count}] Pushed -> Cricket: ${cricketMatches.length}, Football: ${footballMatches.length}, Tennis: ${tennisMatches.length}, TT: ${(allSportsMatches[8] || []).length}, Horse: ${(allSportsMatches[10] || []).length}, Greyhound: ${(allSportsMatches[65] || []).length}`);
+        console.log(`[Sports Sync #${count}] Pushed -> Cricket: ${activeCricketMatches.length}, Football: ${activeFootballMatches.length}, Tennis: ${activeTennisMatches.length}, TT: ${(allSportsMatches[8] || []).length}, Horse: ${(allSportsMatches[10] || []).length}, Greyhound: ${(allSportsMatches[65] || []).length}`);
       } else {
         console.warn(`[Sports Sync #${count}] Notice: 0 matches received (retaining existing data in store).`);
       }
@@ -336,17 +359,16 @@ export async function startSyncWorker() {
   isWorkerRunning = true;
 
   console.log("==================================================================");
-  console.log("   D247 DUAL-CORE ULTRA-SPEED RESIDENTIAL BRIDGE -> PRODUCTION VPS ");
+  console.log("   D247 ZERO-BROWSER ULTRA-SPEED REST STREAM -> PRODUCTION VPS    ");
   console.log(`   Target: ${TARGET_VPS_URL}`);
   console.log("==================================================================");
 
-  console.log("[Sync Worker] Booting autonomous local Chrome engine on Mac...");
+  console.log("[Sync Worker] Booting Zero-Browser Direct REST Engine...");
   await startD247Engine();
 
-  // Wait 4 seconds for Chrome initialization & login
-  await new Promise(r => setTimeout(r, 4000));
+  await new Promise(r => setTimeout(r, 1000));
 
-  console.log("[Sync Worker] Chrome engine is online! Launching dual parallel workers...");
+  console.log("[Sync Worker] Direct REST engine is online! Launching dual parallel workers...");
   // Launch both loops in parallel
   Promise.all([
     runCasinoLoop().catch(e => console.error("Casino loop error:", e)),

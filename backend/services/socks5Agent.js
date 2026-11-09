@@ -77,7 +77,22 @@ export function createSocks5HttpsAgent(proxyHost = "127.0.0.1", proxyPort = 4000
           const tlsSocket = tls.connect({
             socket,
             servername: options.host,
-            rejectUnauthorized: false
+            rejectUnauthorized: false,
+            minVersion: "TLSv1.2",
+            maxVersion: "TLSv1.3",
+            ciphers: [
+              "ECDHE-ECDSA-AES128-GCM-SHA256",
+              "ECDHE-RSA-AES128-GCM-SHA256",
+              "ECDHE-ECDSA-AES256-GCM-SHA384",
+              "ECDHE-RSA-AES256-GCM-SHA384",
+              "ECDHE-ECDSA-CHACHA20-POLY1305",
+              "ECDHE-RSA-CHACHA20-POLY1305",
+              "ECDHE-RSA-AES128-SHA",
+              "ECDHE-RSA-AES256-SHA",
+              "AES128-GCM-SHA256",
+              "AES256-GCM-SHA384"
+            ].join(":"),
+            ALPNProtocols: ["http/1.1"]
           }, () => {
             callback(null, tlsSocket);
           });
