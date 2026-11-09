@@ -81,75 +81,103 @@ async function runAutoAuth() {
   for (const host of targetHosts) {
     try {
       console.log(`[AutoAuth] Navigating to ${host}...`);
-      await page.goto(host, { waitUntil: 'networkidle2', timeout: 25000 });
+      await page.goto(host, { waitUntil: 'networkidle2', timeout: 35000 });
 
-      console.log(`[AutoAuth] Landed on ${page.url()}. Clicking Demo Login...`);
-      await page.evaluate(() => {
-        const btns = Array.from(document.querySelectorAll('button, a, div'));
-        const demoBtn = btns.find(b => {
-          const t = (b.innerText || '').toLowerCase().trim();
-          return t === 'demo login' || t === 'demo' || t.includes('demo login');
-        });
-        if (demoBtn) {
-          demoBtn.click();
-          return true;
-        }
-        return false;
+      const pageTitle = await page.title();
+      console.log(`[AutoAuth] Landed on ${page.url()} | Title: ${pageTitle}`);
+
+      // Discover all clickable buttons and links related to Demo or Login
+      const buttonsInfo = await page.evaluate(() => {
+        const els = Array.from(document.querySelectorAll('button, a, input[type="button"], input[type="submit"]'));
+        return els.map(e => ({
+          tag: e.tagName,
+          text: (e.innerText || e.value || '').trim(),
+          href: e.href || '',
+          className: e.className || ''
+        })).filter(e => e.text.toLowerCase().includes('demo') || e.text.toLowerCase().includes('login') || e.href.toLowerCase().includes('demo'));
       });
+      console.log(`[AutoAuth] Found elements:`, JSON.stringify(buttonsInfo));
 
-      // Wait 3 seconds for session cookies & token to generate
-      await new Promise(r => setTimeout(r, 3500));
+      // Click the demo button
+      const clicked = await page.evaluate(() => {
+        const els = Array.from(document.querySelectorAll('button, a, div, span'));
+        const target = els.find(e => {
+          const t = (e.innerText || '').toLowerCase().trim();
+          return t === 'demo login' || t === 'demo' || (t.includes('demo') && t.includes('login'));
+        });
+        if (target) {
+          target.click();
+          return target.innerText;
+        }
+        return null;
+      });
+      console.log(`[AutoAuth] Clicked:`, clicked);
+
+      // Wait 5 seconds for network activity and login redirection
+      await new Promise(r => setTimeout(r, 5000));
+      console.log(`[AutoAuth] Current URL after click: ${page.url()}`);
+
+      // Check all storage
+      const storageData = await page.evaluate(() => {
+        const local = {};
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          local[k] = localStorage.getItem(k);
+        }
+        return {
+          localStorage: local,
+          cookies: document.cookie
+        };
+      });
+      console.log(`[AutoAuth] LocalStorage keys:`, Object.keys(storageData.localStorage));
 
       const cookies = await page.cookies();
       acquiredCookies = cookies.map(c => `${c.name}=${c.value}`).join('; ');
 
-      const tokenFromStorage = await page.evaluate(() => {
-        return localStorage.getItem('token') || sessionStorage.getItem('token') || localStorage.getItem('user_token') || null;
-      });
+      // Find token
+      acquiredToken = storageData.localStorage['token'] 
+        || storageData.localStorage['user_token'] 
+        || storageData.localStorage['g_token']
+        || null;
 
-      if (tokenFromStorage) {
-        acquiredToken = tokenFromStorage;
-      }
-
-      console.log(`[AutoAuth] Cookies acquired: ${cookies.length}, Token: ${acquiredToken ? `${acquiredToken.slice(0, 15)}...` : 'None'}`);
-
-      if (acquiredCookies || acquiredToken) {
-        const sessionData = {
-          token: acquiredToken,
-          cookies: acquiredCookies,
-          lastLogin: Date.now(),
-          status: 'LIVE_CONNECTED',
-          host: host
-        };
-
-        fs.writeFileSync(path.resolve(process.cwd(), '.direct_exchange_session.json'), JSON.stringify(sessionData, null, 2));
-        fs.writeFileSync(path.resolve(process.cwd(), '.d247_session.json'), JSON.stringify(sessionData, null, 2));
-        console.log(`[AutoAuth] Successfully saved session to disk!`);
-
-        // Test real Super Over 2
-        console.log(`[AutoAuth] Verifying live connection on ${host}...`);
-        const enc = encrypt({ ismob: 1, type: 'superover2' });
-        const res = await axios.post(`${host}/api/front/casino/tabdata?type=superover2`, { data: enc }, {
-          headers: {
-            'Content-Type': 'application/json',
-            'Origin': host,
-            'Referer': `${host}/`,
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-            ...(acquiredToken ? { 'Authorization': `Bearer ${acquiredToken}` } : {}),
-            ...(acquiredCookies ? { 'Cookie': acquiredCookies } : {})
-          },
-          timeout: 5000
-        });
-
-        if (res.data?.data) {
-          const dec = decrypt(res.data.data);
-          if (dec?.data?.t1) {
-            console.log(`\n🎉 [AutoAuth SUCCESS] REAL LIVE STREAM VERIFIED!`);
-            console.log(`   Real Round ID: ${dec.data.t1.mid || dec.data.t1.gmid}`);
-            console.log(`   Real Status: ${dec.data.t1.status}, Real LeftSec: ${dec.data.t1.lt}`);
-            console.log(`   Real Markets: ${(dec.data.t2 || []).map(m => m.mname).join(', ')}\n`);
+      if (!acquiredToken) {
+        // Try to find any token-like value in localStorage
+        for (const [k, v] of Object.entries(storageData.localStorage)) {
+          if (typeof v === 'string' && (k.toLowerCase().includes('token') || k.toLowerCase().includes('auth') || k.toLowerCase().includes('jwt'))) {
+            acquiredToken = v;
+            console.log(`[AutoAuth] Found token in key '${k}'`);
             break;
           }
+        }
+      }
+
+      console.log(`[AutoAuth] Cookies count: ${cookies.length}, Token: ${acquiredToken ? `${acquiredToken.slice(0, 15)}...` : 'None'}`);
+
+      // Now test live fetch directly INSIDE browser page (which has full Cloudflare clearance!)
+      console.log(`[AutoAuth] Testing in-page fetch for Super Over 2 (zero 403 block)...`);
+      const testResult = await page.evaluate(async (encData) => {
+        try {
+          const res = await fetch('/api/front/casino/tabdata?type=superover2', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ data: encData }),
+            credentials: 'include'
+          });
+          const json = await res.json();
+          return { status: res.status, json };
+        } catch (err) {
+          return { error: err.message };
+        }
+      }, encrypt({ ismob: 1, type: 'superover2' }));
+
+      console.log(`[AutoAuth] In-page fetch status:`, testResult.status);
+      if (testResult.json?.data) {
+        const dec = decrypt(testResult.json.data);
+        if (dec?.data?.t1) {
+          console.log(`\n🎉 [AutoAuth SUCCESS] IN-PAGE LIVE STREAM VERIFIED!`);
+          console.log(`   Real Round ID: ${dec.data.t1.mid || dec.data.t1.gmid}`);
+          console.log(`   Real Status: ${dec.data.t1.status}, Real LeftSec: ${dec.data.t1.lt}`);
+          console.log(`   Real Markets: ${(dec.data.t2 || []).map(m => m.mname).join(', ')}\n`);
         }
       }
     } catch (e) {
