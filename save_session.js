@@ -3,11 +3,24 @@ import path from 'path';
 import axios from 'axios';
 import CryptoJS from 'crypto-js';
 
-const input = process.argv.slice(2).join(' ').trim();
-if (!input) {
-  console.log('\nUsage: node save_session.js "<PASTE_CURL_OR_TOKEN_OR_COOKIE_HERE>"\n');
+let rawInput = process.argv.slice(2).join(' ').trim();
+
+// If session.txt exists or passed as file argument, read from file
+if (fs.existsSync(path.resolve(process.cwd(), 'session.txt')) && (!rawInput || rawInput === 'session.txt')) {
+  rawInput = fs.readFileSync(path.resolve(process.cwd(), 'session.txt'), 'utf-8').trim();
+  console.log('[Session Parser] Read input from session.txt');
+} else if (rawInput && fs.existsSync(rawInput)) {
+  rawInput = fs.readFileSync(rawInput, 'utf-8').trim();
+  console.log(`[Session Parser] Read input from ${rawInput}`);
+}
+
+if (!rawInput) {
+  console.log('\nUsage: node save_session.js "<PASTE_CURL_OR_TOKEN_OR_COOKIE_HERE>"');
+  console.log('   OR: nano session.txt (paste cURL inside) then run: node save_session.js\n');
   process.exit(1);
 }
+
+const input = rawInput;
 
 const AES_KEY = "cae7b808-8b1e-4f47-87a5-1a4b6a08030e";
 function encrypt(data) {
