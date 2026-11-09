@@ -133,14 +133,16 @@ async function executeD247Direct(endpoint, rawPayload = {}) {
 
     let cookieStr = realDataStore.sessionCookies || DEFAULT_SESSION.cookies;
     let tokenStr = realDataStore.authToken || DEFAULT_SESSION.token;
-    if (fs.existsSync(SESSION_FILE)) {
-      try {
-        const stored = JSON.parse(fs.readFileSync(SESSION_FILE, "utf-8"));
-        if (stored.cookies) cookieStr = stored.cookies;
-        if (stored.token) tokenStr = stored.token;
-        realDataStore.sessionCookies = cookieStr;
-        realDataStore.authToken = tokenStr;
-      } catch (e) {}
+    for (const fpath of [SESSION_FILE, path.resolve(process.cwd(), ".direct_exchange_session.json")]) {
+      if (fs.existsSync(fpath)) {
+        try {
+          const stored = JSON.parse(fs.readFileSync(fpath, "utf-8"));
+          if (stored.cookies) cookieStr = stored.cookies;
+          if (stored.token) tokenStr = stored.token;
+          realDataStore.sessionCookies = cookieStr;
+          realDataStore.authToken = tokenStr;
+        } catch (e) {}
+      }
     }
 
     const res = await axios.post(

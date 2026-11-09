@@ -332,7 +332,10 @@ router.get("/sports/stream/:etid/:gmid", (req, res) => {
 router.post("/session", (req, res) => {
   const { token, cookies, curlString, username } = req.body;
   setD247Session({ token, cookies, curlString, username });
-  res.json({ success: true, session: getD247Session() });
+  const sess = getD247Session();
+  if (sess.token) realDataStore.authToken = sess.token;
+  if (sess.cookies) realDataStore.sessionCookies = sess.cookies;
+  res.json({ success: true, session: sess });
 });
 
 router.get("/session", (req, res) => {
