@@ -14,70 +14,68 @@ function decrypt(ciphertext) {
   }
 }
 
-async function testHost(host) {
-  console.log(`\n================ Testing ${host} ================`);
-  // 1. Test Super Over 2
+async function probeEndpoint(host, endpoint, payload = {}, method = 'POST') {
+  const enc = encrypt(payload);
   try {
-    const enc = encrypt({ ismob: 1, type: 'superover2' });
-    const res = await axios.post(`${host}/api/front/casino/tabdata?type=superover2`, 
-      { data: enc },
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'Origin': host,
-          'Referer': `${host}/`,
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
-        },
-        timeout: 5000
-      }
-    );
-    console.log(`[${host}] SuperOver2 HTTP:`, res.status);
-    if (res.data?.data) {
-      const dec = decrypt(res.data.data);
-      console.log(`[${host}] SuperOver2 Decrypted status:`, dec.status, 'msg:', dec.msg);
-      if (dec?.data?.t1) {
-        console.log(`[${host}] SuperOver2 Round ID:`, dec.data.t1.mid || dec.data.t1.gmid);
-        console.log(`[${host}] SuperOver2 Status:`, dec.data.t1.status, 'LeftSec:', dec.data.t1.lt, 'Card:', dec.data.t1.card);
-        console.log(`[${host}] SuperOver2 Markets:`, (dec.data.t2 || []).map(m => m.mname).join(', '));
-      }
-    }
-  } catch (err) {
-    console.log(`[${host}] SuperOver2 Error:`, err.response ? `HTTP ${err.response.status}` : err.message);
-  }
+    const res = await axios({
+      method,
+      url: `${host}${endpoint}`,
+      data: method === 'POST' ? { data: enc } : undefined,
+      headers: {
+        'Content-Type': 'application/json',
+        'Origin': host,
+        'Referer': `${host}/`,
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+      },
+      timeout: 5000,
+      validateStatus: () => true
+    });
 
-  // 2. Test Goal 2
-  try {
-    const enc2 = encrypt({ ismob: 1, type: 'goal2' });
-    const res2 = await axios.post(`${host}/api/front/casino/data2?gtype=goal2`, 
-      { data: enc2 },
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'Origin': host,
-          'Referer': `${host}/`,
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
-        },
-        timeout: 5000
-      }
-    );
-    console.log(`[${host}] Goal2 HTTP:`, res2.status);
-    if (res2.data?.data) {
-      const dec2 = decrypt(res2.data.data);
-      console.log(`[${host}] Goal2 Decrypted status:`, dec2.status, 'msg:', dec2.msg);
-      if (dec2?.data) {
-        console.log(`[${host}] Goal2 Round ID:`, dec2.data.mid);
-        console.log(`[${host}] Goal2 Status:`, dec2.data.status, 'LeftSec:', dec2.data.lt, 'Remark:', dec2.data.remark || dec2.data.rdesc);
-        console.log(`[${host}] Goal2 Runners Count:`, dec2.data.sub?.length);
-      }
+    let dec = null;
+    if (res.data?.data && typeof res.data.data === 'string') {
+      dec = decrypt(res.data.data);
     }
-  } catch (err2) {
-    console.log(`[${host}] Goal2 Error:`, err2.response ? `HTTP ${err2.response.status}` : err2.message);
+    console.log(`[${method} ${endpoint}] -> HTTP ${res.status}`, dec || (typeof res.data === 'object' ? JSON.stringify(res.data).slice(0, 120) : ''));
+    return { status: res.status, data: res.data, dec, headers: res.headers };
+  } catch (err) {
+    console.log(`[${method} ${endpoint}] -> Error: ${err.message}`);
+    return null;
   }
 }
 
 async function main() {
-  for (const host of ['https://mouseexch.com', 'https://br365bet.live', 'https://d247.com']) {
-    await testHost(host);
+  const host = 'https://mouseexch.com';
+  console.log(`\n=== PROBING ${host} AUTH & PUBLIC ENDPOINTS ===\n`);
+
+  // 1. Try public unauth endpoints
+  await probeEndpoint(host, '/api/front/tablist', { ismob: 1 });
+  await probeEndpoint(host, '/api/front/latest-events', {});
+  await probeEndpoint(host, '/api/front/highlighthomePrivate?etid=4', { etid: 4, type: 'all' });
+  await probeEndpoint(host, '/api/front/get_casino_table_list', { ismob: 1 });
+
+  // 2. Try demo login variations
+  await probeEndpoint(host, '/api/front/demo-login', {});
+  await probeEndpoint(host, '/api/front/demologin', {});
+  await probeEndpoint(host, '/api/front/demo', {});
+  await probeEndpoint(host, '/api/front/login', { username: 'demo', password: 'demo' });
+  await probeEndpoint(host, '/api/front/userlogin', { username: 'demo', password: 'demo' });
+  await probeEndpoint(host, '/app/users/userLogin', { userName: 'demo52', password: 'Asdf1234' });
+
+  // 3. Try HTML home page to check cookies/scripts
+  try {
+    const home = await axios.get(`${host}/`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+      },
+      timeout: 5000
+    });
+    console.log(`[GET /] -> HTTP ${home.status}, Set-Cookie:`, home.headers['set-cookie'] || 'None');
+    const scripts = (home.data.match(/src="([^"]+\.js[^"]*)"/g) || []).slice(0, 5);
+    console.log('Scripts:', scripts);
+  } catch (e) {
+    console.log('[GET /] Error:', e.message);
   }
 }
+
 main();
+
