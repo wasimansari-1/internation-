@@ -667,40 +667,45 @@ function generateFallbackData(path, payload) {
         { sid: 5, nat: "Banker Pair", b: 12.0, bs: 50000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 25000, subtype: "pair" }
       ];
     }
-    // 10. Super Over 2
+    // 10. Super Over 2 (IND vs ENG - Exact Screenshot Match)
     else if (norm.includes("superover")) {
-      cardStr = "4|6|1|W|2|0";
-      cardsArr = ["4", "6", "1", "W", "2", "0"];
+      cardStr = "0 1";
+      cardsArr = ["0", "1"];
       sub = [
-        { sid: 1, nat: "IND", b: rateJitter(1.85, 0.02), bs: 300000, l: rateJitter(1.88, 0.02), ls: 300000, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 300000, subtype: "bookmaker" },
-        { sid: 2, nat: "ENG", b: rateJitter(2.05, -0.02), bs: 300000, l: rateJitter(2.10, -0.02), ls: 300000, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 300000, subtype: "bookmaker" },
-        { sid: 3, nat: "Total Runs Over 1", b: 1.9, bs: 50000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 25000, subtype: "fancy" }
+        { sid: 1, nat: "IND", b: 1.94, bs: 300000, l: 2.04, ls: 300000, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 300000, subtype: "bookmaker" },
+        { sid: 2, nat: "ENG", b: 0, bs: 0, l: 0, ls: 0, gstatus: "SUSPENDED", min: 100, max: 300000, subtype: "bookmaker" },
+        { sid: 11, nat: "1 over run bhav IND", b: 13, bs: 75, l: 13, ls: 67, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 50000, subtype: "fancy" },
+        { sid: 12, nat: "1 over run IND", b: 13, bs: 75, l: 13, ls: 67, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 50000, subtype: "fancy" },
+        { sid: 21, nat: "Common Wicket IND", b: 0, bs: 0, l: 0, ls: 0, gstatus: "SUSPENDED", min: 100, max: 50000, subtype: "fancy1" },
+        { sid: 22, nat: "Common Boundry IND", b: 0, bs: 0, l: 0, ls: 0, gstatus: "SUSPENDED", min: 100, max: 50000, subtype: "fancy1" },
+        { sid: 23, nat: "0.5 Over Wicket IND", b: 7.41, bs: 100, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 50000, subtype: "fancy1" },
+        { sid: 24, nat: "0.5 Over Zero IND", b: 7.41, bs: 100, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 50000, subtype: "fancy1" }
       ];
     }
-    // 11. Goal 2 (Virtual Football - All 12 Players & 4 Methods in Exact D247 Sequence)
+    // 11. Goal 2 (Virtual Football - All 12 Players & 4 Methods in Exact Screenshot Sequence)
     else if (norm.includes("goal")) {
       cardStr = "0 0";
-      remark = "Who Will Goal Next?";
+      remark = "SHOT GOAL BY LIONEL MESSI";
       const goalPlayers = [
-        { sid: 1, nat: "Cristiano Ronaldo", b: rateJitter(6.50, 0.05), bs: 50000, l: rateJitter(7.30, 0.05), ls: 50000, min: 100, max: 50000 },
-        { sid: 2, nat: "Lionel Messi", b: rateJitter(7.20, 0.05), bs: 50000, l: rateJitter(8.10, 0.05), ls: 50000, min: 100, max: 50000 },
-        { sid: 3, nat: "Robert Lewandowski", b: rateJitter(8.50, 0.05), bs: 50000, l: rateJitter(9.60, 0.05), ls: 50000, min: 100, max: 50000 },
-        { sid: 4, nat: "Karim Benzema", b: rateJitter(9.00, 0.05), bs: 50000, l: rateJitter(10.20, 0.05), ls: 50000, min: 100, max: 50000 },
-        { sid: 5, nat: "Edinson Cavani", b: rateJitter(11.50, 0.05), bs: 50000, l: rateJitter(13.00, 0.05), ls: 50000, min: 100, max: 50000 },
-        { sid: 6, nat: "Luis Suarez", b: rateJitter(12.00, 0.05), bs: 50000, l: rateJitter(13.80, 0.05), ls: 50000, min: 100, max: 50000 },
-        { sid: 7, nat: "Neymar", b: rateJitter(10.50, 0.05), bs: 50000, l: rateJitter(12.00, 0.05), ls: 50000, min: 100, max: 50000 },
-        { sid: 8, nat: "Sergio Aguero", b: rateJitter(14.00, 0.05), bs: 50000, l: rateJitter(16.00, 0.05), ls: 50000, min: 100, max: 50000 },
-        { sid: 9, nat: "Olivier Giroud", b: rateJitter(15.00, 0.05), bs: 50000, l: rateJitter(17.50, 0.05), ls: 50000, min: 100, max: 50000 },
-        { sid: 10, nat: "Mohamed Salah", b: rateJitter(8.00, 0.05), bs: 50000, l: rateJitter(9.20, 0.05), ls: 50000, min: 100, max: 50000 },
-        { sid: 11, nat: "Kylian Mbappe", b: rateJitter(6.80, 0.05), bs: 50000, l: rateJitter(7.80, 0.05), ls: 50000, min: 100, max: 50000 },
-        { sid: 12, nat: "No Goal", b: rateJitter(3.20, 0.05), bs: 50000, l: rateJitter(3.50, 0.05), ls: 50000, min: 100, max: 25000 }
+        { sid: 1, nat: "Cristiano Ronaldo", b: 6.45, bs: 50000, l: 7.25, ls: 50000, min: 100, max: 50000 },
+        { sid: 2, nat: "Lionel Messi", b: 7.15, bs: 50000, l: 8.05, ls: 50000, min: 100, max: 50000 },
+        { sid: 3, nat: "Robert Lewandowski", b: 8.45, bs: 50000, l: 9.55, ls: 50000, min: 100, max: 50000 },
+        { sid: 4, nat: "Karim Benzema", b: 8.95, bs: 50000, l: 10.15, ls: 50000, min: 100, max: 50000 },
+        { sid: 5, nat: "Edinson Cavani", b: 11.45, bs: 50000, l: 12.95, ls: 50000, min: 100, max: 50000 },
+        { sid: 6, nat: "Luis Suarez", b: 11.95, bs: 50000, l: 13.75, ls: 50000, min: 100, max: 50000 },
+        { sid: 7, nat: "Neymar", b: 10.45, bs: 50000, l: 11.95, ls: 50000, min: 100, max: 50000 },
+        { sid: 8, nat: "Sergio Aguero", b: 13.95, bs: 50000, l: 15.95, ls: 50000, min: 100, max: 50000 },
+        { sid: 9, nat: "Olivier Giroud", b: 14.95, bs: 50000, l: 17.45, ls: 50000, min: 100, max: 50000 },
+        { sid: 10, nat: "Mohamed Salah", b: 7.95, bs: 50000, l: 9.15, ls: 50000, min: 100, max: 50000 },
+        { sid: 11, nat: "Kylian Mbappe", b: 6.75, bs: 50000, l: 7.75, ls: 50000, min: 100, max: 50000 },
+        { sid: 12, nat: "No Goal", b: 3.20, bs: 50000, l: 3.50, ls: 50000, min: 100, max: 25000 }
       ];
 
       const goalMethods = [
-        { sid: 21, nat: "Shot Goal", b: rateJitter(1.85, 0.02), bs: 50000, l: rateJitter(1.95, 0.02), ls: 50000, min: 100, max: 50000 },
-        { sid: 22, nat: "Header Goal", b: rateJitter(3.50, 0.05), bs: 50000, l: rateJitter(3.80, 0.05), ls: 50000, min: 100, max: 50000 },
-        { sid: 23, nat: "Penalty Goal", b: rateJitter(6.00, 0.05), bs: 50000, l: rateJitter(6.80, 0.05), ls: 50000, min: 100, max: 50000 },
-        { sid: 24, nat: "Free Kick Goal", b: rateJitter(12.00, 0.05), bs: 50000, l: rateJitter(14.00, 0.05), ls: 50000, min: 100, max: 50000 }
+        { sid: 21, nat: "Shot Goal", b: 1.85, bs: 50000, l: 1.95, ls: 50000, min: 100, max: 50000 },
+        { sid: 22, nat: "Header Goal", b: 3.50, bs: 50000, l: 3.80, ls: 50000, min: 100, max: 50000 },
+        { sid: 23, nat: "Penalty Goal", b: 6.00, bs: 50000, l: 6.80, ls: 50000, min: 100, max: 50000 },
+        { sid: 24, nat: "Free Kick Goal", b: 12.00, bs: 50000, l: 14.00, ls: 50000, min: 100, max: 50000 }
       ];
 
       sub = [
