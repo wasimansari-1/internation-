@@ -17,28 +17,16 @@ const TARGET_LOCAL_URL = process.env.LOCAL_URL || "http://127.0.0.1:5001/api/d24
 const POLL_INTERVAL_MS = 1200;
 
 const POPULAR_CASINO_TABLES = [
-  "goal2",
-  "superover2",
-  "dt20",
-  "ab20",
-  "card32",
-  "card32eu",
-  "roulette11",
-  "roulette12",
-  "teen",
-  "lucky7",
-  "lucky7eu",
-  "lucky6",
-  "baccarat",
-  "poker6",
-  "poker20",
-  "poker1day",
-  "poker",
-  "dolidana",
-  "mogambo",
-  "aaa",
-  "sicbo",
-  "worli3"
+  "goal2", "superover2", "lucky7", "lucky7eu", "lucky5",
+  "poker", "poker20", "poker6",
+  "dt20", "dt6", "dtl20", "dt2",
+  "ab20", "abj", "andarbahar_speed",
+  "card32", "card32eu", "card32virtual",
+  "teen", "teen20", "teen9", "teenjoker", "poison", "poison20", "teenunique", "teenunlimited", "teenunlimited_1day", "pointteen", "muflisteen", "instantteen", "testteen", "teenpatti_live",
+  "roulette13", "roulette11", "roulette12", "autoroulette", "speedroulette", "turkishroulette", "lightningroulette",
+  "baccarat", "baccarat2", "speedbaccarat_a", "speedbaccarat_b", "speedbaccarat_c", "peekbaccarat",
+  "dolidana", "mogambo", "aaa", "sicbo", "lightningdice", "craps", "bacbo",
+  "queen", "trio", "kbc", "meter", "cardrace", "inaminadika", "lottery", "hilo", "dreamcatcher", "fantan", "sidebetcity", "megaball", "cric20", "card3judgement", "raceto17", "trap", "crazytime", "monopoly", "footballstudio", "lightningdt", "videopoker", "balloonrace", "worli", "worli3", "bollywood", "casinowar"
 ];
 
 // All active sports supported by D247 in exact sequence
@@ -87,7 +75,41 @@ async function runCasinoLoop() {
       const matchDetailsBatch = {};
 
       // 1. Identify Priority Tables (Client watched tables + Top core tables)
-      const topCoreTables = ["lucky7", "superover2", "poker6", "dt20", "goal2", "teen", "card32", "ab20"];
+      const topCoreTables = [
+        "lucky7",
+        "lucky7eu",
+        "lucky5",
+        "superover2",
+        "poker",
+        "poker20",
+        "poker6",
+        "dt20",
+        "dt6",
+        "dtl20",
+        "goal2",
+        "teen",
+        "teen20",
+        "teen9",
+        "teenjoker",
+        "poison",
+        "poison20",
+        "teenunique",
+        "card32",
+        "card32eu",
+        "ab20",
+        "abj",
+        "roulette13",
+        "roulette11",
+        "roulette12",
+        "baccarat",
+        "baccarat2",
+        "worli3",
+        "worli",
+        "aaa"
+      ];
+      if (realDataStore.lastRequestedCasino?.gtype) {
+        clientWatchList.add(realDataStore.lastRequestedCasino.gtype);
+      }
       const prioritySet = new Set([
         ...topCoreTables,
         ...(currentActiveCasino ? [currentActiveCasino] : []),
@@ -95,9 +117,9 @@ async function runCasinoLoop() {
       ]);
       const priorityGtypes = Array.from(prioritySet);
 
-      // 2. Rotating background tables (4 tables per tick to prevent CDP/network congestion)
+      // 2. Rotating background tables (8 tables per tick to refresh all 81 tables continuously)
       const backgroundGtypes = POPULAR_CASINO_TABLES.filter(g => !prioritySet.has(g));
-      const chunkCount = 4;
+      const chunkCount = 8;
       const rotatingGtypes = [];
       if (backgroundGtypes.length > 0) {
         for (let i = 0; i < chunkCount; i++) {

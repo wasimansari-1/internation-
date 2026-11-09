@@ -216,19 +216,58 @@ function RateBox({ rate, size, type = 'back', label = '', prevRate = null, onSel
 const normalizeCasinoGtype = (gtype) => {
   if (!gtype) return gtype;
   const g = String(gtype).toLowerCase().trim();
+
+  // Teen Patti & Poison
+  if (g === "teenpoison_1day" || g === "poison" || g === "poison1day") return "poison";
+  if (g === "teen_unique" || g === "teenunique" || g === "unique") return "teenunique";
+  if (g === "teenpoison" || g === "poison20" || g === "poison_20") return "poison20";
+  if (g === "teenunlimited_1day" || g === "unlimited_1day") return "teenunlimited_1day";
+  if (g === "teenunlimited" || g === "unlimited20") return "teenunlimited";
+  if (g === "teen1day" || g === "teen20" || g === "teen_1day") return "teen20";
+  if (g === "teen9" || g === "openteen" || g === "teenopen") return "teen9";
+  if (g === "teenjoker") return "teenjoker";
+  if (g === "teen" || g === "teenpatti") return "teen";
+
+  // Roulette
+  if (g === "roulette" || g === "roulette13") return "roulette13";
+  if (g === "beachroulette" || g === "roulette12") return "roulette12";
+  if (g === "viproulette" || g === "roulette11") return "roulette11";
+  if (g === "ourroullete" || g === "uniqueroulette") return "ourroullete";
+
+  // Poker (poker1day on D247 is "poker", 20-20 is "poker20", 6-player is "poker6")
+  if (g === "poker6player" || g === "poker6" || g === "6playerpoker" || g === "poker6players") return "poker6";
+  if (g === "poker20") return "poker20";
+  if (g === "poker1day" || g === "poker" || g === "1daypoker" || g === "poker1") return "poker";
+
+  // Dragon Tiger
   if (g === "dragon_tiger" || g === "dragontiger" || g === "dt") return "dt20";
   if (g === "dt1day" || g === "dtfast") return "dt6";
+  if (g === "dtl" || g === "dtl20") return "dtl20";
+
+  // Andar Bahar
   if (g === "andar_bahar" || g === "andarbahar" || g === "ab") return "ab20";
-  if (g === "andar_bahar2" || g === "andarbahar2") return "abj";
+  if (g === "andar_bahar2" || g === "andarbahar2" || g === "andarbaharb") return "abj";
+
+  // 32 Cards
   if (g === "32cards" || g === "32card" || g === "32_cards") return "card32";
-  if (g === "32cardsb" || g === "32cardeu") return "card32eu";
-  if (g === "roulette" || g === "beachroulette") return "roulette11";
-  if (g === "viproulette") return "roulette12";
-  if (g === "poker6player" || g === "poker6" || g === "6playerpoker" || g === "poker6players") return "poker6";
-  if (g === "poker20" || g === "poker1day") return "poker20";
-  if (g === "poker") return "poker";
-  if (g === "matka" || g === "worli") return "worli3";
+  if (g === "32cardsb" || g === "32cardeu" || g === "32cards_b") return "card32eu";
+
+  // Lucky
+  if (g === "lucky7" || g === "lucky7a") return "lucky7";
+  if (g === "lucky7eu" || g === "lucky7b") return "lucky7eu";
+  if (g === "lucky6" || g === "lucky5" || g === "lucky") return "lucky5";
+
+  // Baccarat
+  if (g === "baccarat" || g === "baccarat_a" || g === "baccarata") return "baccarat";
+  if (g === "baccaratb" || g === "baccarat_b" || g === "baccarat2") return "baccarat2";
+
+  // Matka / Worli
+  if (g === "matka" || g === "worli3") return "worli3";
+  if (g === "worli") return "worli";
+
+  // Others
   if (g.includes("superover")) return "superover2";
+  if (g === "queenrace") return "queen";
   return g;
 };
 
@@ -265,6 +304,11 @@ const getPillBadgeText = (r, gtype) => {
       return win.charAt(1);
     }
     return win || '1';
+  }
+  if (gt === 'poker' || gt.includes('poker1day') || gt.includes('1daypoker')) {
+    if (win === '1') return 'A';
+    if (win === '2') return 'B';
+    return win || 'A';
   }
   if (gt.includes('worli') || gt.includes('matka')) {
     return win; // "Diamond", "World", "Taj", "Lords", "Riga", "Asia", "Gulf"
@@ -311,6 +355,9 @@ const getPillBadgeColor = (r, gtype) => {
   const gt = (gtype || '').toLowerCase();
   if (gt.includes('poker6')) {
     return '#15803d'; // Green circle matching D247 screenshot Image 8
+  }
+  if (gt === 'poker' || gt.includes('poker1day') || gt.includes('1daypoker')) {
+    return '#15803d'; // Green circle matching D247 screenshot Image 1
   }
   if (gt.includes('worli') || gt.includes('matka')) {
     return '#334155'; // Dark Slate matching D247 Matka pills
@@ -585,6 +632,14 @@ export default function DiamondExchangeView() {
   const [lastSync, setLastSync] = useState(Date.now());
   const highlightsCacheRef = useRef({});
   const activeGmidRef = useRef(null);
+  const activeCasinoTableRef = useRef(null);
+  activeCasinoTableRef.current = activeCasinoTable;
+  const isFetchingCasinoLiveRef = useRef(false);
+  const casinoDeadlineRef = useRef(0);
+  const lastCasinoRoundIdRef = useRef(null);
+  const superOverDeadlineRef = useRef(0);
+  const lastSuperOverRoundIdRef = useRef(null);
+  const lastSoMarketsRef = useRef([]);
   const [isUpdating, setIsUpdating] = useState(false);
   const [betSuccessMsg, setBetSuccessMsg] = useState(null);
 
@@ -749,17 +804,31 @@ export default function DiamondExchangeView() {
     }
   };
 
-  // 4. Fetch Active Casino Live Data (Every 1000ms for instant real-time odds)
+  // 4. Fetch Active Casino Live Data (Every 650ms for instant real-time odds)
   const fetchCasinoLive = async (gtype) => {
+    if (isFetchingCasinoLiveRef.current) return;
     try {
+      isFetchingCasinoLiveRef.current = true;
       const targetGtype = normalizeCasinoGtype(gtype);
+      const currentActive = normalizeCasinoGtype(activeCasinoTableRef.current?.gtype);
+      if (targetGtype !== currentActive && targetGtype !== 'superover2' && targetGtype !== 'goal2' && targetGtype !== 'goal') {
+        return; // Guard against stale in-flight response when user switched tables
+      }
       setIsUpdating(true);
       const liveRes = await axios.get(`/api/d247/casino/live/${targetGtype}`);
+      // Re-check after async network return
+      const currentStillActive = normalizeCasinoGtype(activeCasinoTableRef.current?.gtype);
+      if (targetGtype !== currentStillActive && targetGtype !== 'superover2' && targetGtype !== 'goal2' && targetGtype !== 'goal') {
+        return; // Drop stale packet!
+      }
       if (liveRes.data?.success && liveRes.data?.data) {
         if (targetGtype === 'superover2') {
           setSuperOverLiveData(liveRes.data.data);
         } else {
           setCasinoLiveData(liveRes.data.data);
+          if (typeof liveRes.data.data.leftSec === 'number') {
+            setLiveTimer(liveRes.data.data.leftSec);
+          }
         }
       }
       setLastSync(Date.now());
@@ -767,13 +836,22 @@ export default function DiamondExchangeView() {
       console.warn('Error fetching live casino table:', err.message);
     } finally {
       setIsUpdating(false);
+      isFetchingCasinoLiveRef.current = false;
     }
   };
 
   const fetchCasinoResults = async (gtype) => {
     try {
       const targetGtype = normalizeCasinoGtype(gtype);
+      const currentActive = normalizeCasinoGtype(activeCasinoTableRef.current?.gtype);
+      if (targetGtype !== currentActive && targetGtype !== 'superover2' && targetGtype !== 'goal2' && targetGtype !== 'goal') {
+        return;
+      }
       const resultsRes = await axios.get(`/api/d247/casino/results/${targetGtype}`);
+      const currentStillActive = normalizeCasinoGtype(activeCasinoTableRef.current?.gtype);
+      if (targetGtype !== currentStillActive && targetGtype !== 'superover2') {
+        return;
+      }
       if (resultsRes.data?.success && resultsRes.data?.data?.res) {
         if (targetGtype === 'superover2') {
           setSuperOverResults(resultsRes.data.data.res);
@@ -784,37 +862,67 @@ export default function DiamondExchangeView() {
     } catch (err) {}
   };
 
-  // Sync casino timer ONLY with casinoLiveData.leftSec
+  // Monotonic wall-clock sync for Casino Live Countdown (NEVER jumps, bounces, or fluctuates)
   useEffect(() => {
-    if (activeCasinoTable && casinoLiveData && typeof casinoLiveData.leftSec === 'number') {
-      setLiveTimer(casinoLiveData.leftSec);
-    }
-  }, [activeCasinoTable, casinoLiveData?.leftSec, casinoLiveData?.roundId]);
+    if (!casinoLiveData) return;
+    const srvSec = Number(casinoLiveData.leftSec ?? 0);
+    const roundId = casinoLiveData.roundId;
 
-  // Smooth 1-second countdown tick for active casino table
+    if (roundId !== lastCasinoRoundIdRef.current) {
+      lastCasinoRoundIdRef.current = roundId;
+      casinoDeadlineRef.current = Date.now() + srvSec * 1000;
+      setLiveTimer(srvSec);
+    } else {
+      const remaining = Math.max(0, Math.ceil((casinoDeadlineRef.current - Date.now()) / 1000));
+      if (Math.abs(remaining - srvSec) > 2) {
+        casinoDeadlineRef.current = Date.now() + srvSec * 1000;
+        setLiveTimer(srvSec);
+      }
+    }
+  }, [casinoLiveData?.roundId, casinoLiveData?.leftSec]);
+
+  // Smooth 250ms monotonic countdown for active casino table
   useEffect(() => {
     if (!activeCasinoTable) return;
     const interval = setInterval(() => {
-      setLiveTimer(sec => (sec > 0 ? sec - 1 : 0));
-    }, 1000);
+      if (casinoDeadlineRef.current > 0) {
+        const remaining = Math.max(0, Math.ceil((casinoDeadlineRef.current - Date.now()) / 1000));
+        setLiveTimer(remaining);
+      }
+    }, 250);
     return () => clearInterval(interval);
   }, [activeCasinoTable]);
 
-  // Sync Super Over timer ONLY with superOverLiveData.leftSec
+  // Monotonic wall-clock sync for Super Over 2 (NEVER jumps, bounces, or fluctuates)
   useEffect(() => {
     const isSuperOver = selectedMatch?.gmid === 'superover2' || (selectedMatch?.ename || '').toLowerCase().includes('super over');
-    if (isSuperOver && superOverLiveData && typeof superOverLiveData.leftSec === 'number') {
-      setSuperOverTimer(superOverLiveData.leftSec);
-    }
-  }, [selectedMatch, superOverLiveData?.leftSec, superOverLiveData?.roundId]);
+    if (!isSuperOver || !superOverLiveData) return;
+    const srvSec = Number(superOverLiveData.leftSec ?? 0);
+    const roundId = superOverLiveData.roundId;
 
-  // Smooth 1-second countdown tick for Super Over 2
+    if (roundId !== lastSuperOverRoundIdRef.current) {
+      lastSuperOverRoundIdRef.current = roundId;
+      superOverDeadlineRef.current = Date.now() + srvSec * 1000;
+      setSuperOverTimer(srvSec);
+    } else {
+      const remaining = Math.max(0, Math.ceil((superOverDeadlineRef.current - Date.now()) / 1000));
+      if (Math.abs(remaining - srvSec) > 2) {
+        superOverDeadlineRef.current = Date.now() + srvSec * 1000;
+        setSuperOverTimer(srvSec);
+      }
+    }
+  }, [selectedMatch, superOverLiveData?.roundId, superOverLiveData?.leftSec]);
+
+  // Smooth 250ms monotonic countdown for Super Over 2
   useEffect(() => {
     const isSuperOver = selectedMatch?.gmid === 'superover2' || (selectedMatch?.ename || '').toLowerCase().includes('super over');
     if (!isSuperOver) return;
     const interval = setInterval(() => {
-      setSuperOverTimer(sec => (sec > 0 ? sec - 1 : 0));
-    }, 1000);
+      if (superOverDeadlineRef.current > 0) {
+        const remaining = Math.max(0, Math.ceil((superOverDeadlineRef.current - Date.now()) / 1000));
+        setSuperOverTimer(remaining);
+      }
+    }, 250);
     return () => clearInterval(interval);
   }, [selectedMatch]);
 
@@ -886,8 +994,18 @@ export default function DiamondExchangeView() {
 
   // Ultra-Fast Real-Time Live SSE Stream + 1-Sec Tick for Open Casino Table (Zero Delay)
   useEffect(() => {
-    if (!activeCasinoTable) return;
+    if (!activeCasinoTable) {
+      setCasinoLiveData(null);
+      setCasinoResults([]);
+      setLiveTimer(0);
+      return;
+    }
     const targetGtype = normalizeCasinoGtype(activeCasinoTable.gtype);
+
+    // CRITICAL: Immediately clear previous table state to guarantee ZERO data mixing or fluctuation!
+    setCasinoLiveData(null);
+    setCasinoResults([]);
+    setLiveTimer(0);
 
     // Initial instant HTTP fetch
     fetchCasinoLive(targetGtype);
@@ -899,6 +1017,9 @@ export default function DiamondExchangeView() {
       eventSource = new EventSource(`/api/d247/casino/stream/${targetGtype}`);
       eventSource.onmessage = (event) => {
         try {
+          const currentTableGtype = normalizeCasinoGtype(activeCasinoTableRef.current?.gtype);
+          if (targetGtype !== currentTableGtype) return; // Drop stale stream message
+
           const payload = JSON.parse(event.data);
           if (payload?.success && payload?.data) {
             setCasinoLiveData(payload.data);
@@ -914,22 +1035,22 @@ export default function DiamondExchangeView() {
       };
     } catch (e) {}
 
-    // Dedicated ultra-fast 350ms interval for instant real-time casino card flip & rate update
+    // Dedicated ultra-fast 650ms interval for instant real-time casino card flip & rate update
     const casinoLiveTick = setInterval(() => {
       fetchCasinoLive(targetGtype);
-    }, 350);
+    }, 650);
 
-    // Winning results sync every 4 seconds
+    // Winning results sync every 3 seconds
     const casinoResultsTimer = setInterval(() => {
       fetchCasinoResults(targetGtype);
-    }, 4000);
+    }, 3000);
 
     return () => {
       if (eventSource) eventSource.close();
       clearInterval(casinoLiveTick);
       clearInterval(casinoResultsTimer);
     };
-  }, [activeCasinoTable?.gtype]);
+  }, [activeCasinoTable?.gtype, activeCasinoTable?.gmid]);
 
   // Ultra-Fast Real-Time Live SSE Stream + 1-Sec Tick for Super Over 2
   useEffect(() => {
@@ -965,7 +1086,7 @@ export default function DiamondExchangeView() {
 
     const soTick = setInterval(() => {
       fetchCasinoLive('superover2');
-    }, 350);
+    }, 1000);
 
     return () => {
       if (eventSource) eventSource.close();
@@ -1067,6 +1188,117 @@ export default function DiamondExchangeView() {
       );
     }
 
+    // 0.1 Poker 1-Day & 20-20 Poker (Exact D247 layout matching user screenshot)
+    if (gtype === 'poker' || gtype === 'poker1day' || gtype === 'poker20' || (activeCasinoTable?.name || '').toLowerCase().includes('poker')) {
+      const pACards = [cardList[0] || '1', cardList[1] || '1'];
+      const pBCards = [cardList[2] || '1', cardList[3] || '1'];
+      const boardCards = [cardList[4] || '1', cardList[5] || '1', cardList[6] || '1', cardList[7] || '1', cardList[8] || '1'];
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', width: '100%' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-around', width: '100%', maxWidth: '380px' }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '11px', color: '#38bdf8', fontWeight: 800, marginBottom: '4px' }}>PLAYER A</div>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                <CardDisplay cardStr={pACards[0]} />
+                <CardDisplay cardStr={pACards[1]} />
+              </div>
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '11px', color: '#ef4444', fontWeight: 800, marginBottom: '4px' }}>PLAYER B</div>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                <CardDisplay cardStr={pBCards[0]} />
+                <CardDisplay cardStr={pBCards[1]} />
+              </div>
+            </div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 800, marginBottom: '4px' }}>BOARD</div>
+            <div style={{ display: 'flex', gap: '4px' }}>
+              {boardCards.map((c, ci) => <CardDisplay key={ci} cardStr={c} />)}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 1.0 Teen Patti Poison (Exact D247 layout: Poison Card at top, Player A & B 3 cards)
+    if (gtype === 'poison' || gtype === 'poison20' || gtype.includes('poison')) {
+      const poisonCard = cardList[0] || '1';
+      const playerACards = [cardList[1] || '1', cardList[2] || '1', cardList[3] || '1'];
+      const playerBCards = [cardList[4] || '1', cardList[5] || '1', cardList[6] || '1'];
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', width: '100%' }}>
+          <div style={{ textAlign: 'center', background: 'rgba(239, 68, 68, 0.1)', padding: '6px 16px', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
+            <div style={{ fontSize: '11px', color: '#ef4444', fontWeight: 900, marginBottom: '4px', letterSpacing: '1px' }}>POISON CARD</div>
+            <CardDisplay cardStr={poisonCard} />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-around', width: '100%', maxWidth: '380px' }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '11px', color: '#38bdf8', fontWeight: 800, marginBottom: '4px' }}>PLAYER A</div>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                {playerACards.map((c, ci) => <CardDisplay key={ci} cardStr={c} />)}
+              </div>
+            </div>
+            <div style={{ alignSelf: 'center', fontWeight: 900, color: '#f59e0b', fontSize: '14px' }}>VS</div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '11px', color: '#ef4444', fontWeight: 800, marginBottom: '4px' }}>PLAYER B</div>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                {playerBCards.map((c, ci) => <CardDisplay key={ci} cardStr={c} />)}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 1.1 Unique Teen Patti (Exact D247 layout: 6 selection cards)
+    if (gtype === 'teenunique' || gtype.includes('unique')) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', width: '100%' }}>
+          <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 700, textAlign: 'center' }}>
+            Select any 3 cards of your choice and experience TeenPatti in a unique way 👆
+          </div>
+          <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
+            {[1, 2, 3, 4, 5, 6].map(num => (
+              <div key={num} style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '12px', fontWeight: 900, color: '#f8fafc', marginBottom: '4px' }}>{num}</div>
+                <CardDisplay cardStr={cardList[num - 1] || '1'} />
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // 1.2 Roulette (Live Wheel)
+    if (cat.includes('roulette') || gtype.includes('roulette')) {
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '20px', padding: '6px' }}>
+          <div style={{
+            width: '46px',
+            height: '46px',
+            borderRadius: '50%',
+            background: 'conic-gradient(#ef4444 0% 12.5%, #0f172a 12.5% 25%, #ef4444 25% 37.5%, #0f172a 37.5% 50%, #ef4444 50% 62.5%, #0f172a 62.5% 75%, #ef4444 75% 87.5%, #10b981 87.5% 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 0 16px rgba(0,0,0,0.8)',
+            border: '2px solid #e2e8f0'
+          }}>
+            <div style={{ width: '18px', height: '18px', borderRadius: '50%', background: '#020617', border: '1px solid #94a3b8' }} />
+          </div>
+          <div>
+            <div style={{ fontSize: '13px', fontWeight: 800, color: '#f8fafc' }}>
+              {activeCasinoTable.name}
+            </div>
+            <div style={{ fontSize: '11px', color: '#38bdf8' }}>
+              European Live Wheel • Authentic D247 Rates
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     // 1. Dragon Tiger
     if (cat.includes('dragon') || gtype.includes('dt')) {
       const dragonCard = cardList[0] || '1';
@@ -1147,6 +1379,109 @@ export default function DiamondExchangeView() {
               <div style={{ display: 'flex', gap: '4px', maxWidth: '200px', overflowX: 'auto' }}>
                 {baharCards.length > 0 ? baharCards.map((c, i) => <CardDisplay key={i} cardStr={c} />) : <CardDisplay cardStr="1" />}
               </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 4.1 32 Cards (Player 8, Player 9, Player 10, Player 11)
+    if (cat.includes('32') || gtype.includes('32card') || gtype.includes('card32')) {
+      const p8 = cardList[0] || '1';
+      const p9 = cardList[1] || '1';
+      const p10 = cardList[2] || '1';
+      const p11 = cardList[3] || '1';
+      return (
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
+          {[
+            { name: 'PLAYER 8', card: p8, color: '#38bdf8' },
+            { name: 'PLAYER 9', card: p9, color: '#f59e0b' },
+            { name: 'PLAYER 10', card: p10, color: '#10b981' },
+            { name: 'PLAYER 11', card: p11, color: '#ef4444' }
+          ].map((p, pi) => (
+            <div key={pi} style={{ textAlign: 'center', background: '#0a101d', padding: '6px 10px', borderRadius: '8px', border: '1px solid #1e293b' }}>
+              <div style={{ fontSize: '10px', fontWeight: 800, color: p.color, marginBottom: '4px' }}>{p.name}</div>
+              <CardDisplay cardStr={p.card} />
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    // 4.2 Baccarat (Player vs Banker)
+    if (cat.includes('baccarat') || gtype.includes('baccarat')) {
+      const playerCards = [cardList[0] || '1', cardList[1] || '1', ...(cardList[4] ? [cardList[4]] : [])];
+      const bankerCards = [cardList[2] || '1', cardList[3] || '1', ...(cardList[5] ? [cardList[5]] : [])];
+      return (
+        <div style={{ display: 'flex', justifyContent: 'space-around', width: '100%', maxWidth: '380px' }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '11px', color: '#38bdf8', fontWeight: 800, marginBottom: '4px' }}>PLAYER</div>
+            <div style={{ display: 'flex', gap: '4px' }}>
+              {playerCards.map((c, ci) => <CardDisplay key={ci} cardStr={c} />)}
+            </div>
+          </div>
+          <div style={{ alignSelf: 'center', fontWeight: 900, color: '#f59e0b', fontSize: '14px' }}>VS</div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '11px', color: '#ef4444', fontWeight: 800, marginBottom: '4px' }}>BANKER</div>
+            <div style={{ display: 'flex', gap: '4px' }}>
+              {bankerCards.map((c, ci) => <CardDisplay key={ci} cardStr={c} />)}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 4.3 Goal 2 (Virtual Football)
+    if (gtype === 'goal2' || gtype.includes('goal')) {
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '20px', padding: '6px' }}>
+          <div style={{
+            width: '46px',
+            height: '46px',
+            borderRadius: '50%',
+            background: '#1e293b',
+            border: '2px solid #38bdf8',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '22px'
+          }}>
+            ⚽
+          </div>
+          <div>
+            <div style={{ fontSize: '14px', fontWeight: 900, color: '#f8fafc' }}>
+              Score: {casinoLiveData?.score || '0 0'}
+            </div>
+            <div style={{ fontSize: '11px', color: '#38bdf8' }}>
+              Who Will Goal Next? • Authentic D247 Player Odds
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 4.4 Wheel & Trivia Games (Crazy Time, Monopoly, Dream Catcher, KBC)
+    if (cat.includes('wheel') || gtype.includes('crazy') || gtype.includes('monopoly') || gtype.includes('dream') || gtype === 'kbc') {
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '6px' }}>
+          <div style={{
+            width: '46px',
+            height: '46px',
+            borderRadius: '50%',
+            background: 'conic-gradient(#f59e0b 0% 25%, #38bdf8 25% 50%, #ec4899 50% 75%, #10b981 75% 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 0 14px rgba(0,0,0,0.6)'
+          }}>
+            <div style={{ width: '18px', height: '18px', borderRadius: '50%', background: '#020617' }} />
+          </div>
+          <div>
+            <div style={{ fontSize: '13px', fontWeight: 900, color: '#f8fafc' }}>
+              {activeCasinoTable.name}
+            </div>
+            <div style={{ fontSize: '11px', color: '#f59e0b' }}>
+              Live Multiplier Game • Real-Time Odds
             </div>
           </div>
         </div>
@@ -2437,9 +2772,12 @@ export default function DiamondExchangeView() {
 
                   if (isSuperOver) {
                     if (soSource?.markets && soSource.markets.length > 0) {
-                      const isRoundSuspended = superOverTimer <= 0;
-                      marketsToRender = soSource.markets.map((m, mIdx) => {
-                        const isMarketSuspended = isRoundSuspended || m.status === 'SUSPENDED';
+                      lastSoMarketsRef.current = soSource.markets;
+                    }
+                    const marketsSource = (soSource?.markets && soSource.markets.length > 0) ? soSource.markets : lastSoMarketsRef.current;
+                    if (marketsSource && marketsSource.length > 0) {
+                      marketsToRender = marketsSource.map((m, mIdx) => {
+                        const isMarketSuspended = m.status === 'SUSPENDED' || superOverTimer <= 0 || soSource?.roundStatus === 'SUSPENDED';
                         return {
                           mid: m.mid || `so_${mIdx}`,
                           mname: m.mname || (mIdx === 0 ? 'BOOKMAKER' : 'FANCY'),
@@ -2458,10 +2796,10 @@ export default function DiamondExchangeView() {
                               sid: r.sid || rIdx + 1,
                               nat: r.nat || (rIdx === 0 ? 'IND' : 'ENG'),
                               gstatus: isRunnerSusp ? 'SUSPENDED' : 'ACTIVE',
-                              b1: isRunnerSusp ? null : bOdds,
-                              bs1: isRunnerSusp ? null : (b1 && Number(b1.size) > 0 ? String(Math.round(b1.size)) : '300K'),
-                              l1: isRunnerSusp ? null : lOdds,
-                              ls1: isRunnerSusp ? null : (l1 && Number(l1.size) > 0 ? String(Math.round(l1.size)) : '300K')
+                              b1: bOdds,
+                              bs1: b1 && Number(b1.size) > 0 ? String(Math.round(b1.size)) : (bOdds ? '300K' : null),
+                              l1: lOdds,
+                              ls1: l1 && Number(l1.size) > 0 ? String(Math.round(l1.size)) : (lOdds ? '300K' : null)
                             };
                           })
                         };
@@ -2813,10 +3151,15 @@ export default function DiamondExchangeView() {
                             setMatchOddsData(null);
                             setMatchGameDetail(null);
                             const isSo = match.gmid === 'superover2' || (match.ename || '').toLowerCase().includes('super over');
+                            const isGoal2 = match.gmid === 'goal2' || (match.ename || '').toLowerCase().includes('goal');
                             fetchMatchDetails(match.gmid, match.etid || sportsCategory);
                             if (isSo) {
                               fetchCasinoLive('superover2');
                               fetchCasinoResults('superover2');
+                            }
+                            if (isGoal2) {
+                              fetchCasinoLive('goal2');
+                              fetchCasinoResults('goal2');
                             }
                           }}
                           style={{
@@ -3338,22 +3681,19 @@ export default function DiamondExchangeView() {
                           {/* Runner Rows matching D247 */}
                           <div style={{ padding: '2px 0' }}>
                             {runners.map((runner, rIdx) => {
-                              const isSusp = liveTimer <= 0 || runner.gstatus === 'SUSPENDED';
+                              const isSusp = runner.gstatus === 'SUSPENDED' || runner.status === 'SUSPENDED';
                               const minFormatted = runner.min ? `Min: ${Number(runner.min).toFixed(2)}` : 'Min: 100.00';
                               const maxFormatted = runner.max ? `Max: ${runner.max >= 100000 ? `${(runner.max/100000).toFixed(0)}L` : `${(runner.max/1000).toFixed(0)}K`}` : 'Max: 50K';
                               const currentGtype = (activeCasinoTable?.gtype || casinoLiveData?.gtype || '').toLowerCase();
-                              let runnerTitle = (runner.nat !== undefined && runner.nat !== null && runner.nat !== '' && runner.nat !== 'undefined')
+                              let runnerTitle = (runner.nat !== undefined && runner.nat !== null && runner.nat !== '' && runner.nat !== 'undefined' && !runner.nat.startsWith('Runner'))
                                 ? String(runner.nat)
                                 : (runner.n !== undefined && runner.n !== null && runner.n !== '' && runner.n !== 'undefined'
                                   ? String(runner.n)
-                                  : (runner.sid !== undefined && runner.sid !== null && runner.sid !== 'undefined' && !isNaN(runner.sid)
-                                    ? `Runner ${runner.sid}`
-                                    : `Runner ${rIdx + 1}`));
-                              if (currentGtype.includes('roulette') && (subtype === 'main' || !subtype)) {
-                                if (runner.sid !== undefined && !isNaN(runner.sid)) {
-                                  runnerTitle = String(Number(runner.sid) - 1);
-                                }
-                              }
+                                  : (currentGtype.includes('roulette') && runner.sid !== undefined && !isNaN(runner.sid)
+                                    ? String(Number(runner.sid) - 1)
+                                    : (runner.sid !== undefined && runner.sid !== null && runner.sid !== 'undefined' && !isNaN(runner.sid)
+                                      ? `Runner ${runner.sid}`
+                                      : `Runner ${rIdx + 1}`)));
 
                               return (
                                 <div
@@ -3648,8 +3988,11 @@ export default function DiamondExchangeView() {
                     {/* Action Button */}
                     <button
                       onClick={() => {
+                        setCasinoLiveData(null);
+                        setCasinoResults([]);
+                        setLiveTimer(0);
                         setActiveCasinoTable(table);
-                        fetchCasinoLive(table.gtype);
+                        activeCasinoTableRef.current = table;
                         window.scrollTo({ top: 180, behavior: 'smooth' });
                       }}
                       style={{

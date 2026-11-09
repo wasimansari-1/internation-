@@ -74,15 +74,32 @@ let browserInstance = null;
 let pageInstance = null;
 let isStarting = false;
 let apiQueue = Promise.resolve();
+let isLoggingIn = false;
+let lastLoginAttempt = 0;
 
 // Helper to perform in-browser demo login with verification
 export async function performDemoLogin(page) {
   if (!page || page.isClosed()) return false;
+  if (isLoggingIn) return false;
+  const now = Date.now();
+  if (now - lastLoginAttempt < 15000) return false;
+  isLoggingIn = true;
+  lastLoginAttempt = now;
   try {
-    for (let attempt = 0; attempt < 3; attempt++) {
+    const isChallenged = await page.evaluate(() => {
+      const title = document.title || "";
+      const text = document.body ? document.body.innerText : "";
+      return title.includes("Reload a page") || title.includes("Just a moment") || text.includes("Cloudflare");
+    }).catch(() => false);
+
+    if (isChallenged) {
+      return false;
+    }
+
+    for (let attempt = 0; attempt < 2; attempt++) {
       const isAlreadyLoggedIn = await page.evaluate(() => {
         return Boolean(document.body.innerText.includes("Balance:") || document.body.innerText.includes("Demo"));
-      });
+      }).catch(() => false);
       if (isAlreadyLoggedIn) return true;
 
       await page.evaluate(() => {
@@ -90,12 +107,14 @@ export async function performDemoLogin(page) {
           b.innerText.toLowerCase().includes("demo")
         );
         if (btn) btn.click();
-      });
-      await new Promise(r => setTimeout(r, 2000));
+      }).catch(() => {});
+      await new Promise(r => setTimeout(r, 1000));
     }
     return true;
   } catch (e) {
     return false;
+  } finally {
+    isLoggingIn = false;
   }
 }
 
@@ -190,11 +209,9 @@ export async function evalD247Api(endpoint, rawPayload = {}) {
   try {
     let res = await executeD247Direct(endpoint, rawPayload);
     if (res?.status === 401 || res?.msg === "Please Login") {
-      console.warn("[D247 Engine] Session expired on D247. Re-authenticating demo session...");
-      if (pageInstance && !pageInstance.isClosed()) {
-        await performDemoLogin(pageInstance).catch(() => {});
+      if (pageInstance && !pageInstance.isClosed() && !isLoggingIn && (Date.now() - lastLoginAttempt > 15000)) {
+        performDemoLogin(pageInstance).catch(() => {});
       }
-      res = await executeD247Direct(endpoint, rawPayload);
     }
     return res;
   } catch (err) {
@@ -321,9 +338,10 @@ export async function startD247Engine() {
       }
     } catch (e) {}
 
+    const isMac = process.platform === "darwin";
     browserInstance = await puppeteer.launch({
       executablePath: chromePath,
-      headless: "new",
+      headless: isMac ? false : "new",
       args: launchArgs
     });
 
@@ -417,59 +435,81 @@ export async function startD247Engine() {
             console.log(`[D247 Engine] Real Demo Token: ${payload.data.token}`);
           }
         }
+
+        // Real Sports Highlights (Cricket, Football, Tennis, etc.)
+        else if (url.includes("highlighthomePrivate")) {
+          const etidMatch = url.match(/etid=(\d+)/);
+          const etid = etidMatch ? Number(etidMatch[1]) : 4;
+          const t1 = Array.isArray(payload?.data?.t1) ? payload.data.t1 : (Array.isArray(payload?.data) ? payload.data : []);
+          const t2 = Array.isArray(payload?.data?.t2) ? payload.data.t2 : [];
+          const allRaw = [...t1, ...t2];
+          if (allRaw.length > 0) {
+            const formatted = allRaw.map(m => formatRealMatch(m, etid)).filter(m => m.ename && m.ename.length > 0);
+            if (formatted.length > 0) {
+              realDataStore.sportsMatches[etid] = formatted;
+              realDataStore.sportsMatches[String(etid)] = formatted;
+              console.log(`[D247 Engine] Intercepted Real Sports Highlights for etid=${etid}: ${formatted.length} matches`);
+            }
+          }
+        }
+
+        // Real Casino Live Table Data (data2)
+        else if (url.includes("casino/data2")) {
+          const gtypeMatch = url.match(/gtype=([^&]+)/);
+          if (gtypeMatch && payload?.data) {
+            const gt = normalizeCasinoGtype(gtypeMatch[1]);
+            const d = payload.data;
+            const runners = Array.isArray(d.sub) ? d.sub : [];
+            const rawCardStr = d.card || "";
+            const parsedCardList = rawCardStr ? rawCardStr.split(/[,|]/).map(s => s.trim()).filter(Boolean) : [];
+            const result = {
+              roundId: String(d.mid || Date.now()),
+              leftSec: Number(d.lt ?? (d.leftSec ?? 0)),
+              roundStatus: (d.status === "SUSPENDED" || (Number(d.lt) <= 0 && d.gstatus === "SUSPENDED")) ? "SUSPENDED" : "OPEN",
+              gtype: d.gtype || gt,
+              card: rawCardStr,
+              cards: parsedCardList,
+              remark: d.remark || d.rdesc || "",
+              score: d.card || "0 0",
+              sub: runners.map((r, rIdx) => ({
+                sid: r.sid || r.i || (rIdx + 1),
+                nat: r.nat || r.n || r.name || `Runner ${r.sid || rIdx + 1}`,
+                b: Number(r.b || 0),
+                bs: Number(r.bs || 0),
+                l: Number(r.l || 0),
+                ls: Number(r.ls || 0),
+                gstatus: (r.gstatus === "SUSPENDED" || r.status === "SUSPENDED") ? "SUSPENDED" : "ACTIVE",
+                min: r.min || 100,
+                max: r.max || 100000,
+                subtype: r.subtype || "main"
+              }))
+            };
+            realDataStore.casinoLive[gt] = result;
+            console.log(`[D247 Engine] Intercepted Real Live Casino Table: ${gt} (Round ${result.roundId}, ${result.sub.length} runners)`);
+          }
+        }
       } catch (err) {}
     });
 
-    // Pre-load session cookies into browser before navigation
-    if (fs.existsSync(SESSION_FILE)) {
-      try {
-        const stored = JSON.parse(fs.readFileSync(SESSION_FILE, "utf-8"));
-        const cookieStr = stored.cookies || realDataStore.sessionCookies || "";
-        if (cookieStr) {
-          const cookieList = cookieStr.split(";").map(c => {
-            const [name, ...val] = c.trim().split("=");
-            if (!name) return null;
-            return {
-              name: name.trim(),
-              value: val.join("=").trim(),
-              domain: ".d247.com",
-              path: "/"
-            };
-          }).filter(Boolean);
-          if (cookieList.length > 0) {
-            await pageInstance.setCookie(...cookieList);
-            console.log(`[D247 Engine] Injected ${cookieList.length} session cookies into Chrome.`);
-          }
-        }
-      } catch (ce) {}
-    }
-
     try {
       console.log("[D247 Engine] Loading https://d247.com/ ...");
-      await pageInstance.goto("https://d247.com/", { waitUntil: "domcontentloaded", timeout: 25000 });
+      await pageInstance.goto("https://d247.com/", { waitUntil: "networkidle2", timeout: 30000 });
       
       let pageTitle = await pageInstance.title();
       console.log(`[D247 Engine] Landed on ${pageInstance.url()} | Title: ${pageTitle}`);
 
-      // If "Reload a page" or "Access Denied" is encountered, reload as instructed by the page
-      if (pageTitle.toLowerCase().includes("denied") || pageTitle.toLowerCase().includes("reload")) {
-        console.warn("[D247 Engine] Notice: Reloading page to clear gate...");
-        await new Promise(r => setTimeout(r, 2000));
-        await pageInstance.reload({ waitUntil: "domcontentloaded", timeout: 20000 }).catch(() => {});
-        pageTitle = await pageInstance.title();
-        console.log(`[D247 Engine] Title after reload: ${pageTitle}`);
-      }
-
       console.log("[D247 Engine] Performing In-Browser Demo Login...");
-      await performDemoLogin(pageInstance).catch(() => {});
+      await pageInstance.evaluate(() => {
+        const btn = Array.from(document.querySelectorAll("button, a")).find(b =>
+          b.innerText.toLowerCase().includes("demo")
+        );
+        if (btn) btn.click();
+      }).catch(() => {});
+      await new Promise(r => setTimeout(r, 4000));
 
-      // Only save session cookies if not blocked
-      if (!pageTitle.toLowerCase().includes("denied") && !pageTitle.toLowerCase().includes("reload")) {
-        const cookies = await pageInstance.cookies();
-        if (cookies && cookies.length > 0) {
-          realDataStore.sessionCookies = cookies.map(c => `${c.name}=${c.value}`).join("; ");
-        }
-        console.log(`[D247 Engine] Engine Online! Cookies Captured: ${cookies?.length || 0}`);
+      const cookies = await pageInstance.cookies();
+      if (cookies && cookies.length > 0) {
+        realDataStore.sessionCookies = cookies.map(c => `${c.name}=${c.value}`).join("; ");
         try {
           fs.writeFileSync(SESSION_FILE, JSON.stringify({
             cookies: realDataStore.sessionCookies,
@@ -478,6 +518,7 @@ export async function startD247Engine() {
           }, null, 2));
         } catch (e) {}
       }
+      console.log(`[D247 Engine] Engine Online! Cookies Captured: ${cookies?.length || 0}`);
       realDataStore.isEngineActive = true;
     } catch (navErr) {
       console.warn("[D247 Engine] Initial navigation notice:", navErr.message);
@@ -839,35 +880,109 @@ export async function refreshAllSports() {
 let pollInterval = null;
 function startBackgroundPollLoop() {
   if (pollInterval) return;
-  const sportsCycle = [4, 1, 2, 8];
+  const sportsCycle = [4, 1, 2, 8, 10];
   let cycleIdx = 0;
 
   pollInterval = setInterval(async () => {
     try {
       const etid = sportsCycle[cycleIdx % sportsCycle.length];
       cycleIdx++;
-      await fetchRealSportHighlights(etid);
+
+      // 1. In-page active fetch (Direct in Chrome context - bypasses Cloudflare)
+      if (pageInstance && !pageInstance.isClosed()) {
+        await pageInstance.evaluate(async (eid) => {
+          try {
+            const enc = window.CryptoJS ? window.CryptoJS.AES.encrypt(JSON.stringify({ etid: eid, type: "all" }), "cae7b808-8b1e-4f47-87a5-1a4b6a08030e").toString() : null;
+            if (enc) {
+              await fetch(`/api/front/highlighthomePrivate?etid=${eid}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ data: enc }),
+                credentials: "include"
+              });
+            }
+          } catch (e) {}
+        }, etid).catch(() => {});
+
+        // Fetch active casino table if user is viewing one
+        if (realDataStore.lastRequestedCasino?.gtype) {
+          const gt = realDataStore.lastRequestedCasino.gtype;
+          await pageInstance.evaluate(async (t) => {
+            try {
+              const enc = window.CryptoJS ? window.CryptoJS.AES.encrypt(JSON.stringify({ ismob: 1, type: t }), "cae7b808-8b1e-4f47-87a5-1a4b6a08030e").toString() : null;
+              if (enc) {
+                await fetch(`/api/front/casino/data2?gtype=${t}`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ data: enc }),
+                  credentials: "include"
+                });
+              }
+            } catch (e) {}
+          }, gt).catch(() => {});
+        }
+      }
+
+      await fetchRealSportHighlights(etid).catch(() => {});
     } catch (err) {}
-  }, 4000);
+  }, 2500);
 }
 
 export function normalizeCasinoGtype(gtype) {
   if (!gtype) return gtype;
   const g = String(gtype).toLowerCase().trim();
-  if (g === "dragon_tiger" || g === "dragontiger" || g === "dt") return "dt20";
-  if (g === "dt1day" || g === "dtfast") return "dt6";
-  if (g === "andar_bahar" || g === "andarbahar" || g === "ab") return "ab20";
-  if (g === "andar_bahar2" || g === "andarbahar2") return "abj";
-  if (g === "32cards" || g === "32card" || g === "32_cards") return "card32";
-  if (g === "32cardsb" || g === "32cardeu") return "card32eu";
-  if (g === "roulette" || g === "beachroulette") return "roulette11";
-  if (g === "viproulette") return "roulette12";
+
+  // Teen Patti & Poison
+  if (g === "teenpoison_1day" || g === "poison" || g === "poison1day") return "poison";
+  if (g === "teen_unique" || g === "teenunique" || g === "unique") return "teenunique";
+  if (g === "teenpoison" || g === "poison20" || g === "poison_20") return "poison20";
+  if (g === "teenunlimited_1day" || g === "unlimited_1day") return "teenunlimited_1day";
+  if (g === "teenunlimited" || g === "unlimited20") return "teenunlimited";
+  if (g === "teen1day" || g === "teen20" || g === "teen_1day") return "teen20";
+  if (g === "teen9" || g === "openteen" || g === "teenopen") return "teen9";
+  if (g === "teenjoker") return "teenjoker";
+  if (g === "teen" || g === "teenpatti") return "teen";
+
+  // Roulette
+  if (g === "roulette" || g === "roulette13") return "roulette13";
+  if (g === "beachroulette" || g === "roulette12") return "roulette12";
+  if (g === "viproulette" || g === "roulette11") return "roulette11";
+  if (g === "ourroullete" || g === "uniqueroulette") return "ourroullete";
+
+  // Poker
   if (g === "poker6player" || g === "poker6" || g === "6playerpoker" || g === "poker6players") return "poker6";
   if (g === "poker20") return "poker20";
-  if (g === "poker1day") return "poker1day";
-  if (g === "poker") return "poker";
-  if (g === "matka" || g === "worli") return "worli3";
+  if (g === "poker1day" || g === "poker" || g === "1daypoker" || g === "poker1") return "poker";
+
+  // Dragon Tiger
+  if (g === "dragon_tiger" || g === "dragontiger" || g === "dt") return "dt20";
+  if (g === "dt1day" || g === "dtfast") return "dt6";
+  if (g === "dtl" || g === "dtl20") return "dtl20";
+
+  // Andar Bahar
+  if (g === "andar_bahar" || g === "andarbahar" || g === "ab") return "ab20";
+  if (g === "andar_bahar2" || g === "andarbahar2" || g === "andarbaharb") return "abj";
+
+  // 32 Cards
+  if (g === "32cards" || g === "32card" || g === "32_cards") return "card32";
+  if (g === "32cardsb" || g === "32cardeu" || g === "32cards_b") return "card32eu";
+
+  // Lucky
+  if (g === "lucky7" || g === "lucky7a") return "lucky7";
+  if (g === "lucky7eu" || g === "lucky7b") return "lucky7eu";
+  if (g === "lucky6" || g === "lucky5" || g === "lucky") return "lucky5";
+
+  // Baccarat
+  if (g === "baccarat" || g === "baccarat_a" || g === "baccarata") return "baccarat";
+  if (g === "baccaratb" || g === "baccarat_b" || g === "baccarat2") return "baccarat2";
+
+  // Matka / Worli
+  if (g === "matka" || g === "worli3") return "worli3";
+  if (g === "worli") return "worli";
+
+  // Others
   if (g.includes("superover")) return "superover2";
+  if (g === "queenrace") return "queen";
   return g;
 }
 
@@ -899,12 +1014,12 @@ export async function fetchRealCasinoTableLive(gtype) {
         realDataStore.casinoResults[normalized] = results;
       }
 
-      const isRoundSuspended = Number(t1.lt) <= 0;
+      const isRoundSuspended = Number(t1.lt) <= 0 && t1.status === "SUSPENDED";
       let allRunners = [];
 
       rawMarkets.forEach(m => {
         const runners = Array.isArray(m.section) ? m.section : [];
-        const isMarketSuspended = isRoundSuspended || m.status === "SUSPENDED";
+        const isMarketSuspended = m.status === "SUSPENDED";
 
         runners.forEach(r => {
           const oddsList = Array.isArray(r.odds) ? r.odds : [];
@@ -912,15 +1027,15 @@ export async function fetchRealCasinoTableLive(gtype) {
           const l1 = oddsList.find(o => o.oname === "lay1" || (o.otype === "lay" && o.tno === 0));
           const bOdds = Number(b1?.odds || 0);
           const lOdds = Number(l1?.odds || 0);
-          const isRunnerSuspended = isMarketSuspended || r.gstatus === "SUSPENDED" || (!bOdds && !lOdds);
+          const isRunnerSuspended = isMarketSuspended || r.gstatus === "SUSPENDED";
 
           allRunners.push({
             sid: r.sid,
             nat: r.nat || `Runner ${r.sid}`,
-            b: isRunnerSuspended ? 0 : bOdds,
-            bs: isRunnerSuspended ? 0 : Number(b1?.size || 0),
-            l: isRunnerSuspended ? 0 : lOdds,
-            ls: isRunnerSuspended ? 0 : Number(l1?.size || 0),
+            b: bOdds,
+            bs: Number(b1?.size || 0),
+            l: lOdds,
+            ls: Number(l1?.size || 0),
             gstatus: isRunnerSuspended ? "SUSPENDED" : "ACTIVE",
             min: m.min || 100,
             max: m.max || 100000,
@@ -989,8 +1104,8 @@ export async function fetchRealCasinoTableLive(gtype) {
 
     const result = {
       roundId: String(d.mid || Date.now()),
-      leftSec: Number(d.lt ?? 0),
-      roundStatus: Number(d.lt) <= 0 ? "SUSPENDED" : "OPEN",
+      leftSec: Number(d.lt ?? (d.leftSec ?? 0)),
+      roundStatus: (d.status === "SUSPENDED" || (Number(d.lt) <= 0 && d.gstatus === "SUSPENDED")) ? "SUSPENDED" : "OPEN",
       gtype: d.gtype || gtype,
       card: rawCardStr,
       cards: parsedCardList,
@@ -999,12 +1114,15 @@ export async function fetchRealCasinoTableLive(gtype) {
       sub: runners.map((r, rIdx) => {
         const runnerId = r.sid || r.i || (rIdx + 1);
         const runnerName = (r.nat !== undefined && r.nat !== null && r.nat !== "") ? String(r.nat) : (r.n !== undefined && r.n !== null && r.n !== "" ? String(r.n) : (r.name || `Runner ${runnerId}`));
-        const isRoundSusp = Number(d.lt) <= 0;
-        const runnerStatus = isRoundSusp ? "SUSPENDED" : (r.gstatus === "SUSPENDED" ? "SUSPENDED" : "ACTIVE");
+        const isRunnerSusp = (r.gstatus === "SUSPENDED" || r.status === "SUSPENDED");
         let runnerSubtype = r.subtype || "main";
         if (normalized === "poker6") {
           if (Number(runnerId) >= 11 && Number(runnerId) <= 16) runnerSubtype = "hands";
           else if (Number(runnerId) >= 21) runnerSubtype = "pattern";
+        } else if (normalized === "goal2" || normalized === "goal") {
+          if (Number(runnerId) <= 12) runnerSubtype = "player";
+          else if (Number(runnerId) >= 21 && Number(runnerId) <= 25) runnerSubtype = "method";
+          else if (Number(runnerId) >= 100) runnerSubtype = "combo";
         }
 
         return {
@@ -1014,7 +1132,7 @@ export async function fetchRealCasinoTableLive(gtype) {
           bs: Number(r.bs || 0),
           l: Number(r.l || 0),
           ls: Number(r.ls || 0),
-          gstatus: runnerStatus,
+          gstatus: isRunnerSusp ? "SUSPENDED" : "ACTIVE",
           min: r.min || 100,
           max: r.max || 100000,
           subtype: runnerSubtype
