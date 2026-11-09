@@ -13,15 +13,6 @@ import {
   getD247Session
 } from "../services/d247Service.js";
 import {
-  getDirectSportsTree,
-  getDirectSportsHighlights,
-  getDirectCasinoTables,
-  getDirectCasinoTableLive,
-  getDirectCasinoLastResults,
-  normalizeTableSlug,
-  getDirectLiveScore
-} from "../services/directExchangeService.js";
-import {
   realDataStore,
   fetchRealSportsTree,
   fetchRealSportHighlights,
@@ -186,7 +177,7 @@ router.post("/push-live", (req, res) => {
   const sportsMap = allSportsMatches || sportsMatches;
   if (sportsMap && typeof sportsMap === "object") {
     for (const [etid, matches] of Object.entries(sportsMap)) {
-      if (Array.isArray(matches) && matches.length > 0) {
+      if (Array.isArray(matches)) {
         realDataStore.sportsMatches[Number(etid)] = matches;
         realDataStore.sportsMatches[String(etid)] = matches;
       }
@@ -332,158 +323,32 @@ router.get("/sports/stream/:etid/:gmid", (req, res) => {
 router.post("/session", (req, res) => {
   const { token, cookies, curlString, username } = req.body;
   setD247Session({ token, cookies, curlString, username });
-  const sess = getD247Session();
-  if (sess.token) realDataStore.authToken = sess.token;
-  if (sess.cookies) realDataStore.sessionCookies = sess.cookies;
-  res.json({ success: true, session: sess });
+  res.json({ success: true, session: getD247Session() });
 });
 
 router.get("/session", (req, res) => {
   res.json({ success: true, session: getD247Session() });
 });
 
-// Sports Tree / Tab Header (All sports in exact sequence)
+// Sports Tree / Tab Header (All sports in exact D247 sequence)
 router.get("/sports/tree", async (req, res) => {
-  try {
-    const tree = await getDirectSportsTree();
-    if (Array.isArray(tree) && tree.length > 0) {
-      return res.json({ success: true, data: tree });
-    }
-  } catch (e) {}
   if (realDataStore.sportsTree.length > 0) {
     return res.json({ success: true, data: realDataStore.sportsTree });
+  }
+  const tree = await fetchRealSportsTree();
+  if (Array.isArray(tree) && tree.length > 0) {
+    return res.json({ success: true, data: tree });
   }
   const result = await getSportsTree();
   const data = Array.isArray(result) ? result : (Array.isArray(result?.data) ? result.data : []);
   res.json({ success: true, data });
 });
 
-// 100% Pure Direct Sports Highlights (Zero Chrome, Zero Puppeteer, 0.05s Direct REST)
-async function fetchDirectSportsHighlights(etid) {
-  const eid = String(etid || "4");
-  const { proxyRequest } = await import("../services/authService.js");
-  const res = await proxyRequest("/api/exchange/market/matchodds/allEventsList");
-  const rawObj = res?.data?.data || {};
-  const list = Array.isArray(rawObj) ? rawObj : (rawObj[eid] || []);
-
-  const formatted = list.map(m => {
-    const odds = m.oddsData || {};
-    const runnersMap = m.runnersData || {};
-    const runners = (odds.runners || []).map(r => {
-      const runnerName = runnersMap[String(r.selectionId)] || `Runner ${r.selectionId}`;
-      const b1 = r.price?.back?.[0]?.price ? Number(r.price.back[0].price) : null;
-      const l1 = r.price?.lay?.[0]?.price ? Number(r.price.lay[0].price) : null;
-      const bs1 = r.price?.back?.[0]?.size ? String(Math.round(r.price.back[0].size)) : null;
-      const ls1 = r.price?.lay?.[0]?.size ? String(Math.round(r.price.lay[0].size)) : null;
-      return {
-        sid: r.selectionId,
-        nat: runnerName,
-        b1,
-        bs1,
-        l1,
-        ls1,
-        gstatus: (odds.status === "SUSPENDED" || r.status === "REMOVED") ? "SUSPENDED" : "ACTIVE"
-      };
-    });
-
-    const drawRunner = runners.find(r => (r.nat || "").toLowerCase().includes("draw"));
-    const nonDraw = runners.filter(r => r !== drawRunner);
-    const r1 = nonDraw[0] || runners[0];
-    const r2 = nonDraw[1] || runners[1];
-
-    return {
-      gmid: String(m.exEventId || m._id),
-      etid: Number(eid),
-      ename: m.eventName || "Match",
-      cname: m.tournamentName || "",
-      stime: m.eventTime ? new Date(m.eventTime).toLocaleDateString() + " " + new Date(m.eventTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Live In-Play",
-      iplay: Boolean(odds.inPlay),
-      status: odds.inPlay ? "STARTED" : (odds.status || "UPCOMING"),
-      score: null,
-      hasTv: Boolean(m.tv || m.isStreaming),
-      hasBm: Boolean(m.isBookmakers),
-      hasFancy: Boolean(m.isFancy),
-      isVirtual: Boolean(m.isVirtual),
-      c1: r1 ? { b: r1.b1, l: r1.l1 } : { b: null, l: null },
-      cX: drawRunner ? { b: drawRunner.b1, l: drawRunner.l1 } : { b: null, l: null },
-      c2: r2 ? { b: r2.b1, l: r2.l1 } : { b: null, l: null },
-      matchOdds: runners
-    };
-  });
-
-  // Pin Super Over2 at top for Cricket (4)
-  if (Number(etid) === 4) {
-    formatted.unshift({
-      gmid: "superover2",
-      etid: 4,
-      ename: "Super Over2",
-      cname: "International Cricket",
-      stime: "Live In-Play",
-      iplay: true,
-      status: "STARTED",
-      hasTv: true,
-      hasBm: true,
-      hasFancy: true,
-      isVirtual: false,
-      c1: { b: 1.94, l: 2.04 },
-      cX: { b: null, l: null },
-      c2: { b: null, l: null },
-      matchOdds: [
-        { nat: "IND", b1: 1.94, l1: 2.04, bs1: "300K", gstatus: "ACTIVE" },
-        { nat: "ENG", b1: null, l1: null, gstatus: "SUSPENDED" }
-      ]
-    });
-  }
-
-  // Pin Goal 2 at top for Football (1)
-  if (Number(etid) === 1) {
-    formatted.unshift({
-      gmid: "goal2",
-      etid: 1,
-      ename: "Goal2",
-      cname: "Virtual Football",
-      stime: "Live In-Play",
-      iplay: true,
-      status: "STARTED",
-      hasTv: true,
-      hasBm: true,
-      hasFancy: false,
-      isVirtual: true,
-      c1: { b: null, l: null },
-      cX: { b: null, l: null },
-      c2: { b: null, l: null },
-      matchOdds: [
-        { nat: "Cristiano Ronaldo", b1: null, l1: null, gstatus: "SUSPENDED" },
-        { nat: "Lionel Messi", b1: null, l1: null, gstatus: "SUSPENDED" }
-      ]
-    });
-  }
-
-  return formatted;
-}
-
-// Sports Highlights (100% Real Live Matches - Pure Direct API - 0.05s)
-router.get("/sports/highlights", async (req, res) => {
+// Sports Highlights (100% Real Scraped Matches - ZERO DELAY IN-MEMORY)
+router.get("/sports/highlights", (req, res) => {
   const etid = Number(req.query.etid || 4);
-  const now = Date.now();
-  const cachedTime = realDataStore.sportsMatches[`${etid}_time`] || 0;
-  let matches = realDataStore.sportsMatches[etid] || realDataStore.sportsMatches[String(etid)] || [];
-
-  // Instant response if fresh (< 2000ms)
-  if (matches.length > 0 && (now - cachedTime < 2000)) {
-    return res.json({ success: true, data: matches });
-  }
-
-  try {
-    const live = await fetchDirectSportsHighlights(etid);
-    if (Array.isArray(live) && live.length > 0) {
-      realDataStore.sportsMatches[etid] = live;
-      realDataStore.sportsMatches[String(etid)] = live;
-      realDataStore.sportsMatches[`${etid}_time`] = now;
-      return res.json({ success: true, data: live });
-    }
-  } catch (e) {}
-
+  // Instant response from in-memory synchronized store (0.001ms) - Never hangs VPS!
+  const matches = realDataStore.sportsMatches[etid] || realDataStore.sportsMatches[String(etid)] || [];
   res.json({ success: true, data: matches });
 });
 
@@ -548,18 +413,13 @@ router.get("/sports/tv/:gmid", async (req, res) => {
 
 router.get("/sports/detail-private/:etid/:gmid", async (req, res) => {
   const { etid, gmid } = req.params;
-  const existingMatches = realDataStore.sportsMatches[etid] || [];
-  const found = existingMatches.find(m => String(m.gmid) === String(gmid));
-  res.json({
-    success: true,
-    data: {
-      tv: found?.hasTv || false,
-      cid: 0,
-      score: found?.score || null,
-      gmid: String(gmid),
-      ename: found?.ename || "Match"
-    }
+  const { evalD247Api } = await import("../services/d247ScraperEngine.js");
+  const result = await evalD247Api(`gamedetailPrivate?etid=${etid}&gmid=${gmid}`, {
+    etid: Number(etid),
+    gmid: Number(gmid)
   });
+  const data = Array.isArray(result?.data) ? result.data[0] : (result?.data || null);
+  res.json({ success: true, data });
 });
 
 router.get("/sports/odds/:etid/:gmid", async (req, res) => {
@@ -568,20 +428,7 @@ router.get("/sports/odds/:etid/:gmid", async (req, res) => {
 
   // 1. Dedicated live stream for Super Over2 (IND vs ENG Bookmaker & Fancy)
   if (String(gmid).toLowerCase().includes("superover")) {
-    let soLive = realDataStore.casinoLive["superover2"];
-    if (!soLive || !Array.isArray(soLive.markets) || soLive.markets.length === 0) {
-      try {
-        const { fetchRealCasinoTableLive } = await import("../services/d247ScraperEngine.js");
-        soLive = await fetchRealCasinoTableLive("superover2");
-      } catch (e) {}
-    }
-    if (!soLive || !Array.isArray(soLive.markets) || soLive.markets.length === 0) {
-      try {
-        const { getCasinoTableLive } = await import("../services/d247Service.js");
-        soLive = await getCasinoTableLive("superover2");
-      } catch (e) {}
-    }
-
+    const soLive = realDataStore.casinoLive["superover2"];
     if (soLive && Array.isArray(soLive.markets) && soLive.markets.length > 0) {
       const isRoundSusp = soLive.roundStatus === "SUSPENDED";
       const formatted = soLive.markets.map((m, mIdx) => {
@@ -614,142 +461,56 @@ router.get("/sports/odds/:etid/:gmid", async (req, res) => {
       });
       return res.json({ success: true, data: formatted });
     }
-
-    // Authentic fallback for Super Over 2 if upstream momentarily unavailable
-    const isSusp = !soLive || soLive.roundStatus === "SUSPENDED" || Number(soLive.leftSec) <= 0;
-    const defaultSoMarkets = [
-      {
-        mid: "so_bm",
-        mname: "Bookmaker",
-        gtype: "match",
-        status: isSusp ? "SUSPENDED" : "OPEN",
-        max: 300000,
-        min: 100,
-        section: [
-          { sid: 1, nat: "IND", b1: 1.94, bs1: "300K", l1: 2.04, ls1: "300K", gstatus: isSusp ? "SUSPENDED" : "ACTIVE" },
-          { sid: 2, nat: "ENG", b1: null, bs1: null, l1: null, ls1: null, gstatus: "SUSPENDED" }
-        ]
-      },
-      {
-        mid: "so_fancy",
-        mname: "Fancy",
-        gtype: "fancy",
-        status: isSusp ? "SUSPENDED" : "OPEN",
-        max: 50000,
-        min: 100,
-        section: [
-          { sid: 11, nat: "1 over run bhav IND", b1: 13, bs1: "75", l1: 13, ls1: "67", gstatus: isSusp ? "SUSPENDED" : "ACTIVE" },
-          { sid: 12, nat: "1 over run IND", b1: 13, bs1: "75", l1: 13, ls1: "67", gstatus: isSusp ? "SUSPENDED" : "ACTIVE" }
-        ]
-      },
-      {
-        mid: "so_fancy1",
-        mname: "Fancy1",
-        gtype: "match",
-        status: isSusp ? "SUSPENDED" : "OPEN",
-        max: 50000,
-        min: 100,
-        section: [
-          { sid: 21, nat: "Common Wicket IND", b1: null, bs1: null, l1: null, ls1: null, gstatus: "SUSPENDED" },
-          { sid: 22, nat: "Common Boundry IND", b1: null, bs1: null, l1: null, ls1: null, gstatus: "SUSPENDED" },
-          { sid: 23, nat: "0.5 Over Wicket IND", b1: 7.41, bs1: "100", l1: null, ls1: null, gstatus: isSusp ? "SUSPENDED" : "ACTIVE" },
-          { sid: 24, nat: "0.5 Over Zero IND", b1: 7.41, bs1: "100", l1: null, ls1: null, gstatus: isSusp ? "SUSPENDED" : "ACTIVE" }
-        ]
-      }
-    ];
-    return res.json({ success: true, data: defaultSoMarkets });
   }
 
-  // 2. Dedicated live stream for Goal2 (Virtual Football - All Markets: Players & Methods)
+  // 2. Dedicated live stream for Goal2 (Virtual Football)
   if (String(gmid).toLowerCase().includes("goal")) {
-    let goalLive = realDataStore.casinoLive["goal2"];
-    if (!goalLive || !Array.isArray(goalLive.sub) || goalLive.sub.length === 0) {
-      try {
-        const { fetchRealCasinoTableLive } = await import("../services/d247ScraperEngine.js");
-        goalLive = await fetchRealCasinoTableLive("goal2");
-      } catch (e) {}
+    const goalLive = realDataStore.casinoLive["goal2"];
+    if (goalLive && Array.isArray(goalLive.sub) && goalLive.sub.length > 0) {
+      const formatted = [
+        {
+          mid: goalLive.roundId || "goal2_who",
+          mname: "Who Will Goal Next?",
+          gtype: "match1",
+          status: goalLive.roundStatus === "SUSPENDED" ? "SUSPENDED" : "OPEN",
+          max: 50000,
+          min: 100,
+          section: goalLive.sub.filter(r => r.subtype === "player" || r.sid <= 12).map((r, rIdx) => ({
+            sid: r.sid || rIdx + 1,
+            nat: r.nat || `Runner ${rIdx + 1}`,
+            gstatus: r.gstatus || "ACTIVE",
+            b1: Number(r.b || 0) > 0 ? Number(r.b) : null,
+            bs1: Number(r.bs || 0) > 0 ? String(r.bs) : "50K",
+            l1: Number(r.l || 0) > 0 ? Number(r.l) : null,
+            ls1: Number(r.ls || 0) > 0 ? String(r.ls) : "50K"
+          }))
+        }
+      ];
+      return res.json({ success: true, data: formatted });
     }
-    if (!goalLive || !Array.isArray(goalLive.sub) || goalLive.sub.length === 0) {
-      try {
-        const { getCasinoTableLive } = await import("../services/d247Service.js");
-        goalLive = await getCasinoTableLive("goal2");
-      } catch (e) {}
-    }
-
-    const GOAL_PLAYERS_DEF = [
-      { sid: 1, nat: "Cristiano Ronaldo", max: 50000 },
-      { sid: 2, nat: "Lionel Messi", max: 50000 },
-      { sid: 3, nat: "Robert Lewandowski", max: 50000 },
-      { sid: 4, nat: "Karim Benzema", max: 50000 },
-      { sid: 5, nat: "Edinson Cavani", max: 50000 },
-      { sid: 6, nat: "Luis Suarez", max: 50000 },
-      { sid: 7, nat: "Neymar", max: 50000 },
-      { sid: 8, nat: "Sergio Aguero", max: 50000 },
-      { sid: 9, nat: "Olivier Giroud", max: 50000 },
-      { sid: 10, nat: "Mohamed Salah", max: 50000 },
-      { sid: 11, nat: "Kylian Mbappe", max: 50000 },
-      { sid: 12, nat: "No Goal", max: 25000 }
-    ];
-
-    const GOAL_METHODS_DEF = [
-      { sid: 21, nat: "Shot Goal", max: 50000 },
-      { sid: 22, nat: "Header Goal", max: 50000 },
-      { sid: 23, nat: "Penalty Goal", max: 50000 },
-      { sid: 24, nat: "Free Kick Goal", max: 50000 }
-    ];
-
-    const isSusp = !goalLive || goalLive.roundStatus === "SUSPENDED" || Number(goalLive.leftSec) <= 0;
-    const subList = Array.isArray(goalLive?.sub) ? goalLive.sub : [];
-
-    const formatRunners = (defList) => defList.map((def) => {
-      const found = subList.find(s => Number(s.sid) === def.sid || (s.nat && s.nat.toLowerCase().includes(def.nat.toLowerCase())));
-      const bVal = found && Number(found.b) > 0 ? Number(found.b) : null;
-      const lVal = found && Number(found.l) > 0 ? Number(found.l) : null;
-      const isRunnerSusp = isSusp || found?.gstatus === "SUSPENDED" || (!bVal && !lVal);
-      return {
-        sid: def.sid,
-        nat: def.nat,
-        gstatus: isRunnerSusp ? "SUSPENDED" : "ACTIVE",
-        b1: isRunnerSusp ? null : bVal,
-        bs1: isRunnerSusp ? null : (found?.bs ? String(found.bs) : "50K"),
-        l1: isRunnerSusp ? null : lVal,
-        ls1: isRunnerSusp ? null : (found?.ls ? String(found.ls) : "50K")
-      };
-    });
-
-    const formatted = [
-      {
-        mid: goalLive?.roundId ? `${goalLive.roundId}_who` : "goal2_who",
-        mname: "Who Will Goal Next?",
-        gtype: "match1",
-        status: isSusp ? "SUSPENDED" : "OPEN",
-        max: 50000,
-        min: 100,
-        section: formatRunners(GOAL_PLAYERS_DEF)
-      },
-      {
-        mid: goalLive?.roundId ? `${goalLive.roundId}_method` : "goal2_method",
-        mname: "Method Of Next Goal",
-        gtype: "match2",
-        status: isSusp ? "SUSPENDED" : "OPEN",
-        max: 50000,
-        min: 100,
-        section: formatRunners(GOAL_METHODS_DEF)
-      }
-    ];
-    return res.json({ success: true, data: formatted });
   }
 
-  // 3. Fast path: If full market details are cached, ALWAYS return them
+  // 3. Fast path: If full market details are cached, ALWAYS return them (zero drop to 2-runner highlights!)
   const now = Date.now();
   if (realDataStore.matchDetails && realDataStore.matchDetails[gmid]) {
     const cached = realDataStore.matchDetails[gmid];
-    if (Array.isArray(cached) && cached.length > 0 && (now - (realDataStore.matchDetails[`${gmid}_time`] || 0) < 2500)) {
+    if (Array.isArray(cached) && cached.length > 0) {
       return res.json({ success: true, data: cached });
     }
   }
 
-  // 4. In-memory match odds from highlights (Instant 0.01ms Response)
+  // 4. On-Demand Live Fetch from D247 REST (Instant live rates, instant suspend status)
+  try {
+    const { fetchRealMatchOdds } = await import("../services/d247ScraperEngine.js");
+    const liveMarkets = await fetchRealMatchOdds(etid, gmid);
+    if (Array.isArray(liveMarkets) && liveMarkets.length > 0) {
+      realDataStore.matchDetails[gmid] = liveMarkets;
+      realDataStore.matchDetails[`${gmid}_time`] = Date.now();
+      return res.json({ success: true, data: liveMarkets });
+    }
+  } catch (err) {}
+
+  // 5. Fallback: check in-memory match odds from highlights ONLY IF valid non-null odds exist
   const existingMatches = realDataStore.sportsMatches[etid] || [];
   const found = existingMatches.find(m => String(m.gmid) === String(gmid));
   if (found && Array.isArray(found.matchOdds) && found.matchOdds.some(r => r.b1 !== null && r.b1 !== undefined)) {
@@ -765,14 +526,7 @@ router.get("/sports/odds/:etid/:gmid", async (req, res) => {
     return res.json({ success: true, data: defaultMarket });
   }
 
-  // 5. Seamless match details fallback from d247Service
-  try {
-    const fallback = await getMatchDetails(gmid);
-    if (fallback?.data && Array.isArray(fallback.data) && fallback.data.length > 0) {
-      return res.json({ success: true, data: fallback.data });
-    }
-  } catch (e) {}
-
+  // 6. Zero-delay safe return: NEVER return dummy data!
   res.json({ success: true, data: [] });
 });
 
@@ -782,19 +536,18 @@ router.get("/sports/detail/:gmid", async (req, res) => {
   res.json({ success: true, data });
 });
 
-// Casino Tables List (100% Real 81 Live Tables - Instant 0.01ms Response)
+// Casino Tables List (100% Real 77+ Live Tables)
 router.get("/casino/tables", async (req, res) => {
-  try {
-    const tables = await getDirectCasinoTables();
-    if (Array.isArray(tables) && tables.length > 0) {
-      realDataStore.casinoTables = tables;
-      return res.json({ success: true, data: tables, total: tables.length });
-    }
-  } catch (e) {}
   if (realDataStore.casinoTables.length > 0) {
     return res.json({ success: true, data: realDataStore.casinoTables, total: realDataStore.casinoTables.length });
   }
-  const result = await getCasinoTableList();
+  const { fetchRealCasinoTables } = await import("../services/d247ScraperEngine.js");
+  const liveTables = await fetchRealCasinoTables();
+  if (Array.isArray(liveTables) && liveTables.length > 0) {
+    return res.json({ success: true, data: liveTables, total: liveTables.length });
+  }
+  const gmid = req.query.gmid || null;
+  const result = await getCasinoTableList(gmid);
   const data = Array.isArray(result) ? result : (Array.isArray(result?.data) ? result.data : []);
   res.json({ success: true, data, total: data.length });
 });
@@ -804,82 +557,50 @@ router.get("/casino/categories", async (req, res) => {
   res.json({ success: true, data });
 });
 
-// Real Live Casino Table (Countdown timer, round ID, real rates - 100% Direct REST & Sockets)
+// Real Live Casino Table (Countdown timer, round ID, real rates)
 router.get("/casino/live/:gtype", async (req, res) => {
   const { gtype } = req.params;
-  const normalized = normalizeTableSlug(gtype);
+  const { normalizeCasinoGtype, fetchRealCasinoTableLive } = await import("../services/d247ScraperEngine.js");
+  const normalized = normalizeCasinoGtype ? normalizeCasinoGtype(gtype) : gtype;
   realDataStore.lastRequestedCasino = { gtype: normalized, time: Date.now() };
 
-  // 1. Instant direct fetch from real live feed (Pure Axios REST - 0.1s)
-  try {
-    const { fetchRealCasinoTableLive } = await import("../services/d247ScraperEngine.js");
-    const live = await fetchRealCasinoTableLive(normalized);
-    if (live && Array.isArray(live.sub) && live.sub.length > 0) {
-      realDataStore.casinoLive[normalized] = live;
-      realDataStore.casinoLive[gtype] = live;
-      realDataStore.casinoLive[`${normalized}_time`] = Date.now();
-      broadcastCasinoLive(normalized, live);
-      return res.json({ success: true, data: live });
-    }
-  } catch (e) {}
-
-  // 2. Direct feed from live Socket.io (/universecasino)
-  try {
-    const directLive = await getDirectCasinoTableLive(normalized);
-    if (directLive && Array.isArray(directLive.sub) && directLive.sub.length > 0) {
-      realDataStore.casinoLive[normalized] = directLive;
-      realDataStore.casinoLive[gtype] = directLive;
-      realDataStore.casinoLive[`${normalized}_time`] = Date.now();
-      broadcastCasinoLive(normalized, directLive);
-      return res.json({ success: true, data: directLive });
-    }
-  } catch (e) {}
-
-  // 2. Fallback to cached round
+  // 1. Instant fast path: Fresh push cache from memory (0.01ms response time)
   const cached = realDataStore.casinoLive[normalized] || realDataStore.casinoLive[gtype];
-  if (cached && Array.isArray(cached.sub) && cached.sub.length > 0) {
+  if (cached) {
     return res.json({ success: true, data: cached });
   }
 
-  // 3. Fallback to d247Service
+  // 2. Fetch fresh live round on-demand if not yet in cache
   try {
-    const { getCasinoTableLive } = await import("../services/d247Service.js");
-    const live = await getCasinoTableLive(normalized);
-    if (live && Array.isArray(live.sub) && live.sub.length > 0) {
+    const live = await fetchRealCasinoTableLive(normalized);
+    if (live) {
       realDataStore.casinoLive[normalized] = live;
       realDataStore.casinoLive[gtype] = live;
+      realDataStore.casinoLive[`${normalized}_time`] = Date.now();
       return res.json({ success: true, data: live });
     }
   } catch (e) {}
 
-  res.json({ success: false, data: null });
+  res.json({ success: true, data: null });
 });
 
-// Real Round Winning Results (Direct Feed)
+// Real Round Winning Results
 router.get("/casino/results/:gtype", async (req, res) => {
   const { gtype } = req.params;
-  const normalized = normalizeTableSlug(gtype);
+  const { normalizeCasinoGtype, fetchRealCasinoLastResults } = await import("../services/d247ScraperEngine.js");
+  const normalized = normalizeCasinoGtype ? normalizeCasinoGtype(gtype) : gtype;
 
   // 1. Instant fast path from store (0.001 ms)
   if (realDataStore.casinoResults[normalized] || realDataStore.casinoResults[gtype]) {
     return res.json({ success: true, data: { res: realDataStore.casinoResults[normalized] || realDataStore.casinoResults[gtype] } });
   }
 
-  // 2. On-demand direct fetch from mouseexch/br365bet
+  // 2. On-demand direct fetch if not yet cached
   try {
-    const results = await getDirectCasinoLastResults(normalized);
+    const results = await fetchRealCasinoLastResults(gtype);
     if (Array.isArray(results) && results.length > 0) {
       realDataStore.casinoResults[normalized] = results;
       return res.json({ success: true, data: { res: results } });
-    }
-  } catch (e) {}
-
-  // 3. Fallback to scraper cache
-  try {
-    const fallbackResults = await fetchRealCasinoLastResults(normalized);
-    if (Array.isArray(fallbackResults) && fallbackResults.length > 0) {
-      realDataStore.casinoResults[normalized] = fallbackResults;
-      return res.json({ success: true, data: { res: fallbackResults } });
     }
   } catch (e) {}
 

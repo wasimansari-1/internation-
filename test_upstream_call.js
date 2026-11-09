@@ -14,40 +14,44 @@ function decrypt(ciphertext) {
   }
 }
 
-async function testTarget(host) {
+async function testHost(host) {
   console.log(`\n================ Testing ${host} ================`);
-  for (const endpoint of ['/api/front/tablist', '/api/front/casino/tabdata?type=superover2', '/api/front/casino/data2?gtype=goal2']) {
-    try {
-      const payload = endpoint.includes('superover') ? { ismob: 1, type: 'superover2' } : (endpoint.includes('goal') ? { ismob: 1, type: 'goal2' } : { ismob: 1 });
-      const enc = encrypt(payload);
-      const res = await axios.post(`${host}${endpoint}`, { data: enc }, {
+  const enc = encrypt({ ismob: 1, type: 'superover2' });
+  try {
+    const res = await axios.post(`${host}/api/front/casino/tabdata?type=superover2`, 
+      { data: enc },
+      {
         headers: {
           'Content-Type': 'application/json',
           'Origin': host,
           'Referer': `${host}/`,
-          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
         },
-        timeout: 5000,
-        validateStatus: () => true
-      });
-
-      let dec = res.data;
-      if (res.data?.data && typeof res.data.data === 'string') {
-        dec = decrypt(res.data.data);
+        timeout: 5000
       }
-      console.log(`[${endpoint}] HTTP ${res.status}:`, dec?.msg || dec?.status || JSON.stringify(dec).slice(0, 100));
-      if (dec?.data?.t1) {
-        console.log(`   -> SUCCESS! Round: ${dec.data.t1.mid || dec.data.t1.gmid}, LeftSec: ${dec.data.t1.lt}, Status: ${dec.data.t1.status}`);
+    );
+    console.log(`[${host}] HTTP Status:`, res.status);
+    console.log(`[${host}] Response keys:`, Object.keys(res.data));
+    if (res.data?.data) {
+      const dec = decrypt(res.data.data);
+      console.log(`[${host}] Decrypted keys:`, Object.keys(dec));
+      if (dec?.data) {
+        console.log(`[${host}] Round ID:`, dec.data?.t1?.mid || dec.data?.t1?.gmid);
+        console.log(`[${host}] Status:`, dec.data?.t1?.status, 'LeftSec:', dec.data?.t1?.lt);
+        console.log(`[${host}] Markets Count:`, dec.data?.t2?.length);
+        if (dec.data?.t2) {
+          dec.data.t2.forEach(m => console.log('   Market:', m.mname, '| Runners:', m.section?.length));
+        }
       }
-    } catch (err) {
-      console.log(`[${endpoint}] Error:`, err.message);
     }
+  } catch (err) {
+    console.log(`[${host}] Error:`, err.response ? `HTTP ${err.response.status}` : err.message);
   }
 }
 
 async function main() {
-  await testTarget('https://br365bet.live');
-  await testTarget('https://mouseexch.com');
+  for (const host of ['https://mouseexch.com', 'https://br365bet.live', 'https://d247.com']) {
+    await testHost(host);
+  }
 }
-
 main();

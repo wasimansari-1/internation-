@@ -20,6 +20,7 @@ import streamRouter from "./routes/streamRoutes.js";
 import adminRouter from "./routes/adminRoutes.js";
 import wingoRouter from "./routes/wingoRoutes.js";
 import d247Router from "./routes/d247Routes.js";
+import { startD247Engine } from "./services/d247ScraperEngine.js";
 import { proxyRequest } from "./services/authService.js";
 import { getClientIp, nativeHttpsAgent } from "./services/streamService.js";
 import axios from "axios";
@@ -31,9 +32,6 @@ const projectRoot = path.resolve(__dirname, "..");
 
 const app = express();
 const PORT = process.env.PORT || 5001;
-
-// Disable ETag on dynamic API responses to eliminate 304 stale caching
-app.set("etag", false);
 
 // CORS setup
 app.use(
@@ -47,14 +45,6 @@ app.use(
 
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
-
-// Prevent browser from 304 caching live odds and sports data
-app.use("/api", (req, res, next) => {
-  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
-  res.setHeader("Pragma", "no-cache");
-  res.setHeader("Expires", "0");
-  next();
-});
 
 // Telemetry & metrics non-blocking interceptor (Logs ONLY Real User / Client API Hits)
 app.use((req, res, next) => {
@@ -295,7 +285,11 @@ app.get("*", (req, res, next) => {
 
 if (!process.env.VERCEL) {
   const server = app.listen(PORT, "0.0.0.0", () => {
-    console.log(`🚀 Modular Backend Server running on http://0.0.0.0:${PORT} (100% Direct REST & Sockets - Zero Chrome / Zero Browser)`);
+    console.log(`🚀 Modular Backend Server running on http://0.0.0.0:${PORT}`);
+    // Boot autonomous real-time D247 scraper engine in background safely
+    startD247Engine().catch((err) => {
+      console.warn("[D247 Engine] Failed to boot scraper engine:", err.message);
+    });
   });
 
   // Dual-Port Zero 502 Bad Gateway Shield:

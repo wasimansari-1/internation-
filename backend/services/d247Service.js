@@ -8,20 +8,16 @@ import path from "path";
  * Reverse-Engineered from d247.com client bundle
  */
 
-export const PRIMARY_HOSTS = [
-  "https://mouseexch.com",
-  "https://br365bet.live"
-];
-export const BASE_URL = PRIMARY_HOSTS[0];
+export const BASE_URL = "https://d247.com";
 export const AES_KEY = "cae7b808-8b1e-4f47-87a5-1a4b6a08030e";
 
-const SESSION_FILE = path.resolve(process.cwd(), ".direct_exchange_session.json");
+const SESSION_FILE = path.resolve(process.cwd(), ".d247_session.json");
 
 export const DEFAULT_HEADERS = {
   "Content-Type": "application/json",
-  "Origin": "https://mouseexch.com",
-  "Referer": "https://mouseexch.com/",
-  "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+  "Origin": "https://d247.com",
+  "Referer": "https://d247.com/",
+  "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
   "Accept": "application/json, text/plain, */*"
 };
 
@@ -52,16 +48,16 @@ loadStoredSession();
 // 96 Standard Diamond247 Casino Tables Directory (Exact D247 Sequence matching screenshot)
 const BASE_96_TABLES = [
   { gtype: "goal2", gmid: "501801017", name: "Goal 2", category: "Virtual", minBet: 100, maxBet: 25000 },
-  { gtype: "worli3", gmid: "501801015", name: "Matka Market (Open to Close)", category: "Matka", minBet: 100, maxBet: 10000 },
+  { gtype: "matka", gmid: "501801015", name: "Matka Market (Open to Close)", category: "Matka", minBet: 100, maxBet: 10000 },
   { gtype: "dolidana", gmid: "501801752", name: "Doli Dana Live", category: "Dice", minBet: 100, maxBet: 25000 },
   { gtype: "mogambo", gmid: "501801018", name: "Mogambo Casino", category: "Special", minBet: 100, maxBet: 25000 },
-  { gtype: "lucky5", gmid: "501801019", name: "Lucky 6", category: "Lucky", minBet: 100, maxBet: 25000 },
-  { gtype: "roulette11", gmid: "501801014", name: "Beach Roulette", category: "Roulette", minBet: 50, maxBet: 25000 },
-  { gtype: "roulette13", gmid: "501801012", name: "Roulette", category: "Roulette", minBet: 50, maxBet: 25000 },
-  { gtype: "roulette12", gmid: "501801013", name: "VIP Roulette", category: "Roulette", minBet: 500, maxBet: 100000 },
-  { gtype: "poison", gmid: "501801023", name: "Poison Teen Patti One Day", category: "Teen Patti", minBet: 100, maxBet: 50000 },
-  { gtype: "teenunique", gmid: "501801050", name: "Unique Teen Patti", category: "Teen Patti", minBet: 100, maxBet: 50000 },
-  { gtype: "poison20", gmid: "501801024", name: "Poison Teen Patti 20 20", category: "Teen Patti", minBet: 100, maxBet: 50000 },
+  { gtype: "lucky6", gmid: "501801019", name: "Lucky 6", category: "Lucky", minBet: 100, maxBet: 25000 },
+  { gtype: "beachroulette", gmid: "501801014", name: "Beach Roulette", category: "Roulette", minBet: 50, maxBet: 25000 },
+  { gtype: "roulette", gmid: "501801012", name: "Roulette", category: "Roulette", minBet: 50, maxBet: 25000 },
+  { gtype: "viproulette", gmid: "501801013", name: "VIP Roulette", category: "Roulette", minBet: 500, maxBet: 100000 },
+  { gtype: "teenpoison_1day", gmid: "501801023", name: "Poison Teen Patti One Day", category: "Teen Patti", minBet: 100, maxBet: 50000 },
+  { gtype: "teen_unique", gmid: "501801050", name: "Unique Teen Patti", category: "Teen Patti", minBet: 100, maxBet: 50000 },
+  { gtype: "teenpoison", gmid: "501801024", name: "Poison Teen Patti 20 20", category: "Teen Patti", minBet: 100, maxBet: 50000 },
   { gtype: "teenunlimited", gmid: "501801025", name: "Unlimited Joker 20 20", category: "Teen Patti", minBet: 100, maxBet: 50000 },
   { gtype: "teenjoker", gmid: "501801021", name: "Teen Patti Joker 20 20", category: "Teen Patti", minBet: 100, maxBet: 50000 },
   { gtype: "teenunlimited_1day", gmid: "501801026", name: "Unlimited Joker One Day", category: "Teen Patti", minBet: 100, maxBet: 50000 },
@@ -70,19 +66,19 @@ const BASE_96_TABLES = [
   { gtype: "teen", gmid: "501801001", name: "20-20 Teen Patti", category: "Teen Patti", minBet: 100, maxBet: 50000 },
   { gtype: "lucky7", gmid: "501801002", name: "Lucky 7 - A", category: "Lucky", minBet: 100, maxBet: 50000 },
   { gtype: "lucky7eu", gmid: "501801003", name: "Lucky 7 - B", category: "Lucky", minBet: 100, maxBet: 50000 },
-  { gtype: "dt20", gmid: "501801004", name: "Dragon Tiger 20-20", category: "Dragon Tiger", minBet: 100, maxBet: 50000 },
-  { gtype: "dtl20", gmid: "501801005", name: "Dragon Tiger Lion (DTL)", category: "Dragon Tiger", minBet: 100, maxBet: 50000 },
-  { gtype: "ab20", gmid: "501801006", name: "Andar Bahar - A", category: "Andar Bahar", minBet: 100, maxBet: 50000 },
-  { gtype: "abj", gmid: "501801007", name: "Andar Bahar - B", category: "Andar Bahar", minBet: 100, maxBet: 50000 },
-  { gtype: "card32", gmid: "501801008", name: "32 Cards - A", category: "32 Cards", minBet: 100, maxBet: 25000 },
-  { gtype: "card32eu", gmid: "501801009", name: "32 Cards - B", category: "32 Cards", minBet: 100, maxBet: 25000 },
+  { gtype: "dragon_tiger", gmid: "501801004", name: "Dragon Tiger 20-20", category: "Dragon Tiger", minBet: 100, maxBet: 50000 },
+  { gtype: "dtl", gmid: "501801005", name: "Dragon Tiger Lion (DTL)", category: "Dragon Tiger", minBet: 100, maxBet: 50000 },
+  { gtype: "andar_bahar", gmid: "501801006", name: "Andar Bahar - A", category: "Andar Bahar", minBet: 100, maxBet: 50000 },
+  { gtype: "andar_bahar2", gmid: "501801007", name: "Andar Bahar - B", category: "Andar Bahar", minBet: 100, maxBet: 50000 },
+  { gtype: "32cards", gmid: "501801008", name: "32 Cards - A", category: "32 Cards", minBet: 100, maxBet: 25000 },
+  { gtype: "32cardsb", gmid: "501801009", name: "32 Cards - B", category: "32 Cards", minBet: 100, maxBet: 25000 },
   { gtype: "baccarat", gmid: "501801010", name: "Baccarat Live - A", category: "Baccarat", minBet: 100, maxBet: 50000 },
-  { gtype: "baccarat2", gmid: "501801011", name: "Baccarat Live - B", category: "Baccarat", minBet: 100, maxBet: 50000 },
+  { gtype: "baccaratb", gmid: "501801011", name: "Baccarat Live - B", category: "Baccarat", minBet: 100, maxBet: 50000 },
   { gtype: "worli", gmid: "501801016", name: "Instant Worli", category: "Matka", minBet: 100, maxBet: 10000 },
   { gtype: "aaa", gmid: "501801028", name: "Amar Akbar Anthony", category: "Special", minBet: 100, maxBet: 25000 },
   { gtype: "casinowar", gmid: "501801029", name: "Casino War", category: "Cards", minBet: 100, maxBet: 25000 },
   { gtype: "poker20", gmid: "501801028", name: "20-20 Poker - A", category: "Poker", minBet: 100, maxBet: 25000 },
-  { gtype: "poker6", gmid: "501801029", name: "6 Player Poker", category: "Poker", minBet: 100, maxBet: 25000 },
+  { gtype: "poker6player", gmid: "501801029", name: "6 Player Poker", category: "Poker", minBet: 100, maxBet: 25000 },
   { gtype: "kbc", gmid: "501801030", name: "KBC Trivia Casino", category: "Special", minBet: 100, maxBet: 25000 },
   { gtype: "trio", gmid: "501801031", name: "Trio", category: "Special", minBet: 100, maxBet: 25000 },
   { gtype: "meter", gmid: "501801032", name: "Casino Meter", category: "Special", minBet: 100, maxBet: 25000 },
@@ -90,10 +86,10 @@ const BASE_96_TABLES = [
   { gtype: "superover2", gmid: "501801034", name: "Super Over 2", category: "Cricket", minBet: 100, maxBet: 25000 },
   { gtype: "inaminadika", gmid: "501801035", name: "Ina Mina Dika", category: "Special", minBet: 100, maxBet: 25000 },
   { gtype: "lottery", gmid: "501801036", name: "Diamond Lottery 33", category: "Lottery", minBet: 10, maxBet: 5000 },
-  { gtype: "dt6", gmid: "501801037", name: "Fast Dragon Tiger", category: "Dragon Tiger", minBet: 100, maxBet: 50000 },
-  { gtype: "dt6", gmid: "501801038", name: "1 Day Dragon Tiger", category: "Dragon Tiger", minBet: 100, maxBet: 50000 },
+  { gtype: "dtfast", gmid: "501801037", name: "Fast Dragon Tiger", category: "Dragon Tiger", minBet: 100, maxBet: 50000 },
+  { gtype: "dt1day", gmid: "501801038", name: "1 Day Dragon Tiger", category: "Dragon Tiger", minBet: 100, maxBet: 50000 },
   { gtype: "pointteen", gmid: "501801039", name: "Point Teen Patti", category: "Teen Patti", minBet: 100, maxBet: 50000 },
-  { gtype: "queen", gmid: "501801040", name: "Queen Race Live", category: "Cards", minBet: 100, maxBet: 25000 },
+  { gtype: "queenrace", gmid: "501801040", name: "Queen Race Live", category: "Cards", minBet: 100, maxBet: 25000 },
   { gtype: "sicbo", gmid: "501801041", name: "Super Sic Bo", category: "Dice", minBet: 50, maxBet: 25000 },
   { gtype: "lightningdice", gmid: "501801042", name: "Lightning Dice", category: "Dice", minBet: 50, maxBet: 50000 },
   { gtype: "hilo", gmid: "501801043", name: "Hi-Lo Fast", category: "Cards", minBet: 100, maxBet: 25000 },
@@ -111,16 +107,16 @@ const BASE_96_TABLES = [
   { gtype: "craps", gmid: "501801055", name: "Craps Live Table", category: "Dice", minBet: 100, maxBet: 50000 },
   { gtype: "muflisteen", gmid: "501801056", name: "Muflis Teen Patti", category: "Teen Patti", minBet: 100, maxBet: 50000 },
   { gtype: "instantteen", gmid: "501801057", name: "Instant Teen Patti", category: "Teen Patti", minBet: 100, maxBet: 50000 },
-  { gtype: "teen9", gmid: "501801058", name: "Teen Patti Open", category: "Teen Patti", minBet: 100, maxBet: 50000 },
+  { gtype: "openteen", gmid: "501801058", name: "Teen Patti Open", category: "Teen Patti", minBet: 100, maxBet: 50000 },
   { gtype: "testteen", gmid: "501801059", name: "Teen Patti Test", category: "Teen Patti", minBet: 100, maxBet: 50000 },
-  { gtype: "superover2", gmid: "501801060", name: "Super Over 1", category: "Cricket", minBet: 100, maxBet: 25000 },
+  { gtype: "superover1", gmid: "501801060", name: "Super Over 1", category: "Cricket", minBet: 100, maxBet: 25000 },
   { gtype: "cric20", gmid: "501801061", name: "Cricket Match 20-20", category: "Cricket", minBet: 100, maxBet: 25000 },
-  { gtype: "poker", gmid: "501801062", name: "1 Day Poker", category: "Poker", minBet: 100, maxBet: 25000 },
+  { gtype: "poker1day", gmid: "501801062", name: "1 Day Poker", category: "Poker", minBet: 100, maxBet: 25000 },
   { gtype: "card3judgement", gmid: "501801063", name: "3 Card Judgement", category: "Cards", minBet: 100, maxBet: 25000 },
   { gtype: "raceto17", gmid: "501801064", name: "Race to 17", category: "Cards", minBet: 100, maxBet: 25000 },
   { gtype: "trap", gmid: "501801065", name: "Trap Live", category: "Special", minBet: 100, maxBet: 25000 },
   { gtype: "dt2", gmid: "501801066", name: "Dragon Tiger 2", category: "Dragon Tiger", minBet: 100, maxBet: 50000 },
-  { gtype: "teen20", gmid: "501801067", name: "Teen Patti 1 Day", category: "Teen Patti", minBet: 100, maxBet: 50000 },
+  { gtype: "teen1day", gmid: "501801067", name: "Teen Patti 1 Day", category: "Teen Patti", minBet: 100, maxBet: 50000 },
   { gtype: "card32virtual", gmid: "501801068", name: "32 Cards Virtual", category: "32 Cards", minBet: 100, maxBet: 25000 },
   { gtype: "turkishroulette", gmid: "501801069", name: "Turkish Roulette", category: "Roulette", minBet: 50, maxBet: 50000 },
   { gtype: "lightningroulette", gmid: "501801070", name: "Lightning Roulette", category: "Roulette", minBet: 50, maxBet: 50000 },
@@ -467,12 +463,10 @@ function generateFallbackData(path, payload) {
     };
   }
 
-  if (path.includes("casino/data2") || path.includes("casino/tabdata")) {
-    const gtype = payload.type || (path.match(/gtype=([^&]+)/) ? path.match(/gtype=([^&]+)/)[1] : (path.match(/type=([^&]+)/) ? path.match(/type=([^&]+)/)[1] : "teen"));
-    const norm = gtype.toLowerCase().trim();
-    
+  if (path.includes("casino/data2")) {
+    const gtype = payload.type || (path.match(/gtype=([^&]+)/) ? path.match(/gtype=([^&]+)/)[1] : "dolidana");
     // Unique table timer offset so EVERY table has an independent realistic countdown!
-    const tableOffset = Math.abs(norm.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0)) % 25;
+    const tableOffset = Math.abs(gtype.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0)) % 25;
     const tableCycle = (Math.floor(now / 1000) + tableOffset) % 35;
     const tableLeftSec = Math.max(0, 30 - tableCycle);
     const tableRoundId = "193261" + (Math.floor(now / 35000) + tableOffset);
@@ -485,274 +479,6 @@ function generateFallbackData(path, payload) {
     const c2 = ranks[(tableOffset + 3) % ranks.length] + suits[(tableOffset + 1) % 4];
     const c3 = ranks[(tableOffset + 5) % ranks.length] + suits[(tableOffset + 2) % 4];
     const c4 = ranks[(tableOffset + 7) % ranks.length] + suits[(tableOffset + 3) % 4];
-    const c5 = ranks[(tableOffset + 2) % ranks.length] + suits[(tableOffset + 2) % 4];
-    const c6 = ranks[(tableOffset + 4) % ranks.length] + suits[(tableOffset + 3) % 4];
-
-    let sub = [];
-    let cardStr = `${c1},${c2}|${c3},${c4}`;
-    let cardsArr = [c1, c2, c3, c4];
-    let remark = "";
-
-    // 1. Poker 6 Players
-    if (norm === "poker6") {
-      cardStr = `${c1},${c2},${c3},${c4},${c5}|${c6}`;
-      cardsArr = [c1, c2, c3, c4, c5, c6];
-      for (let i = 1; i <= 6; i++) {
-        sub.push({
-          sid: 10 + i,
-          nat: `Player ${i}`,
-          b: 5.2,
-          bs: 100000,
-          l: 0,
-          ls: 0,
-          gstatus: isSuspended ? "SUSPENDED" : "ACTIVE",
-          min: 100,
-          max: 100000,
-          subtype: "hands"
-        });
-      }
-      const patterns = [
-        { sid: 21, nat: "High Card", b: 100.0 },
-        { sid: 22, nat: "Pair", b: 5.8 },
-        { sid: 23, nat: "Two Pair", b: 3.1 },
-        { sid: 24, nat: "Three of a Kind", b: 6.8 },
-        { sid: 25, nat: "Straight", b: 5.7 },
-        { sid: 26, nat: "Flush", b: 8.7 },
-        { sid: 27, nat: "Full House", b: 8.7 },
-        { sid: 28, nat: "Four of a Kind", b: 80.0 },
-        { sid: 29, nat: "Straight Flush", b: 100.0 }
-      ];
-      patterns.forEach(p => {
-        sub.push({
-          sid: p.sid,
-          nat: p.nat,
-          b: p.b,
-          bs: 50000,
-          l: 0,
-          ls: 0,
-          gstatus: isSuspended ? "SUSPENDED" : "ACTIVE",
-          min: 100,
-          max: 50000,
-          subtype: "pattern"
-        });
-      });
-    }
-    // 2. Poker (1 Day Poker & Poker 20)
-    else if (norm.includes("poker")) {
-      cardStr = `${c1},${c2},${c3},${c4},${c5},${c6},${ranks[0]}${suits[0]}|${ranks[1]}${suits[1]}`;
-      cardsArr = [c1, c2, c3, c4, c5, c6];
-      sub = [
-        { sid: 1, nat: "Player A", b: rateJitter(1.98, 0.02), bs: 600000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 300000, subtype: "poker" },
-        { sid: 2, nat: "Player B", b: rateJitter(1.98, -0.02), bs: 600000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 300000, subtype: "poker" },
-        { sid: 3, nat: "Player A 2 card Bonus", b: 2.0, bs: 150000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 50000, subtype: "pokerfancy" },
-        { sid: 4, nat: "Player A 7 card bonus", b: 2.0, bs: 150000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 50000, subtype: "pokerfancy" },
-        { sid: 5, nat: "Player B 2 card Bonus", b: 2.0, bs: 150000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 50000, subtype: "pokerfancy" },
-        { sid: 6, nat: "Player B 7 card bonus", b: 2.0, bs: 150000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 50000, subtype: "pokerfancy" }
-      ];
-    }
-    // 3. Poison Teen Patti
-    else if (norm.includes("poison")) {
-      cardStr = `${c1}|${c2},${c3},${c4}|${c5},${c6}`;
-      sub = [
-        { sid: 1, nat: "Player A", b: rateJitter(1.98, 0.02), bs: 100000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 50000, subtype: "main" },
-        { sid: 2, nat: "Player B", b: rateJitter(1.98, -0.02), bs: 100000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 50000, subtype: "main" },
-        { sid: 3, nat: "Even", b: 1.95, bs: 50000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 25000, subtype: "poison" },
-        { sid: 4, nat: "Odd", b: 1.95, bs: 50000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 25000, subtype: "poison" },
-        { sid: 5, nat: "Red", b: 1.95, bs: 50000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 25000, subtype: "poison" },
-        { sid: 6, nat: "Black", b: 1.95, bs: 50000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 25000, subtype: "poison" }
-      ];
-    }
-    // 4. Roulette
-    else if (norm.includes("roulette")) {
-      cardStr = "";
-      cardsArr = [];
-      for (let i = 0; i <= 36; i++) {
-        sub.push({
-          sid: i,
-          nat: String(i),
-          b: 36.0,
-          bs: 25000,
-          l: 0,
-          ls: 0,
-          gstatus: isSuspended ? "SUSPENDED" : "ACTIVE",
-          min: 50,
-          max: 25000,
-          subtype: "numbers"
-        });
-      }
-      const outside = [
-        { sid: 37, nat: "1-18", b: 2.0 },
-        { sid: 38, nat: "19-36", b: 2.0 },
-        { sid: 39, nat: "Even", b: 2.0 },
-        { sid: 40, nat: "Odd", b: 2.0 },
-        { sid: 41, nat: "Red", b: 2.0 },
-        { sid: 42, nat: "Black", b: 2.0 },
-        { sid: 43, nat: "1st 12", b: 3.0 },
-        { sid: 44, nat: "2nd 12", b: 3.0 },
-        { sid: 45, nat: "3rd 12", b: 3.0 }
-      ];
-      outside.forEach(o => {
-        sub.push({
-          sid: o.sid,
-          nat: o.nat,
-          b: o.b,
-          bs: 50000,
-          l: 0,
-          ls: 0,
-          gstatus: isSuspended ? "SUSPENDED" : "ACTIVE",
-          min: 50,
-          max: 50000,
-          subtype: "outside"
-        });
-      });
-    }
-    // 5. Lucky 7
-    else if (norm.includes("lucky7")) {
-      cardStr = c1;
-      cardsArr = [c1];
-      sub = [
-        { sid: 1, nat: "Low Card (1-6)", b: rateJitter(2.0, 0.02), bs: 200000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 50000, subtype: "main" },
-        { sid: 2, nat: "High Card (8-K)", b: rateJitter(2.0, -0.02), bs: 200000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 50000, subtype: "main" },
-        { sid: 3, nat: "Exact 7", b: 12.0, bs: 50000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 20000, subtype: "main" },
-        { sid: 4, nat: "Red", b: 1.95, bs: 100000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 50000, subtype: "color" },
-        { sid: 5, nat: "Black", b: 1.95, bs: 100000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 50000, subtype: "color" },
-        { sid: 6, nat: "Even", b: 1.95, bs: 100000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 50000, subtype: "even_odd" },
-        { sid: 7, nat: "Odd", b: 1.95, bs: 100000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 50000, subtype: "even_odd" }
-      ];
-    }
-    // 6. Dragon Tiger
-    else if (norm.includes("dt") || norm.includes("dragon")) {
-      cardStr = `${c1}|${c2}`;
-      cardsArr = [c1, c2];
-      sub = [
-        { sid: 1, nat: "Dragon", b: rateJitter(1.98, 0.02), bs: 200000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 50000, subtype: "main" },
-        { sid: 2, nat: "Tiger", b: rateJitter(1.98, -0.02), bs: 200000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 50000, subtype: "main" },
-        { sid: 3, nat: "Tie", b: 9.0, bs: 50000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 20000, subtype: "main" },
-        { sid: 4, nat: "Suited Tie", b: 50.0, bs: 20000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 10000, subtype: "tie" },
-        { sid: 5, nat: "Dragon Even", b: 1.95, bs: 50000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 25000, subtype: "side" },
-        { sid: 6, nat: "Tiger Even", b: 1.95, bs: 50000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 25000, subtype: "side" }
-      ];
-    }
-    // 7. Andar Bahar
-    else if (norm.includes("ab") || norm.includes("andar")) {
-      cardStr = `${c1}|${c2},${c3}|${c4},${c5}`;
-      cardsArr = [c1, c2, c3, c4, c5];
-      sub = [
-        { sid: 1, nat: "Andar", b: rateJitter(1.95, 0.02), bs: 200000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 50000, subtype: "main" },
-        { sid: 2, nat: "Bahar", b: rateJitter(2.0, -0.02), bs: 200000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 50000, subtype: "main" },
-        { sid: 3, nat: "First 1-5 Cards", b: 3.5, bs: 50000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 25000, subtype: "count" },
-        { sid: 4, nat: "6-10 Cards", b: 4.5, bs: 50000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 25000, subtype: "count" }
-      ];
-    }
-    // 8. 32 Cards
-    else if (norm.includes("card32") || norm.includes("32card")) {
-      cardStr = `${c1}|${c2}|${c3}|${c4}`;
-      cardsArr = [c1, c2, c3, c4];
-      sub = [
-        { sid: 8, nat: "Player 8", b: 11.0, bs: 50000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 25000, subtype: "main" },
-        { sid: 9, nat: "Player 9", b: 5.5, bs: 50000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 25000, subtype: "main" },
-        { sid: 10, nat: "Player 10", b: 3.2, bs: 50000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 25000, subtype: "main" },
-        { sid: 11, nat: "Player 11", b: 2.1, bs: 50000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 25000, subtype: "main" }
-      ];
-    }
-    // 9. Baccarat
-    else if (norm.includes("baccarat")) {
-      cardStr = `${c1},${c2}|${c3},${c4}`;
-      cardsArr = [c1, c2, c3, c4];
-      sub = [
-        { sid: 1, nat: "Player", b: 2.0, bs: 500000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 50000, subtype: "main" },
-        { sid: 2, nat: "Banker", b: 1.95, bs: 500000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 50000, subtype: "main" },
-        { sid: 3, nat: "Tie", b: 9.0, bs: 100000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 25000, subtype: "main" },
-        { sid: 4, nat: "Player Pair", b: 12.0, bs: 50000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 25000, subtype: "pair" },
-        { sid: 5, nat: "Banker Pair", b: 12.0, bs: 50000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 25000, subtype: "pair" }
-      ];
-    }
-    // 10. Super Over 2 (IND vs ENG - Exact Screenshot Match)
-    else if (norm.includes("superover")) {
-      cardStr = "0 1";
-      cardsArr = ["0", "1"];
-      sub = [
-        { sid: 1, nat: "IND", b: 1.94, bs: 300000, l: 2.04, ls: 300000, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 300000, subtype: "bookmaker" },
-        { sid: 2, nat: "ENG", b: 0, bs: 0, l: 0, ls: 0, gstatus: "SUSPENDED", min: 100, max: 300000, subtype: "bookmaker" },
-        { sid: 11, nat: "1 over run bhav IND", b: 13, bs: 75, l: 13, ls: 67, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 50000, subtype: "fancy" },
-        { sid: 12, nat: "1 over run IND", b: 13, bs: 75, l: 13, ls: 67, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 50000, subtype: "fancy" },
-        { sid: 21, nat: "Common Wicket IND", b: 0, bs: 0, l: 0, ls: 0, gstatus: "SUSPENDED", min: 100, max: 50000, subtype: "fancy1" },
-        { sid: 22, nat: "Common Boundry IND", b: 0, bs: 0, l: 0, ls: 0, gstatus: "SUSPENDED", min: 100, max: 50000, subtype: "fancy1" },
-        { sid: 23, nat: "0.5 Over Wicket IND", b: 7.41, bs: 100, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 50000, subtype: "fancy1" },
-        { sid: 24, nat: "0.5 Over Zero IND", b: 7.41, bs: 100, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 50000, subtype: "fancy1" }
-      ];
-    }
-    // 11. Goal 2 (Virtual Football - All 12 Players & 4 Methods in Exact Screenshot Sequence)
-    else if (norm.includes("goal")) {
-      cardStr = "0 0";
-      remark = "SHOT GOAL BY LIONEL MESSI";
-      const goalPlayers = [
-        { sid: 1, nat: "Cristiano Ronaldo", b: 6.45, bs: 50000, l: 7.25, ls: 50000, min: 100, max: 50000 },
-        { sid: 2, nat: "Lionel Messi", b: 7.15, bs: 50000, l: 8.05, ls: 50000, min: 100, max: 50000 },
-        { sid: 3, nat: "Robert Lewandowski", b: 8.45, bs: 50000, l: 9.55, ls: 50000, min: 100, max: 50000 },
-        { sid: 4, nat: "Karim Benzema", b: 8.95, bs: 50000, l: 10.15, ls: 50000, min: 100, max: 50000 },
-        { sid: 5, nat: "Edinson Cavani", b: 11.45, bs: 50000, l: 12.95, ls: 50000, min: 100, max: 50000 },
-        { sid: 6, nat: "Luis Suarez", b: 11.95, bs: 50000, l: 13.75, ls: 50000, min: 100, max: 50000 },
-        { sid: 7, nat: "Neymar", b: 10.45, bs: 50000, l: 11.95, ls: 50000, min: 100, max: 50000 },
-        { sid: 8, nat: "Sergio Aguero", b: 13.95, bs: 50000, l: 15.95, ls: 50000, min: 100, max: 50000 },
-        { sid: 9, nat: "Olivier Giroud", b: 14.95, bs: 50000, l: 17.45, ls: 50000, min: 100, max: 50000 },
-        { sid: 10, nat: "Mohamed Salah", b: 7.95, bs: 50000, l: 9.15, ls: 50000, min: 100, max: 50000 },
-        { sid: 11, nat: "Kylian Mbappe", b: 6.75, bs: 50000, l: 7.75, ls: 50000, min: 100, max: 50000 },
-        { sid: 12, nat: "No Goal", b: 3.20, bs: 50000, l: 3.50, ls: 50000, min: 100, max: 25000 }
-      ];
-
-      const goalMethods = [
-        { sid: 21, nat: "Shot Goal", b: 1.85, bs: 50000, l: 1.95, ls: 50000, min: 100, max: 50000 },
-        { sid: 22, nat: "Header Goal", b: 3.50, bs: 50000, l: 3.80, ls: 50000, min: 100, max: 50000 },
-        { sid: 23, nat: "Penalty Goal", b: 6.00, bs: 50000, l: 6.80, ls: 50000, min: 100, max: 50000 },
-        { sid: 24, nat: "Free Kick Goal", b: 12.00, bs: 50000, l: 14.00, ls: 50000, min: 100, max: 50000 }
-      ];
-
-      sub = [
-        ...goalPlayers.map(p => ({
-          ...p,
-          gstatus: isSuspended ? "SUSPENDED" : "ACTIVE",
-          subtype: "player"
-        })),
-        ...goalMethods.map(m => ({
-          ...m,
-          gstatus: isSuspended ? "SUSPENDED" : "ACTIVE",
-          subtype: "method"
-        }))
-      ];
-    }
-    // 12. Unique Teen Patti
-    else if (norm.includes("unique")) {
-      cardStr = `${c1},${c2},${c3}|${c4},${c5},${c6}`;
-      cardsArr = [c1, c2, c3, c4, c5, c6];
-      for (let i = 1; i <= 6; i++) {
-        sub.push({
-          sid: i,
-          nat: `Card ${i}`,
-          b: 2.5,
-          bs: 50000,
-          l: 0,
-          ls: 0,
-          gstatus: isSuspended ? "SUSPENDED" : "ACTIVE",
-          min: 100,
-          max: 50000,
-          subtype: "cards"
-        });
-      }
-    }
-    // 13. Default Teen Patti & All other tables
-    else {
-      cardStr = `${c1},${c2},${c3}|${c4},${c5},${c6}`;
-      cardsArr = [c1, c2, c3, c4, c5, c6];
-      sub = [
-        { sid: 1, nat: "Player A", b: rateJitter(1.98, 0.02), bs: 100000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 50000, subtype: "main" },
-        { sid: 2, nat: "Player B", b: rateJitter(1.98, -0.02), bs: 100000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 50000, subtype: "main" },
-        { sid: 3, nat: "Player A Pair", b: 2.1, bs: 50000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 25000, subtype: "pair" },
-        { sid: 4, nat: "Player B Pair", b: 2.1, bs: 50000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 25000, subtype: "pair" },
-        { sid: 5, nat: "Player A Flush", b: 5.5, bs: 25000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 25000, subtype: "flush" },
-        { sid: 6, nat: "Player B Flush", b: 5.5, bs: 25000, l: 0, ls: 0, gstatus: isSuspended ? "SUSPENDED" : "ACTIVE", min: 100, max: 25000, subtype: "flush" }
-      ];
-    }
 
     return {
       status: "success",
@@ -760,16 +486,19 @@ function generateFallbackData(path, payload) {
       leftSec: tableLeftSec,
       roundStatus: isSuspended ? "SUSPENDED" : "OPEN",
       gtype,
-      card: cardStr,
-      cards: cardsArr,
-      remark: remark || "Game in Progress",
-      score: cardStr,
-      sub: sub,
-      odds: sub.reduce((acc, r) => {
-        const key = r.nat?.toLowerCase().replace(/\s+/g, "") || `r_${r.sid}`;
-        acc[key] = { rate: r.b, layRate: r.l, status: r.gstatus };
-        return acc;
-      }, {})
+      odds: {
+        playerA: { rate: rateJitter(1.97, 0.03), status: isSuspended ? "SUSPEND" : "OPEN" },
+        playerB: { rate: rateJitter(1.97, -0.03), status: isSuspended ? "SUSPEND" : "OPEN" },
+        anyPair: { rate: rateJitter(5.75, 0.1), status: isSuspended ? "SUSPEND" : "OPEN" },
+        even: { rate: rateJitter(1.95, 0.02), status: isSuspended ? "SUSPEND" : "OPEN" },
+        odd: { rate: rateJitter(1.95, -0.02), status: isSuspended ? "SUSPEND" : "OPEN" },
+        sevenUp: { rate: 2.00, status: isSuspended ? "SUSPEND" : "OPEN" },
+        sevenDown: { rate: 2.00, status: isSuspended ? "SUSPEND" : "OPEN" }
+      },
+      cards: {
+        playerA: [c1, c2],
+        playerB: [c3, c4]
+      }
     };
   }
 

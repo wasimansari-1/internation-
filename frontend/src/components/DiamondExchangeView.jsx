@@ -230,9 +230,8 @@ const normalizeCasinoGtype = (gtype) => {
 
   // Roulette
   if (g === "roulette" || g === "roulette13") return "roulette13";
-  if (g === "beachroulette" || g === "roulette12") return "roulette12";
-  if (g === "viproulette" || g === "roulette11") return "roulette11";
-  if (g === "ourroullete" || g === "uniqueroulette") return "ourroullete";
+  if (g === "beachroulette" || g === "roulette11") return "roulette11";
+  if (g === "viproulette" || g === "roulette12") return "roulette12";
 
   // Poker (poker1day on D247 is "poker", 20-20 is "poker20", 6-player is "poker6")
   if (g === "poker6player" || g === "poker6" || g === "6playerpoker" || g === "poker6players") return "poker6";
@@ -634,12 +633,6 @@ export default function DiamondExchangeView() {
   const activeGmidRef = useRef(null);
   const activeCasinoTableRef = useRef(null);
   activeCasinoTableRef.current = activeCasinoTable;
-  const isFetchingCasinoLiveRef = useRef(false);
-  const casinoDeadlineRef = useRef(0);
-  const lastCasinoRoundIdRef = useRef(null);
-  const superOverDeadlineRef = useRef(0);
-  const lastSuperOverRoundIdRef = useRef(null);
-  const lastSoMarketsRef = useRef([]);
   const [isUpdating, setIsUpdating] = useState(false);
   const [betSuccessMsg, setBetSuccessMsg] = useState(null);
 
@@ -804,21 +797,19 @@ export default function DiamondExchangeView() {
     }
   };
 
-  // 4. Fetch Active Casino Live Data (Every 650ms for instant real-time odds)
+  // 4. Fetch Active Casino Live Data (Every 1000ms for instant real-time odds)
   const fetchCasinoLive = async (gtype) => {
-    if (isFetchingCasinoLiveRef.current) return;
     try {
-      isFetchingCasinoLiveRef.current = true;
       const targetGtype = normalizeCasinoGtype(gtype);
       const currentActive = normalizeCasinoGtype(activeCasinoTableRef.current?.gtype);
-      if (targetGtype !== currentActive && targetGtype !== 'superover2' && targetGtype !== 'goal2' && targetGtype !== 'goal') {
+      if (targetGtype !== currentActive && targetGtype !== 'superover2') {
         return; // Guard against stale in-flight response when user switched tables
       }
       setIsUpdating(true);
       const liveRes = await axios.get(`/api/d247/casino/live/${targetGtype}`);
       // Re-check after async network return
       const currentStillActive = normalizeCasinoGtype(activeCasinoTableRef.current?.gtype);
-      if (targetGtype !== currentStillActive && targetGtype !== 'superover2' && targetGtype !== 'goal2' && targetGtype !== 'goal') {
+      if (targetGtype !== currentStillActive && targetGtype !== 'superover2') {
         return; // Drop stale packet!
       }
       if (liveRes.data?.success && liveRes.data?.data) {
@@ -836,7 +827,6 @@ export default function DiamondExchangeView() {
       console.warn('Error fetching live casino table:', err.message);
     } finally {
       setIsUpdating(false);
-      isFetchingCasinoLiveRef.current = false;
     }
   };
 
@@ -844,7 +834,7 @@ export default function DiamondExchangeView() {
     try {
       const targetGtype = normalizeCasinoGtype(gtype);
       const currentActive = normalizeCasinoGtype(activeCasinoTableRef.current?.gtype);
-      if (targetGtype !== currentActive && targetGtype !== 'superover2' && targetGtype !== 'goal2' && targetGtype !== 'goal') {
+      if (targetGtype !== currentActive && targetGtype !== 'superover2') {
         return;
       }
       const resultsRes = await axios.get(`/api/d247/casino/results/${targetGtype}`);
@@ -862,67 +852,37 @@ export default function DiamondExchangeView() {
     } catch (err) {}
   };
 
-  // Monotonic wall-clock sync for Casino Live Countdown (NEVER jumps, bounces, or fluctuates)
+  // Sync casino timer ONLY with casinoLiveData.leftSec
   useEffect(() => {
-    if (!casinoLiveData) return;
-    const srvSec = Number(casinoLiveData.leftSec ?? 0);
-    const roundId = casinoLiveData.roundId;
-
-    if (roundId !== lastCasinoRoundIdRef.current) {
-      lastCasinoRoundIdRef.current = roundId;
-      casinoDeadlineRef.current = Date.now() + srvSec * 1000;
-      setLiveTimer(srvSec);
-    } else {
-      const remaining = Math.max(0, Math.ceil((casinoDeadlineRef.current - Date.now()) / 1000));
-      if (Math.abs(remaining - srvSec) > 2) {
-        casinoDeadlineRef.current = Date.now() + srvSec * 1000;
-        setLiveTimer(srvSec);
-      }
+    if (activeCasinoTable && casinoLiveData && typeof casinoLiveData.leftSec === 'number') {
+      setLiveTimer(casinoLiveData.leftSec);
     }
-  }, [casinoLiveData?.roundId, casinoLiveData?.leftSec]);
+  }, [activeCasinoTable, casinoLiveData?.leftSec, casinoLiveData?.roundId]);
 
-  // Smooth 250ms monotonic countdown for active casino table
+  // Smooth 1-second countdown tick for active casino table
   useEffect(() => {
     if (!activeCasinoTable) return;
     const interval = setInterval(() => {
-      if (casinoDeadlineRef.current > 0) {
-        const remaining = Math.max(0, Math.ceil((casinoDeadlineRef.current - Date.now()) / 1000));
-        setLiveTimer(remaining);
-      }
-    }, 250);
+      setLiveTimer(sec => (sec > 0 ? sec - 1 : 0));
+    }, 1000);
     return () => clearInterval(interval);
   }, [activeCasinoTable]);
 
-  // Monotonic wall-clock sync for Super Over 2 (NEVER jumps, bounces, or fluctuates)
+  // Sync Super Over timer ONLY with superOverLiveData.leftSec
   useEffect(() => {
     const isSuperOver = selectedMatch?.gmid === 'superover2' || (selectedMatch?.ename || '').toLowerCase().includes('super over');
-    if (!isSuperOver || !superOverLiveData) return;
-    const srvSec = Number(superOverLiveData.leftSec ?? 0);
-    const roundId = superOverLiveData.roundId;
-
-    if (roundId !== lastSuperOverRoundIdRef.current) {
-      lastSuperOverRoundIdRef.current = roundId;
-      superOverDeadlineRef.current = Date.now() + srvSec * 1000;
-      setSuperOverTimer(srvSec);
-    } else {
-      const remaining = Math.max(0, Math.ceil((superOverDeadlineRef.current - Date.now()) / 1000));
-      if (Math.abs(remaining - srvSec) > 2) {
-        superOverDeadlineRef.current = Date.now() + srvSec * 1000;
-        setSuperOverTimer(srvSec);
-      }
+    if (isSuperOver && superOverLiveData && typeof superOverLiveData.leftSec === 'number') {
+      setSuperOverTimer(superOverLiveData.leftSec);
     }
-  }, [selectedMatch, superOverLiveData?.roundId, superOverLiveData?.leftSec]);
+  }, [selectedMatch, superOverLiveData?.leftSec, superOverLiveData?.roundId]);
 
-  // Smooth 250ms monotonic countdown for Super Over 2
+  // Smooth 1-second countdown tick for Super Over 2
   useEffect(() => {
     const isSuperOver = selectedMatch?.gmid === 'superover2' || (selectedMatch?.ename || '').toLowerCase().includes('super over');
     if (!isSuperOver) return;
     const interval = setInterval(() => {
-      if (superOverDeadlineRef.current > 0) {
-        const remaining = Math.max(0, Math.ceil((superOverDeadlineRef.current - Date.now()) / 1000));
-        setSuperOverTimer(remaining);
-      }
-    }, 250);
+      setSuperOverTimer(sec => (sec > 0 ? sec - 1 : 0));
+    }, 1000);
     return () => clearInterval(interval);
   }, [selectedMatch]);
 
@@ -1035,22 +995,22 @@ export default function DiamondExchangeView() {
       };
     } catch (e) {}
 
-    // Dedicated ultra-fast 650ms interval for instant real-time casino card flip & rate update
+    // Dedicated ultra-fast 350ms interval for instant real-time casino card flip & rate update
     const casinoLiveTick = setInterval(() => {
       fetchCasinoLive(targetGtype);
-    }, 650);
+    }, 350);
 
-    // Winning results sync every 3 seconds
+    // Winning results sync every 4 seconds
     const casinoResultsTimer = setInterval(() => {
       fetchCasinoResults(targetGtype);
-    }, 3000);
+    }, 4000);
 
     return () => {
       if (eventSource) eventSource.close();
       clearInterval(casinoLiveTick);
       clearInterval(casinoResultsTimer);
     };
-  }, [activeCasinoTable?.gtype, activeCasinoTable?.gmid]);
+  }, [activeCasinoTable?.gtype]);
 
   // Ultra-Fast Real-Time Live SSE Stream + 1-Sec Tick for Super Over 2
   useEffect(() => {
@@ -1086,7 +1046,7 @@ export default function DiamondExchangeView() {
 
     const soTick = setInterval(() => {
       fetchCasinoLive('superover2');
-    }, 1000);
+    }, 350);
 
     return () => {
       if (eventSource) eventSource.close();
@@ -1379,149 +1339,6 @@ export default function DiamondExchangeView() {
               <div style={{ display: 'flex', gap: '4px', maxWidth: '200px', overflowX: 'auto' }}>
                 {baharCards.length > 0 ? baharCards.map((c, i) => <CardDisplay key={i} cardStr={c} />) : <CardDisplay cardStr="1" />}
               </div>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // 4.1 32 Cards (Player 8, Player 9, Player 10, Player 11)
-    if (cat.includes('32') || gtype.includes('32card') || gtype.includes('card32')) {
-      const p8 = cardList[0] || '1';
-      const p9 = cardList[1] || '1';
-      const p10 = cardList[2] || '1';
-      const p11 = cardList[3] || '1';
-      return (
-        <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
-          {[
-            { name: 'PLAYER 8', card: p8, color: '#38bdf8' },
-            { name: 'PLAYER 9', card: p9, color: '#f59e0b' },
-            { name: 'PLAYER 10', card: p10, color: '#10b981' },
-            { name: 'PLAYER 11', card: p11, color: '#ef4444' }
-          ].map((p, pi) => (
-            <div key={pi} style={{ textAlign: 'center', background: '#0a101d', padding: '6px 10px', borderRadius: '8px', border: '1px solid #1e293b' }}>
-              <div style={{ fontSize: '10px', fontWeight: 800, color: p.color, marginBottom: '4px' }}>{p.name}</div>
-              <CardDisplay cardStr={p.card} />
-            </div>
-          ))}
-        </div>
-      );
-    }
-
-    // 4.2 Baccarat (Player vs Banker)
-    if (cat.includes('baccarat') || gtype.includes('baccarat')) {
-      const playerCards = [cardList[0] || '1', cardList[1] || '1', ...(cardList[4] ? [cardList[4]] : [])];
-      const bankerCards = [cardList[2] || '1', cardList[3] || '1', ...(cardList[5] ? [cardList[5]] : [])];
-      return (
-        <div style={{ display: 'flex', justifyContent: 'space-around', width: '100%', maxWidth: '380px' }}>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '11px', color: '#38bdf8', fontWeight: 800, marginBottom: '4px' }}>PLAYER</div>
-            <div style={{ display: 'flex', gap: '4px' }}>
-              {playerCards.map((c, ci) => <CardDisplay key={ci} cardStr={c} />)}
-            </div>
-          </div>
-          <div style={{ alignSelf: 'center', fontWeight: 900, color: '#f59e0b', fontSize: '14px' }}>VS</div>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '11px', color: '#ef4444', fontWeight: 800, marginBottom: '4px' }}>BANKER</div>
-            <div style={{ display: 'flex', gap: '4px' }}>
-              {bankerCards.map((c, ci) => <CardDisplay key={ci} cardStr={c} />)}
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // 4.3 Goal 2 (Virtual Football - Exact Match to Screenshot)
-    if (gtype === 'goal2' || gtype.includes('goal')) {
-      const remarkText = casinoLiveData?.remark || 'SHOT GOAL BY LIONEL MESSI';
-      const scoreText = casinoLiveData?.score || '0 0';
-      return (
-        <div style={{
-          width: '100%',
-          height: '180px',
-          background: '#000000',
-          borderRadius: '8px',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          position: 'relative',
-          overflow: 'hidden'
-        }}>
-          {/* Top/Right Score Badge */}
-          <div style={{
-            position: 'absolute',
-            top: '12px',
-            right: '16px',
-            background: '#131e33',
-            border: '1px solid #334155',
-            padding: '4px 10px',
-            borderRadius: '6px',
-            color: '#ffffff',
-            fontWeight: 900,
-            fontSize: '14px',
-            letterSpacing: '2px'
-          }}>
-            {scoreText}
-          </div>
-
-          {/* Center Graphic: Animated Soccer Ball holding Goal Banner */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-            <div style={{
-              width: '60px',
-              height: '60px',
-              borderRadius: '50%',
-              background: '#ffffff',
-              border: '3px solid #000000',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '36px',
-              boxShadow: '0 4px 15px rgba(255,255,255,0.2)'
-            }}>
-              ⚽
-            </div>
-            <div style={{
-              background: '#ffffff',
-              color: '#000000',
-              fontWeight: 900,
-              fontSize: '12px',
-              padding: '6px 16px',
-              borderRadius: '4px',
-              border: '1px solid #334155',
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.7)'
-            }}>
-              {remarkText}
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // 4.4 Wheel & Trivia Games (Crazy Time, Monopoly, Dream Catcher, KBC)
-    if (cat.includes('wheel') || gtype.includes('crazy') || gtype.includes('monopoly') || gtype.includes('dream') || gtype === 'kbc') {
-      return (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '6px' }}>
-          <div style={{
-            width: '46px',
-            height: '46px',
-            borderRadius: '50%',
-            background: 'conic-gradient(#f59e0b 0% 25%, #38bdf8 25% 50%, #ec4899 50% 75%, #10b981 75% 100%)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '0 0 14px rgba(0,0,0,0.6)'
-          }}>
-            <div style={{ width: '18px', height: '18px', borderRadius: '50%', background: '#020617' }} />
-          </div>
-          <div>
-            <div style={{ fontSize: '13px', fontWeight: 900, color: '#f8fafc' }}>
-              {activeCasinoTable.name}
-            </div>
-            <div style={{ fontSize: '11px', color: '#f59e0b' }}>
-              Live Multiplier Game • Real-Time Odds
             </div>
           </div>
         </div>
@@ -2420,9 +2237,9 @@ export default function DiamondExchangeView() {
                         </div>
                       </div>
 
-                      {/* Black Arena visual with Real Super Over Live Balls matching Screenshot */}
+                      {/* Black Arena visual with D247 Center Countdown Timer & Balls Timeline */}
                       <div style={{
-                        height: '160px',
+                        height: '180px',
                         background: '#000000',
                         display: 'flex',
                         flexDirection: 'column',
@@ -2431,46 +2248,67 @@ export default function DiamondExchangeView() {
                         gap: '12px',
                         position: 'relative'
                       }}>
-                        {/* Live Balls in play (Matching screenshot: 0 1) */}
+                        {/* D247 Center Big Digital Timer (Matching Screenshot) */}
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                          {(() => {
-                            const rawCard = (superOverLiveData || casinoLiveData)?.card || '0 1';
-                            const balls = rawCard.split(/[,| ]+/).map(s => s.trim()).filter(Boolean);
-                            const displayBalls = balls.length > 0 ? balls : ['0', '1'];
-                            return displayBalls.map((b, bi) => (
-                              <div key={bi} style={{
-                                width: '38px',
-                                height: '38px',
-                                background: '#1c2536',
-                                border: '1px solid #334155',
-                                borderRadius: '8px',
+                          <div style={{
+                            width: '42px',
+                            height: '54px',
+                            background: '#252e3e',
+                            border: '1px solid rgba(255, 255, 255, 0.15)',
+                            borderRadius: '8px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '32px',
+                            fontWeight: 900,
+                            color: '#ffffff',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.6)'
+                          }}>
+                            {String(superOverTimer).padStart(2, '0')[0]}
+                          </div>
+                          <div style={{
+                            width: '42px',
+                            height: '54px',
+                            background: '#252e3e',
+                            border: '1px solid rgba(255, 255, 255, 0.15)',
+                            borderRadius: '8px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '32px',
+                            fontWeight: 900,
+                            color: '#ffffff',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.6)'
+                          }}>
+                            {String(superOverTimer).padStart(2, '0')[1]}
+                          </div>
+                        </div>
+
+                        {/* Live Super Over Balls Timeline below Timer */}
+                        {((superOverLiveData || casinoLiveData)?.card ? (superOverLiveData || casinoLiveData).card.split('|').filter(Boolean) : []).length > 0 && (
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                            {((superOverLiveData || casinoLiveData).card.split('|').filter(Boolean)).map((num, ni) => (
+                              <div key={ni} style={{
+                                background: '#1e293b',
+                                border: '1px solid #38bdf8',
+                                color: '#ffffff',
+                                width: '32px',
+                                height: '32px',
+                                borderRadius: '6px',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                fontSize: '18px',
+                                fontSize: '14px',
                                 fontWeight: 900,
-                                color: '#ffffff',
-                                boxShadow: '0 4px 10px rgba(0,0,0,0.5)'
+                                boxShadow: '0 2px 8px rgba(56, 189, 248, 0.3)'
                               }}>
-                                {b}
+                                {num}
                               </div>
-                            ));
-                          })()}
-                        </div>
-
-                        {/* Status bar */}
-                        <div style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          fontSize: '11px',
-                          fontWeight: 800,
-                          color: superOverTimer <= 0 ? '#ef4444' : '#38bdf8',
-                          background: 'rgba(0,0,0,0.5)',
-                          padding: '3px 10px',
-                          borderRadius: '12px'
-                        }}>
-                          <span>{superOverTimer <= 0 ? 'ROUND SUSPENDED' : `00:${String(superOverTimer).padStart(2, '0')} IN-PLAY`}</span>
+                            ))}
+                          </div>
+                        )}
+                        <div style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 700 }}>
+                          {superOverTimer <= 0 ? 'ROUND SUSPENDED' : 'Live Super Over Balls Timeline'}
                         </div>
                       </div>
 
@@ -2790,23 +2628,13 @@ export default function DiamondExchangeView() {
                   const soSource = superOverLiveData || casinoLiveData;
 
                   if (isSuperOver) {
-                    let rawMarkets = [];
-                    if (Array.isArray(matchOddsData) && matchOddsData.some(m => m.mname && (m.mname.toLowerCase().includes('bookmaker') || m.mname.toLowerCase().includes('fancy')))) {
-                      rawMarkets = matchOddsData;
-                    } else if (soSource?.markets && soSource.markets.length > 0) {
-                      rawMarkets = soSource.markets;
-                    } else if (lastSoMarketsRef.current && lastSoMarketsRef.current.length > 0) {
-                      rawMarkets = lastSoMarketsRef.current;
-                    }
-
-                    if (rawMarkets && rawMarkets.length > 0) {
-                      lastSoMarketsRef.current = rawMarkets;
-                      marketsToRender = rawMarkets.map((m, mIdx) => {
-                        const isMarketSuspended = m.status === 'SUSPENDED' || superOverTimer <= 0 || soSource?.roundStatus === 'SUSPENDED';
+                    if (soSource?.markets && soSource.markets.length > 0) {
+                      marketsToRender = soSource.markets.map((m, mIdx) => {
+                        const isMarketSuspended = m.status === 'SUSPENDED';
                         return {
                           mid: m.mid || `so_${mIdx}`,
-                          mname: m.mname || (mIdx === 0 ? 'Bookmaker' : (mIdx === 1 ? 'Fancy' : 'Fancy1')),
-                          gtype: m.gtype || (mIdx === 1 ? 'fancy' : 'match'),
+                          mname: m.mname || (mIdx === 0 ? 'BOOKMAKER' : 'FANCY'),
+                          gtype: m.gtype || 'match',
                           status: isMarketSuspended ? 'SUSPENDED' : 'OPEN',
                           max: m.max || 300000,
                           min: m.min || 100,
@@ -2814,64 +2642,21 @@ export default function DiamondExchangeView() {
                             const oddsList = Array.isArray(r.odds) ? r.odds : [];
                             const b1 = oddsList.find(o => o.oname === 'back1' || (o.otype === 'back' && o.tno === 0));
                             const l1 = oddsList.find(o => o.oname === 'lay1' || (o.otype === 'lay' && o.tno === 0));
-                            const bOdds = r.b1 !== undefined ? r.b1 : ((b1 && Number(b1.odds) > 0) ? Number(b1.odds) : null);
-                            const lOdds = r.l1 !== undefined ? r.l1 : ((l1 && Number(l1.odds) > 0) ? Number(l1.odds) : null);
+                            const bOdds = (b1 && Number(b1.odds) > 0) ? Number(b1.odds) : null;
+                            const lOdds = (l1 && Number(l1.odds) > 0) ? Number(l1.odds) : null;
                             const isRunnerSusp = isMarketSuspended || r.gstatus === 'SUSPENDED';
                             return {
                               sid: r.sid || rIdx + 1,
                               nat: r.nat || (rIdx === 0 ? 'IND' : 'ENG'),
                               gstatus: isRunnerSusp ? 'SUSPENDED' : 'ACTIVE',
-                              b1: isRunnerSusp ? null : bOdds,
-                              bs1: isRunnerSusp ? null : (r.bs1 || (b1 && Number(b1.size) > 0 ? String(Math.round(b1.size)) : (bOdds ? '300K' : null))),
-                              l1: isRunnerSusp ? null : lOdds,
-                              ls1: isRunnerSusp ? null : (r.ls1 || (l1 && Number(l1.size) > 0 ? String(Math.round(l1.size)) : (lOdds ? '300K' : null)))
+                              b1: bOdds,
+                              bs1: b1 && Number(b1.size) > 0 ? String(Math.round(b1.size)) : (bOdds ? '300K' : null),
+                              l1: lOdds,
+                              ls1: l1 && Number(l1.size) > 0 ? String(Math.round(l1.size)) : (lOdds ? '300K' : null)
                             };
                           })
                         };
                       });
-                    } else {
-                      // Authentic fallback matching D247 screenshot
-                      const isSusp = superOverTimer <= 0 || soSource?.roundStatus === 'SUSPENDED';
-                      marketsToRender = [
-                        {
-                          mid: 'so_bm',
-                          mname: 'Bookmaker',
-                          gtype: 'match',
-                          status: isSusp ? 'SUSPENDED' : 'OPEN',
-                          min: 100,
-                          max: 300000,
-                          section: [
-                            { sid: 1, nat: 'IND', b1: 1.94, bs1: '300K', l1: 2.04, ls1: '300K', gstatus: isSusp ? 'SUSPENDED' : 'ACTIVE' },
-                            { sid: 2, nat: 'ENG', b1: null, bs1: null, l1: null, ls1: null, gstatus: 'SUSPENDED' }
-                          ]
-                        },
-                        {
-                          mid: 'so_fancy',
-                          mname: 'Fancy',
-                          gtype: 'fancy',
-                          status: isSusp ? 'SUSPENDED' : 'OPEN',
-                          min: 100,
-                          max: 50000,
-                          section: [
-                            { sid: 11, nat: '1 over run bhav IND', b1: 13, bs1: '75', l1: 13, ls1: '67', gstatus: isSusp ? 'SUSPENDED' : 'ACTIVE' },
-                            { sid: 12, nat: '1 over run IND', b1: 13, bs1: '75', l1: 13, ls1: '67', gstatus: isSusp ? 'SUSPENDED' : 'ACTIVE' }
-                          ]
-                        },
-                        {
-                          mid: 'so_fancy1',
-                          mname: 'Fancy1',
-                          gtype: 'match',
-                          status: isSusp ? 'SUSPENDED' : 'OPEN',
-                          min: 100,
-                          max: 50000,
-                          section: [
-                            { sid: 21, nat: 'Common Wicket IND', b1: null, bs1: null, l1: null, ls1: null, gstatus: 'SUSPENDED' },
-                            { sid: 22, nat: 'Common Boundry IND', b1: null, bs1: null, l1: null, ls1: null, gstatus: 'SUSPENDED' },
-                            { sid: 23, nat: '0.5 Over Wicket IND', b1: 7.41, bs1: '100', l1: null, ls1: null, gstatus: isSusp ? 'SUSPENDED' : 'ACTIVE' },
-                            { sid: 24, nat: '0.5 Over Zero IND', b1: 7.41, bs1: '100', l1: null, ls1: null, gstatus: isSusp ? 'SUSPENDED' : 'ACTIVE' }
-                          ]
-                        }
-                      ];
                     }
                   } else {
                     if (marketsToRender.length > 0 && marketsToRender[0].nat && !marketsToRender[0].section && !marketsToRender[0].runners) {
@@ -3219,15 +3004,10 @@ export default function DiamondExchangeView() {
                             setMatchOddsData(null);
                             setMatchGameDetail(null);
                             const isSo = match.gmid === 'superover2' || (match.ename || '').toLowerCase().includes('super over');
-                            const isGoal2 = match.gmid === 'goal2' || (match.ename || '').toLowerCase().includes('goal');
                             fetchMatchDetails(match.gmid, match.etid || sportsCategory);
                             if (isSo) {
                               fetchCasinoLive('superover2');
                               fetchCasinoResults('superover2');
-                            }
-                            if (isGoal2) {
-                              fetchCasinoLive('goal2');
-                              fetchCasinoResults('goal2');
                             }
                           }}
                           style={{
@@ -3369,7 +3149,7 @@ export default function DiamondExchangeView() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   {/* Round Timer matching screenshots */}
                   <div style={{
-                    background: (liveTimer <= 0 || casinoLiveData?.roundStatus === 'SUSPENDED') ? '#ef4444' : '#10b981',
+                    background: liveTimer <= 0 ? '#ef4444' : '#10b981',
                     color: '#ffffff',
                     padding: '8px 16px',
                     borderRadius: '8px',
@@ -3381,9 +3161,9 @@ export default function DiamondExchangeView() {
                     boxShadow: '0 0 14px rgba(0,0,0,0.5)'
                   }}>
                     <Clock size={18} />
-                    <span>{(liveTimer <= 0 || casinoLiveData?.roundStatus === 'SUSPENDED') ? '00:00' : `00:${String(liveTimer).padStart(2, '0')}`}</span>
+                    <span>00:{String(liveTimer).padStart(2, '0')}</span>
                     <span style={{ fontSize: '10px', opacity: 0.85, marginLeft: '4px' }}>
-                      {(liveTimer <= 0 || casinoLiveData?.roundStatus === 'SUSPENDED') ? 'SUSPENDED' : 'OPEN'}
+                      {liveTimer <= 0 ? 'SUSPENDED' : 'OPEN'}
                     </span>
                   </div>
 
@@ -3749,7 +3529,7 @@ export default function DiamondExchangeView() {
                           {/* Runner Rows matching D247 */}
                           <div style={{ padding: '2px 0' }}>
                             {runners.map((runner, rIdx) => {
-                              const isSusp = runner.gstatus === 'SUSPENDED' || runner.status === 'SUSPENDED' || casinoLiveData?.roundStatus === 'SUSPENDED' || liveTimer <= 0;
+                              const isSusp = runner.gstatus === 'SUSPENDED' || runner.status === 'SUSPENDED';
                               const minFormatted = runner.min ? `Min: ${Number(runner.min).toFixed(2)}` : 'Min: 100.00';
                               const maxFormatted = runner.max ? `Max: ${runner.max >= 100000 ? `${(runner.max/100000).toFixed(0)}L` : `${(runner.max/1000).toFixed(0)}K`}` : 'Max: 50K';
                               const currentGtype = (activeCasinoTable?.gtype || casinoLiveData?.gtype || '').toLowerCase();
@@ -3783,38 +3563,18 @@ export default function DiamondExchangeView() {
                                   {/* Back & Lay Buttons */}
                                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
                                     {isSusp ? (
-                                      <>
-                                        <div style={{
-                                          background: '#232d3f',
-                                          color: '#94a3b8',
-                                          fontSize: '12px',
-                                          fontWeight: 800,
-                                          textAlign: 'center',
-                                          padding: '8px 0',
-                                          borderRadius: '4px',
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          justifyContent: 'center',
-                                          cursor: 'not-allowed'
-                                        }}>
-                                          🔒
-                                        </div>
-                                        <div style={{
-                                          background: '#232d3f',
-                                          color: '#94a3b8',
-                                          fontSize: '12px',
-                                          fontWeight: 800,
-                                          textAlign: 'center',
-                                          padding: '8px 0',
-                                          borderRadius: '4px',
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          justifyContent: 'center',
-                                          cursor: 'not-allowed'
-                                        }}>
-                                          🔒
-                                        </div>
-                                      </>
+                                      <div style={{
+                                        gridColumn: 'span 2',
+                                        background: 'rgba(239, 68, 68, 0.15)',
+                                        color: '#ef4444',
+                                        fontSize: '11px',
+                                        fontWeight: 900,
+                                        textAlign: 'center',
+                                        padding: '6px 0',
+                                        borderRadius: '4px'
+                                      }}>
+                                        SUSPENDED
+                                      </div>
                                     ) : (
                                       <>
                                         <RateBox

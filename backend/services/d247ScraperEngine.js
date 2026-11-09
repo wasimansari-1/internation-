@@ -74,32 +74,15 @@ let browserInstance = null;
 let pageInstance = null;
 let isStarting = false;
 let apiQueue = Promise.resolve();
-let isLoggingIn = false;
-let lastLoginAttempt = 0;
 
 // Helper to perform in-browser demo login with verification
 export async function performDemoLogin(page) {
   if (!page || page.isClosed()) return false;
-  if (isLoggingIn) return false;
-  const now = Date.now();
-  if (now - lastLoginAttempt < 15000) return false;
-  isLoggingIn = true;
-  lastLoginAttempt = now;
   try {
-    const isChallenged = await page.evaluate(() => {
-      const title = document.title || "";
-      const text = document.body ? document.body.innerText : "";
-      return title.includes("Reload a page") || title.includes("Just a moment") || text.includes("Cloudflare");
-    }).catch(() => false);
-
-    if (isChallenged) {
-      return false;
-    }
-
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 0; attempt < 3; attempt++) {
       const isAlreadyLoggedIn = await page.evaluate(() => {
         return Boolean(document.body.innerText.includes("Balance:") || document.body.innerText.includes("Demo"));
-      }).catch(() => false);
+      });
       if (isAlreadyLoggedIn) return true;
 
       await page.evaluate(() => {
@@ -107,42 +90,32 @@ export async function performDemoLogin(page) {
           b.innerText.toLowerCase().includes("demo")
         );
         if (btn) btn.click();
-      }).catch(() => {});
-      await new Promise(r => setTimeout(r, 1000));
+      });
+      await new Promise(r => setTimeout(r, 2000));
     }
     return true;
   } catch (e) {
     return false;
-  } finally {
-    isLoggingIn = false;
   }
 }
-
-const DEFAULT_SESSION = {
-  token: "df0a194f-9711-42e0-9ea3-ebce17955a0f",
-  cookies: "_ga_FG56Q6TXQE=GS2.1.s1794214276$o1$g1$t1794214278$j58$l0$h0; _cfuvid=nSPvC38DekVgm7Lf957JTFx25WgMdx80FXRWbdDVPiY-1794214273.0698273-1.0.1.1-RP0PqWQFSSjwDaT3R3.bBVKMOy7lmKluCzwt.tJTa64; g_token=s%3Ap3C-o3qFMP50ui9Pst-bmOhJICt4Nvnd.zqi%2Fv3iL8qyk6%2FwB8ZtJtGAd97Tc%2B0CkFXIvgmOFyzM; _gat_gtag_UA_299908205_1=1; cf_clearance=Cl-x73hXmyCrgTzyGkTgcxs9EZMsPEX5T4XMySnNbKLERGZdeBE73B0t5qIljQxErOAvQ0i-g8Adv3l3YvaPkEdW1VXbZLFpALKAi2Rr-QVlBocHrhRwYwA1pmHQ1s-p17y7kjKl3D9yz3c3_I0rlZhinYcuWBVamXWtxhPJ4I9KWy_kHPUW0sKX8thWXL32Htykn75Nil1WBIkr5qHL5F0QqHtKgVIOztr_OQh4u9B3GVqAITDM-Z6vvegmmzIrxg5-JniNidkVMKP14hdKggV25in4BK9dc_UIZ0Ke7mHA6KKfMOu8AE8p; _gid=GA1.2.2011787465.1794214277; _ga=GA1.2.1980579575.1794214276"
-};
 
 // Direct API execution: Ultra-Fast Encrypted Axios REST with Instant Concurrency (Zero Queue Bottleneck)
 async function executeD247Direct(endpoint, rawPayload = {}) {
   // 1. High-Speed Direct Encrypted Axios REST (0.1s response, fully concurrent on VPS & Local)
   try {
     const encBody = encrypt(rawPayload);
-    const cleanEndpoint = endpoint.startsWith("/") ? endpoint.slice(1) : endpoint;
-    const fullUrl = cleanEndpoint.startsWith("http") ? cleanEndpoint : `https://mouseexch.com/api/front/${cleanEndpoint}`;
+    const fullUrl = endpoint.startsWith("http") ? endpoint : `https://d247.com/api/front/${endpoint}`;
 
-    let cookieStr = realDataStore.sessionCookies || DEFAULT_SESSION.cookies;
-    let tokenStr = realDataStore.authToken || DEFAULT_SESSION.token;
-    for (const fpath of [SESSION_FILE, path.resolve(process.cwd(), ".direct_exchange_session.json")]) {
-      if (fs.existsSync(fpath)) {
-        try {
-          const stored = JSON.parse(fs.readFileSync(fpath, "utf-8"));
-          if (stored.cookies) cookieStr = stored.cookies;
-          if (stored.token) tokenStr = stored.token;
-          realDataStore.sessionCookies = cookieStr;
-          realDataStore.authToken = tokenStr;
-        } catch (e) {}
-      }
+    let cookieStr = realDataStore.sessionCookies;
+    let tokenStr = realDataStore.authToken;
+    if (!cookieStr && fs.existsSync(SESSION_FILE)) {
+      try {
+        const stored = JSON.parse(fs.readFileSync(SESSION_FILE, "utf-8"));
+        cookieStr = stored.cookies || "";
+        tokenStr = stored.token || "";
+        realDataStore.sessionCookies = cookieStr;
+        realDataStore.authToken = tokenStr;
+      } catch (e) {}
     }
 
     const res = await axios.post(
@@ -151,8 +124,8 @@ async function executeD247Direct(endpoint, rawPayload = {}) {
       {
         headers: {
           "Content-Type": "application/json",
-          "Origin": "https://mouseexch.com",
-          "Referer": "https://mouseexch.com/",
+          "Origin": "https://d247.com",
+          "Referer": "https://d247.com/",
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
           ...(cookieStr ? { "Cookie": cookieStr } : {}),
           ...(tokenStr ? { "Authorization": `Bearer ${tokenStr}` } : {})
@@ -217,9 +190,11 @@ export async function evalD247Api(endpoint, rawPayload = {}) {
   try {
     let res = await executeD247Direct(endpoint, rawPayload);
     if (res?.status === 401 || res?.msg === "Please Login") {
-      if (pageInstance && !pageInstance.isClosed() && !isLoggingIn && (Date.now() - lastLoginAttempt > 15000)) {
-        performDemoLogin(pageInstance).catch(() => {});
+      console.warn("[D247 Engine] Session expired on D247. Re-authenticating demo session...");
+      if (pageInstance && !pageInstance.isClosed()) {
+        await performDemoLogin(pageInstance).catch(() => {});
       }
+      res = await executeD247Direct(endpoint, rawPayload);
     }
     return res;
   } catch (err) {
@@ -284,40 +259,283 @@ export function formatRealMatch(m, etid) {
   };
 }
 
-// 1. Initialize Zero-Chrome Real Direct Scraper Engine (mouseexch.com / br365bet.live)
+// 1. Initialize Headless Chrome Real Scraper Engine
 export async function startD247Engine() {
-  if (isStarting) return;
+  if (isStarting || browserInstance) return;
   isStarting = true;
 
-  console.log("[Exchange Engine] Activating Zero-Chrome High-Speed Encrypted REST Engine (mouseexch.com / br365bet.live)...");
-  
-  // Load stored session credentials from disk
+  const chromePath = getChromeExecutablePath();
+  if (!chromePath) {
+    console.log("[D247 Engine] Notice: Headless Chrome binary not found on this environment.");
+    console.log("[D247 Engine] Activating Zero-Chrome High-Speed Encrypted REST Engine (VPS Optimized)...");
+    
+    // Load stored session credentials from disk
+    try {
+      if (fs.existsSync(SESSION_FILE)) {
+        const stored = JSON.parse(fs.readFileSync(SESSION_FILE, "utf-8"));
+        if (stored.cookies) realDataStore.sessionCookies = stored.cookies;
+        if (stored.token) realDataStore.authToken = stored.token;
+        console.log(`[D247 Engine] Loaded session credentials (cookie length: ${(realDataStore.sessionCookies || "").length})`);
+      }
+    } catch (e) {}
+
+    realDataStore.isEngineActive = true;
+
+    // Direct REST data initialization
+    await fetchRealSportsTree().catch(() => {});
+    await fetchRealCasinoTables().catch(() => {});
+    await refreshAllSports().catch(() => {});
+
+    // Start 24/7 background polling loop on VPS
+    startBackgroundPollLoop();
+    isStarting = false;
+    return;
+  }
+
+  console.log(`[D247 Engine] Launching Autonomous Scraper Engine using binary: ${chromePath}...`);
   try {
+    const launchArgs = [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--no-zygote",
+      "--disable-blink-features=AutomationControlled",
+      "--window-size=1280,800"
+    ];
+
+    // Auto-detect Cloudflare WARP proxy on port 40000 to bypass datacenter IP restrictions
+    try {
+      const net = await import("net");
+      const isWarpActive = await new Promise(resolve => {
+        const client = net.createConnection({ port: 40000, host: "127.0.0.1" }, () => {
+          client.destroy();
+          resolve(true);
+        });
+        client.on("error", () => resolve(false));
+        client.setTimeout(400, () => { client.destroy(); resolve(false); });
+      });
+      if (isWarpActive) {
+        launchArgs.push("--proxy-server=socks5://127.0.0.1:40000");
+        console.log("[D247 Engine] Routing browser through Cloudflare WARP proxy on 127.0.0.1:40000");
+      }
+    } catch (e) {}
+
+    browserInstance = await puppeteer.launch({
+      executablePath: chromePath,
+      headless: "new",
+      args: launchArgs
+    });
+
+    browserInstance.on("disconnected", () => {
+      console.warn("[D247 Engine] Chrome disconnected. Watchdog will auto-reconnect.");
+      browserInstance = null;
+      pageInstance = null;
+    });
+
+    pageInstance = await browserInstance.newPage();
+
+    // 100% Undetectable Stealth for Linux VPS (Eliminates Cloudflare "Access Denied" / "Reload a page")
+    await pageInstance.evaluateOnNewDocument(() => {
+      try {
+        const newProto = navigator.__proto__;
+        delete newProto.webdriver;
+      } catch (e) {}
+      window.chrome = { runtime: {} };
+    });
+
+    // Use native Chrome User-Agent matched to the exact OS & Chrome version
+    const defaultUa = await browserInstance.userAgent();
+    const cleanUa = defaultUa.replace("HeadlessChrome", "Chrome");
+    await pageInstance.setUserAgent(cleanUa);
+    await pageInstance.setExtraHTTPHeaders({
+      "Accept-Language": "en-US,en;q=0.9",
+      "sec-ch-ua-platform": process.platform === "darwin" ? '"macOS"' : '"Linux"'
+    });
+
+    // Passive response interceptor for initial payload collection
+    pageInstance.on("response", async (res) => {
+      const url = res.url();
+      if (!url.includes("/api/front/")) return;
+
+      try {
+        const json = await res.json();
+        let payload = json;
+        if (json.data && typeof json.data === "string") {
+          payload = decrypt(json.data);
+        }
+
+        // Tablist (Full sports header in exact D247 order)
+        if (url.includes("tablist")) {
+          const raw = Array.isArray(payload?.data) ? payload.data : Object.values(payload?.data || {});
+          const tabSports = raw
+            .filter(s => s.tab || s.active)
+            .map(s => ({
+              id: s.eid,
+              eid: s.eid,
+              etid: s.eid,
+              name: s.ename,
+              ename: s.ename,
+              tab: Boolean(s.tab),
+              oid: s.oid || 99
+            }))
+            .sort((a, b) => a.oid - b.oid);
+
+          if (tabSports.length > 0) {
+            realDataStore.sportsTree = tabSports;
+            console.log(`[D247 Engine] Intercepted Real Sports Header: ${tabSports.length} sports`);
+          }
+        }
+
+        // Casino Table List (All 77+ tables in exact sequence)
+        else if (url.includes("casino/tablelist")) {
+          const rawTables = payload?.data?.t1 || payload?.data || [];
+          if (Array.isArray(rawTables) && rawTables.length > 0) {
+            realDataStore.casinoTables = rawTables.map(t => ({
+              gtype: t.gmid || t.gid || String(t.srno),
+              gmid: String(t.srno || t.gmid),
+              name: t.gname || t.ename || "Live Table",
+              category: t.gname?.toLowerCase().includes("teen") ? "Teen Patti"
+                : t.gname?.toLowerCase().includes("roulette") ? "Roulette"
+                : t.gname?.toLowerCase().includes("baccarat") ? "Baccarat"
+                : t.gname?.toLowerCase().includes("dragon") ? "Dragon Tiger"
+                : t.gname?.toLowerCase().includes("matka") || t.gname?.toLowerCase().includes("worli") ? "Matka"
+                : t.gname?.toLowerCase().includes("dice") || t.gname?.toLowerCase().includes("doli") ? "Dice"
+                : "Special",
+              minBet: 100,
+              maxBet: 50000,
+              imgpath: t.imgpath ? (t.imgpath.startsWith("http") ? t.imgpath : `https://cdn.926assets.com/g1-casino-icons/lc/${t.imgpath}`) : "https://cdn.926assets.com/g1-casino-icons/default.jpg"
+            }));
+            console.log(`[D247 Engine] Intercepted Casino Tables: ${realDataStore.casinoTables.length} tables`);
+          }
+        }
+
+        // Demo Token
+        else if (url.includes("demo-login")) {
+          if (payload?.data?.token) {
+            realDataStore.authToken = payload.data.token;
+            console.log(`[D247 Engine] Real Demo Token: ${payload.data.token}`);
+          }
+        }
+      } catch (err) {}
+    });
+
+    // Pre-load session cookies into browser before navigation
     if (fs.existsSync(SESSION_FILE)) {
-      const stored = JSON.parse(fs.readFileSync(SESSION_FILE, "utf-8"));
-      if (stored.cookies) realDataStore.sessionCookies = stored.cookies;
-      if (stored.token) realDataStore.authToken = stored.token;
+      try {
+        const stored = JSON.parse(fs.readFileSync(SESSION_FILE, "utf-8"));
+        const cookieStr = stored.cookies || realDataStore.sessionCookies || "";
+        if (cookieStr) {
+          const cookieList = cookieStr.split(";").map(c => {
+            const [name, ...val] = c.trim().split("=");
+            if (!name) return null;
+            return {
+              name: name.trim(),
+              value: val.join("=").trim(),
+              domain: ".d247.com",
+              path: "/"
+            };
+          }).filter(Boolean);
+          if (cookieList.length > 0) {
+            await pageInstance.setCookie(...cookieList);
+            console.log(`[D247 Engine] Injected ${cookieList.length} session cookies into Chrome.`);
+          }
+        }
+      } catch (ce) {}
     }
-  } catch (e) {}
 
-  realDataStore.isEngineActive = true;
+    try {
+      console.log("[D247 Engine] Loading https://d247.com/ ...");
+      await pageInstance.goto("https://d247.com/", { waitUntil: "domcontentloaded", timeout: 25000 });
+      
+      let pageTitle = await pageInstance.title();
+      console.log(`[D247 Engine] Landed on ${pageInstance.url()} | Title: ${pageTitle}`);
 
-  // Direct REST data initialization
-  await fetchRealSportsTree().catch(() => {});
-  await fetchRealCasinoTables().catch(() => {});
-  await refreshAllSports().catch(() => {});
+      // If "Reload a page" or "Access Denied" is encountered, reload as instructed by the page
+      if (pageTitle.toLowerCase().includes("denied") || pageTitle.toLowerCase().includes("reload")) {
+        console.warn("[D247 Engine] Notice: Reloading page to clear gate...");
+        await new Promise(r => setTimeout(r, 2000));
+        await pageInstance.reload({ waitUntil: "domcontentloaded", timeout: 20000 }).catch(() => {});
+        pageTitle = await pageInstance.title();
+        console.log(`[D247 Engine] Title after reload: ${pageTitle}`);
+      }
 
-  // Start 24/7 background polling loop on VPS
-  startBackgroundPollLoop();
-  isStarting = false;
-  return;
+      console.log("[D247 Engine] Performing In-Browser Demo Login...");
+      await performDemoLogin(pageInstance).catch(() => {});
+
+      // Only save session cookies if not blocked
+      if (!pageTitle.toLowerCase().includes("denied") && !pageTitle.toLowerCase().includes("reload")) {
+        const cookies = await pageInstance.cookies();
+        if (cookies && cookies.length > 0) {
+          realDataStore.sessionCookies = cookies.map(c => `${c.name}=${c.value}`).join("; ");
+        }
+        console.log(`[D247 Engine] Engine Online! Cookies Captured: ${cookies?.length || 0}`);
+        try {
+          fs.writeFileSync(SESSION_FILE, JSON.stringify({
+            cookies: realDataStore.sessionCookies,
+            token: realDataStore.authToken,
+            lastUpdate: Date.now()
+          }, null, 2));
+        } catch (e) {}
+      }
+      realDataStore.isEngineActive = true;
+    } catch (navErr) {
+      console.warn("[D247 Engine] Initial navigation notice:", navErr.message);
+      realDataStore.isEngineActive = true;
+    }
+
+    // Initialize Real Sports Tree, Casino Tables, and Sports Matches
+    try {
+      await fetchRealSportsTree().catch(() => {});
+      await fetchRealCasinoTables().catch(() => {});
+      await refreshAllSports().catch(() => {});
+    } catch (fetchErr) {
+      console.warn("[D247 Engine] Initial data fetch warning:", fetchErr.message);
+    }
+
+    // Start background polling loop
+    startBackgroundPollLoop();
+
+    // Start 24/7 Autonomous Watchdog (Guarantees zero freezes/hangs for life)
+    startAutonomousWatchdog();
+
+  } catch (err) {
+    console.error("[D247 Engine] Launch Error:", err.message);
+  } finally {
+    isStarting = false;
+  }
 }
 
-// 24/7 Self-Healing Watchdog Engine (Pure REST mode)
+// 24/7 Self-Healing Watchdog Engine
 let watchdogTimer = null;
 function startAutonomousWatchdog() {
-  // Pure direct REST engine - zero browser watchdog needed
-  return;
+  if (watchdogTimer) return;
+  watchdogTimer = setInterval(async () => {
+    try {
+      let isHealthy = false;
+      const isBrowserAlive = browserInstance && (typeof browserInstance.isConnected === "function" ? browserInstance.isConnected() : Boolean(browserInstance.connected));
+      if (isBrowserAlive && pageInstance && !pageInstance.isClosed()) {
+        const ping = await Promise.race([
+          pageInstance.evaluate(() => 1).catch(() => null),
+          new Promise(r => setTimeout(() => r(null), 2500))
+        ]);
+        if (ping === 1) isHealthy = true;
+      }
+
+      if (!isHealthy && !isStarting) {
+        console.warn("[D247 Watchdog] Health check detected stalled engine or closed tab. Auto-recovering session...");
+        try {
+          if (pageInstance && !pageInstance.isClosed()) await pageInstance.close().catch(() => {});
+          if (browserInstance) await browserInstance.close().catch(() => {});
+        } catch (e) {}
+        browserInstance = null;
+        pageInstance = null;
+        await startD247Engine();
+      }
+    } catch (err) {
+      console.warn("[D247 Watchdog] Recovery error:", err.message);
+    }
+  }, 10000);
 }
 
 // 2. Fetch real sports tree directly from D247 tablist
@@ -621,52 +839,16 @@ export async function refreshAllSports() {
 let pollInterval = null;
 function startBackgroundPollLoop() {
   if (pollInterval) return;
-  const sportsCycle = [4, 1, 2, 8, 10];
+  const sportsCycle = [4, 1, 2, 8];
   let cycleIdx = 0;
 
   pollInterval = setInterval(async () => {
     try {
       const etid = sportsCycle[cycleIdx % sportsCycle.length];
       cycleIdx++;
-
-      // 1. In-page active fetch (Direct in Chrome context - bypasses Cloudflare)
-      if (pageInstance && !pageInstance.isClosed()) {
-        await pageInstance.evaluate(async (eid) => {
-          try {
-            const enc = window.CryptoJS ? window.CryptoJS.AES.encrypt(JSON.stringify({ etid: eid, type: "all" }), "cae7b808-8b1e-4f47-87a5-1a4b6a08030e").toString() : null;
-            if (enc) {
-              await fetch(`/api/front/highlighthomePrivate?etid=${eid}`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ data: enc }),
-                credentials: "include"
-              });
-            }
-          } catch (e) {}
-        }, etid).catch(() => {});
-
-        // Fetch active casino table if user is viewing one
-        if (realDataStore.lastRequestedCasino?.gtype) {
-          const gt = realDataStore.lastRequestedCasino.gtype;
-          await pageInstance.evaluate(async (t) => {
-            try {
-              const enc = window.CryptoJS ? window.CryptoJS.AES.encrypt(JSON.stringify({ ismob: 1, type: t }), "cae7b808-8b1e-4f47-87a5-1a4b6a08030e").toString() : null;
-              if (enc) {
-                await fetch(`/api/front/casino/data2?gtype=${t}`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ data: enc }),
-                  credentials: "include"
-                });
-              }
-            } catch (e) {}
-          }, gt).catch(() => {});
-        }
-      }
-
-      await fetchRealSportHighlights(etid).catch(() => {});
+      await fetchRealSportHighlights(etid);
     } catch (err) {}
-  }, 2500);
+  }, 4000);
 }
 
 export function normalizeCasinoGtype(gtype) {
@@ -686,9 +868,8 @@ export function normalizeCasinoGtype(gtype) {
 
   // Roulette
   if (g === "roulette" || g === "roulette13") return "roulette13";
-  if (g === "beachroulette" || g === "roulette12") return "roulette12";
-  if (g === "viproulette" || g === "roulette11") return "roulette11";
-  if (g === "ourroullete" || g === "uniqueroulette") return "ourroullete";
+  if (g === "beachroulette" || g === "roulette11") return "roulette11";
+  if (g === "viproulette" || g === "roulette12") return "roulette12";
 
   // Poker
   if (g === "poker6player" || g === "poker6" || g === "6playerpoker" || g === "poker6players") return "poker6";
@@ -860,10 +1041,6 @@ export async function fetchRealCasinoTableLive(gtype) {
         if (normalized === "poker6") {
           if (Number(runnerId) >= 11 && Number(runnerId) <= 16) runnerSubtype = "hands";
           else if (Number(runnerId) >= 21) runnerSubtype = "pattern";
-        } else if (normalized === "goal2" || normalized === "goal") {
-          if (Number(runnerId) <= 12) runnerSubtype = "player";
-          else if (Number(runnerId) >= 21 && Number(runnerId) <= 25) runnerSubtype = "method";
-          else if (Number(runnerId) >= 100) runnerSubtype = "combo";
         }
 
         return {
