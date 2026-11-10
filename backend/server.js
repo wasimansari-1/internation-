@@ -19,8 +19,6 @@ import casinoRouter from "./routes/casinoRoutes.js";
 import streamRouter from "./routes/streamRoutes.js";
 import adminRouter from "./routes/adminRoutes.js";
 import wingoRouter from "./routes/wingoRoutes.js";
-import d247Router from "./routes/d247Routes.js";
-import { startD247Engine } from "./services/d247ScraperEngine.js";
 import { proxyRequest } from "./services/authService.js";
 import { getClientIp, nativeHttpsAgent } from "./services/streamService.js";
 import axios from "axios";
@@ -99,7 +97,6 @@ app.use("/api/casino", casinoRouter);
 app.use("/api/stream", streamRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/wingo", wingoRouter);
-app.use("/api/d247", d247Router);
 
 // Universal proxy for /w/* (WebRTC stream signaling, ping, and player telemetry)
 app.all("/w/*", async (req, res) => {
@@ -286,16 +283,6 @@ app.get("*", (req, res, next) => {
 if (!process.env.VERCEL) {
   const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`🚀 Modular Backend Server running on http://0.0.0.0:${PORT}`);
-    // Boot autonomous real-time D247 scraper engine & dual sync worker (local + VPS push)
-    import("../scripts/d247SyncWorker.js").then(m => {
-      m.startSyncWorker().catch((err) => {
-        console.warn("[Sync Worker] Failed to start:", err.message);
-      });
-    }).catch(e => {
-      startD247Engine().catch((err) => {
-        console.warn("[D247 Engine] Failed to boot scraper engine:", err.message);
-      });
-    });
   });
 
   // Dual-Port Zero 502 Bad Gateway Shield:
