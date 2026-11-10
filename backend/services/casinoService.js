@@ -239,6 +239,40 @@ export function getDefaultCardsForTable(eventId = "", eventName = "") {
   };
 }
 
+/**
+ * Checks whether all cards on the table are closed ('0' / face-down)
+ * Returns true if all cards are closed or uninitialized.
+ */
+export function areCardsClosed(cardsArr) {
+  if (!cardsArr || typeof cardsArr !== "object") return true;
+  for (const group of Object.values(cardsArr)) {
+    if (typeof group === "object" && group !== null) {
+      for (const cardVal of Object.values(group)) {
+        if (
+          cardVal &&
+          cardVal !== "0" &&
+          cardVal !== "null" &&
+          cardVal !== "-" &&
+          cardVal !== "undefined"
+        ) {
+          return false; // Found an open dealt card
+        }
+      }
+    } else if (typeof group === "string") {
+      if (
+        group &&
+        group !== "0" &&
+        group !== "null" &&
+        group !== "-" &&
+        group !== "undefined"
+      ) {
+        return false;
+      }
+    }
+  }
+  return true; // All cards are face down ('0') / closed
+}
+
 let lastSocketConnectAttempt = 0;
 
 export async function ensureNiceCasinoSocket(forceReconnect = false) {
@@ -530,6 +564,11 @@ export async function ensureNiceCasinoSocket(forceReconnect = false) {
             status = payload?.status || "ONLINE";
             roundStatus = payload?.roundStatus || "PLACE_THE_BET";
             gameResult = null; // Clear past round result on new round
+            existing.winner = null;
+            existing.gameResult = null;
+            existing.badgeresult = null;
+            existing.badgeResult = null;
+            lastCelebratedWinnerCache.delete(eventId);
           } else {
             if (payload?.status !== undefined) status = payload.status;
             if (packet?.status !== undefined) status = packet.status;
@@ -672,6 +711,9 @@ export async function ensureNiceCasinoSocket(forceReconnect = false) {
             }
           }
 
+          const cardsClosed = areCardsClosed(currentCards);
+          const isRoundReset = isNewRound || cardsClosed || roundStatus === "PLACE_THE_BET";
+
           const merged = {
             eventId,
             eventName,
@@ -683,31 +725,40 @@ export async function ensureNiceCasinoSocket(forceReconnect = false) {
             status: isSuspended ? "SUSPEND" : status,
             cardsArr: currentCards,
             marketArr: currentMarketArr,
-            gameResult,
+            gameResult: isRoundReset ? null : gameResult,
+            badgeresult: isRoundReset ? null : (existing.badgeresult || null),
+            badgeResult: isRoundReset ? null : (existing.badgeResult || null),
+            winner: isRoundReset ? null : (existing.winner || null),
             lastUpdated: Date.now(),
           };
+
+          if (isRoundReset) {
+            lastCelebratedWinnerCache.delete(eventId);
+          }
 
           casinoOddsCache.set(eventId, merged);
 
           // Instant Result Recording for the Dedicated Results API (<1ms latency)
           const incomingResultsArr = payload?.resultsArr || packet?.resultsArr;
           let resultsArrWinner = null;
-          if (incomingResultsArr) {
+          if (incomingResultsArr && !isRoundReset) {
             resultsArrWinner = extractWinnerFromResultsArr(incomingResultsArr);
           }
 
-          let declaredWinner =
-            resultsArrWinner ||
-            gameResult ||
-            payload?.gameResult ||
-            packet?.gameResult ||
-            payload?.winner ||
-            packet?.winner;
+          let declaredWinner = isRoundReset
+            ? null
+            : (resultsArrWinner ||
+               gameResult ||
+               payload?.gameResult ||
+               packet?.gameResult ||
+               payload?.winner ||
+               packet?.winner);
 
           if (
-            declaredWinner ||
-            roundStatus === "RESULT_DECLARED" ||
-            payload?.roundStatus === "RESULT_DECLARED"
+            !isRoundReset &&
+            (declaredWinner ||
+              roundStatus === "RESULT_DECLARED" ||
+              payload?.roundStatus === "RESULT_DECLARED")
           ) {
             if (declaredWinner) {
               const resolved = resolveWinnerLabel(declaredWinner, null, merged.eventName, eventId);
@@ -868,6 +919,8 @@ export async function getScrapedCasinoLiveOdds(gameId) {
         status: "ONLINE",
         winner: null,
         gameResult: null,
+        badgeresult: null,
+        badgeResult: null,
         cardsArr: getDefaultCardsForTable(gId, cached.eventName),
         leftSec: Math.max(0, 45 - (elapsed - 7)),
       };
@@ -876,6 +929,23 @@ export async function getScrapedCasinoLiveOdds(gameId) {
     const liveLeftSec = isSuspended
       ? 0
       : Math.max(0, (cached.initialLeftSec ?? cached.leftSec ?? 0) - elapsed);
+
+    // CRITICAL: When cards are closed ('0') or new active round has started,
+    // NEVER return badgeresult/winner! Badge MUST immediately close!
+    const cardsClosed = areCardsClosed(cached.cardsArr);
+    const isActiveRound = cached.roundStatus === "PLACE_THE_BET" || (liveLeftSec > 0 && !isSuspended);
+
+    if (cardsClosed || isActiveRound) {
+      return {
+        ...cached,
+        status: isSuspended && !cardsClosed ? "SUSPEND" : cached.status,
+        leftSec: liveLeftSec,
+        winner: null,
+        gameResult: null,
+        badgeresult: null,
+        badgeResult: null,
+      };
+    }
 
     return {
       ...cached,

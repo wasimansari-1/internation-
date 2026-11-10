@@ -125,6 +125,7 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
               lastRoundIdRef.current = data.roundId;
               targetEndRef.current = Date.now() + serverSec * 1000;
               setTimeLeft(serverSec);
+              setCelebratedWinner(null); // Round changed! Immediately close result badge
             } else {
               // Strictly monotonic countdown: never allow timer to fluctuate or jump UP during an active round!
               const currentRem = Math.max(0, Math.ceil((targetEndRef.current - Date.now()) / 1000));
@@ -407,8 +408,16 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
 
   // Determine actual real-time declared winner for all games (Teen Patti, Dragon Tiger, Lucky 7, etc.)
   const getLiveDeclaredWinner = () => {
-    // 1. If currently celebrating a newly declared round (auto-fires on all tables including Lucky 7 for 6 seconds):
+    // 0. If cards are closed/reset ('0'), result badge MUST immediately close and disappear
+    if (!areCardsDealt()) {
+      return null;
+    }
+
+    // 1. If currently celebrating a newly declared round:
     if (celebratedWinner?.label) {
+      if (oddsData?.roundId && celebratedWinner.roundId && String(oddsData.roundId) !== String(celebratedWinner.roundId)) {
+        return null;
+      }
       return celebratedWinner.label;
     }
 

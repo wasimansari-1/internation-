@@ -84,10 +84,10 @@ export default function ApiInspector() {
           <Terminal size={22} style={{ color: '#38bdf8' }} />
           <div>
             <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#f8fafc' }}>
-              Live API Tester & Scraped Endpoint Debugger
+              API Console & Request Tester
             </h3>
             <span style={{ fontSize: '12px', color: '#64748b' }}>
-              Direct proxy execution against https://nice444.com without CORS block
+              Live execution against exchange endpoints with verified payload schemas
             </span>
           </div>
         </div>

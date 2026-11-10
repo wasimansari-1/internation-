@@ -10,6 +10,13 @@ import { RotateCw, ShieldCheck, Activity } from "lucide-react";
 function getTabFromUrl() {
   const path = (window.location.pathname || "").toLowerCase();
   const hash = (window.location.hash || "").toLowerCase();
+  const search = new URLSearchParams(window.location.search);
+  const tabParam = (search.get("tab") || "").toUpperCase();
+
+  if (["GAMES", "SPORTS", "DOCS", "WINGO", "GATEWAY"].includes(tabParam)) {
+    return tabParam;
+  }
+
   if (
     path.includes("/admin") ||
     path.includes("/dashboard") ||
@@ -24,12 +31,28 @@ function getTabFromUrl() {
   if (path.includes("/wingo") || hash.includes("wingo")) return "WINGO";
   if (path.includes("/sports") || hash.includes("sports")) return "SPORTS";
   if (path.includes("/docs") || hash.includes("docs")) return "DOCS";
+
+  // Persistent tab retention across browser refreshes
+  try {
+    const saved = localStorage.getItem("app_active_tab");
+    if (saved && ["GAMES", "SPORTS", "DOCS", "WINGO", "GATEWAY"].includes(saved)) {
+      return saved;
+    }
+  } catch (e) {}
+
   return "GAMES";
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState(getTabFromUrl); // 'GAMES' | 'SPORTS' | 'GATEWAY' | 'DOCS'
-  const [selectedMatch, setSelectedMatch] = useState(null);
+  const [activeTab, setActiveTab] = useState(getTabFromUrl);
+  const [selectedMatch, setSelectedMatch] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem("app_selected_match");
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
+  });
 
   // Sync tab with browser URL history
   useEffect(() => {
@@ -40,9 +63,34 @@ export default function App() {
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
+  // Ensure browser URL pathname reflects restored tab on page load
+  useEffect(() => {
+    let targetPath = "/";
+    if (activeTab === "GATEWAY") targetPath = "/admin";
+    else if (activeTab === "WINGO") targetPath = "/wingo";
+    else if (activeTab === "SPORTS") targetPath = "/sports";
+    else if (activeTab === "DOCS") targetPath = "/docs";
+
+    if (window.location.pathname !== targetPath && !window.location.pathname.includes("/api")) {
+      try {
+        window.history.replaceState(null, "", targetPath + window.location.search);
+      } catch (e) {}
+    }
+  }, [activeTab]);
+
   const switchTab = (tab) => {
     setActiveTab(tab);
-    setSelectedMatch(null);
+    try {
+      localStorage.setItem("app_active_tab", tab);
+    } catch (e) {}
+
+    if (tab !== "SPORTS") {
+      setSelectedMatch(null);
+      try {
+        sessionStorage.removeItem("app_selected_match");
+      } catch (e) {}
+    }
+
     let newPath = "/";
     if (tab === "GATEWAY") newPath = "/admin";
     else if (tab === "WINGO") newPath = "/wingo";
@@ -50,6 +98,17 @@ export default function App() {
     else if (tab === "DOCS") newPath = "/docs";
     try {
       window.history.pushState(null, "", newPath);
+    } catch (e) {}
+  };
+
+  const handleSelectMatch = (match) => {
+    setSelectedMatch(match);
+    try {
+      if (match) {
+        sessionStorage.setItem("app_selected_match", JSON.stringify(match));
+      } else {
+        sessionStorage.removeItem("app_selected_match");
+      }
     } catch (e) {}
   };
 
@@ -62,8 +121,8 @@ export default function App() {
     <div
       style={{
         minHeight: "100vh",
-        background: "#0d0d0d",
-        color: "#ffffff",
+        background: "#080b11",
+        color: "#f8fafc",
         display: "flex",
         flexDirection: "column",
         fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif",
@@ -72,26 +131,26 @@ export default function App() {
       {/* Top Header */}
       <header
         style={{
-          background: "#080808",
-          borderBottom: "1px solid rgba(16, 185, 129, 0.3)",
-          padding: "0 16px",
-          height: "58px",
+          background: "#0c1017",
+          borderBottom: "1px solid #1a2230",
+          padding: "0 20px",
+          height: "54px",
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
           position: "sticky",
           top: 0,
           zIndex: 100,
-          gap: "12px",
+          gap: "16px",
         }}
       >
-        {/* Left: [U] UNIVERSAL API Logo */}
+        {/* Left: Professional API Provider Logo */}
         <div
           onClick={() => switchTab("GAMES")}
           style={{
             display: "flex",
             alignItems: "center",
-            gap: "8px",
+            gap: "10px",
             cursor: "pointer",
             flexShrink: 0,
           }}
@@ -100,56 +159,51 @@ export default function App() {
             style={{
               width: "28px",
               height: "28px",
-              border: "2px solid #ffffff",
+              background: "linear-gradient(135deg, #0284c7 0%, #0369a1 100%)",
               borderRadius: "6px",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               fontWeight: 900,
-              fontSize: "15px",
+              fontSize: "14px",
               color: "#ffffff",
-              lineHeight: 1,
+              boxShadow: "0 2px 8px rgba(2, 132, 199, 0.25)",
             }}
           >
             U
           </div>
-          <div>
-            <div
+          <div style={{ display: "flex", alignItems: "baseline", gap: "6px" }}>
+            <span
               style={{
-                fontSize: "13px",
+                fontSize: "14px",
                 fontWeight: 900,
-                color: "#ffffff",
-                letterSpacing: "1px",
+                color: "#f8fafc",
+                letterSpacing: "0.5px",
                 textTransform: "uppercase",
-                lineHeight: 1.1,
               }}
             >
               UNIVERSAL
-            </div>
-            <div
+            </span>
+            <span
               style={{
-                fontSize: "8px",
-                fontWeight: 700,
-                color: "#6b7280",
-                letterSpacing: "1px",
+                fontSize: "10px",
+                fontWeight: 800,
+                color: "#38bdf8",
+                letterSpacing: "0.8px",
               }}
             >
-              API
-            </div>
+              EXCHANGE
+            </span>
           </div>
         </div>
 
-        {/* Right: Scrollable Navigation Tabs (Mobile-Friendly) */}
+        {/* Right: Clean Professional Navigation Tabs */}
         <nav
           style={{
             display: "flex",
             alignItems: "center",
-            gap: "14px",
+            gap: "20px",
             height: "100%",
-            overflowX: "auto",
-            scrollbarWidth: "none",
-            msOverflowStyle: "none",
-            WebkitOverflowScrolling: "touch",
           }}
         >
           <button
@@ -157,22 +211,21 @@ export default function App() {
             style={{
               background: "none",
               border: "none",
-              color: activeTab === "GAMES" ? "#ffffff" : "#94a3b8",
+              color: activeTab === "GAMES" ? "#38bdf8" : "#94a3b8",
               fontWeight: 800,
               fontSize: "12px",
-              letterSpacing: "0.8px",
+              letterSpacing: "0.6px",
               cursor: "pointer",
               height: "100%",
               display: "flex",
               alignItems: "center",
               borderBottom:
                 activeTab === "GAMES"
-                  ? "2px solid #10b981"
+                  ? "2px solid #38bdf8"
                   : "2px solid transparent",
-              transition: "all 0.2s",
+              transition: "all 0.15s",
               padding: "0 4px",
               whiteSpace: "nowrap",
-              flexShrink: 0,
             }}
           >
             GAMES
@@ -183,22 +236,21 @@ export default function App() {
             style={{
               background: "none",
               border: "none",
-              color: activeTab === "SPORTS" ? "#ffffff" : "#94a3b8",
+              color: activeTab === "SPORTS" ? "#38bdf8" : "#94a3b8",
               fontWeight: 800,
               fontSize: "12px",
-              letterSpacing: "0.8px",
+              letterSpacing: "0.6px",
               cursor: "pointer",
               height: "100%",
               display: "flex",
               alignItems: "center",
               borderBottom:
                 activeTab === "SPORTS"
-                  ? "2px solid #10b981"
+                  ? "2px solid #38bdf8"
                   : "2px solid transparent",
-              transition: "all 0.2s",
+              transition: "all 0.15s",
               padding: "0 4px",
               whiteSpace: "nowrap",
-              flexShrink: 0,
             }}
           >
             SPORTS
@@ -209,22 +261,21 @@ export default function App() {
             style={{
               background: "none",
               border: "none",
-              color: activeTab === "DOCS" ? "#ffffff" : "#94a3b8",
+              color: activeTab === "DOCS" ? "#38bdf8" : "#94a3b8",
               fontWeight: 800,
               fontSize: "12px",
-              letterSpacing: "0.8px",
+              letterSpacing: "0.6px",
               cursor: "pointer",
               height: "100%",
               display: "flex",
               alignItems: "center",
               borderBottom:
                 activeTab === "DOCS"
-                  ? "2px solid #10b981"
+                  ? "2px solid #38bdf8"
                   : "2px solid transparent",
-              transition: "all 0.2s",
+              transition: "all 0.15s",
               padding: "0 4px",
               whiteSpace: "nowrap",
-              flexShrink: 0,
             }}
           >
             DOCS
@@ -237,15 +288,17 @@ export default function App() {
             style={{
               background: "none",
               border: "none",
-              color: "#94a3b8",
+              color: "#64748b",
               cursor: "pointer",
               display: "flex",
               alignItems: "center",
-              flexShrink: 0,
               padding: "4px",
+              transition: "color 0.15s",
             }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = "#94a3b8")}
+            onMouseLeave={(e) => (e.currentTarget.style.color = "#64748b")}
           >
-            <RotateCw size={15} />
+            <RotateCw size={14} />
           </button>
         </nav>
       </header>
@@ -264,7 +317,7 @@ export default function App() {
             <div style={{ padding: "16px" }}>
               <MatchDetailTablesView
                 event={selectedMatch}
-                onBack={() => setSelectedMatch(null)}
+                onBack={() => handleSelectMatch(null)}
               />
             </div>
           ) : (
@@ -273,49 +326,27 @@ export default function App() {
                 maxWidth: "1400px",
                 margin: "0 auto",
                 width: "100%",
-                padding: "24px 20px",
+                padding: "20px",
               }}
             >
-              {/* Header */}
-              <div style={{ marginBottom: "24px" }}>
-                <div
-                  style={{
-                    color: "#10b981",
-                    fontSize: "11px",
-                    fontWeight: 800,
-                    letterSpacing: "1.5px",
-                    textTransform: "uppercase",
-                    marginBottom: "4px",
-                  }}
-                >
-                  MARKETS
-                </div>
+              {/* Clean Professional Header */}
+              <div style={{ marginBottom: "20px" }}>
                 <h1
                   style={{
-                    fontSize: "28px",
-                    fontWeight: 900,
-                    color: "#ffffff",
-                    letterSpacing: "-0.5px",
+                    fontSize: "22px",
+                    fontWeight: 800,
+                    color: "#f8fafc",
+                    letterSpacing: "-0.3px",
                     margin: 0,
                   }}
                 >
-                  EXCHANGE LIVE SPORTS
+                  Live Sports Markets
                 </h1>
-                <p
-                  style={{
-                    fontSize: "13px",
-                    color: "#94a3b8",
-                    marginTop: "6px",
-                  }}
-                >
-                  Live Match Odds, Bookmaker Cup Bhav, and Fancy session
-                  markets.
-                </p>
               </div>
 
               <SportsOddsView
-                onSwitchToCasino={() => setActiveTab("GAMES")}
-                onSelectMatch={(m) => setSelectedMatch(m)}
+                onSwitchToCasino={() => switchTab("GAMES")}
+                onSelectMatch={(m) => handleSelectMatch(m)}
               />
             </div>
           ))}
@@ -330,31 +361,20 @@ export default function App() {
               maxWidth: "1200px",
               margin: "0 auto",
               width: "100%",
-              padding: "24px 20px",
+              padding: "20px",
             }}
           >
             <div style={{ marginBottom: "20px" }}>
-              <div
-                style={{
-                  color: "#10b981",
-                  fontSize: "11px",
-                  fontWeight: 800,
-                  letterSpacing: "1.5px",
-                  textTransform: "uppercase",
-                  marginBottom: "4px",
-                }}
-              >
-                DOCUMENTATION
-              </div>
               <h1
                 style={{
-                  fontSize: "26px",
-                  fontWeight: 900,
-                  color: "#ffffff",
+                  fontSize: "22px",
+                  fontWeight: 800,
+                  color: "#f8fafc",
+                  letterSpacing: "-0.3px",
                   margin: 0,
                 }}
               >
-                API ENDPOINTS & SCRAPER DEBUGGER
+                API Documentation
               </h1>
             </div>
             <ApiInspector />
