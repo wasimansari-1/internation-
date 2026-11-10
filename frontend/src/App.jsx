@@ -5,7 +5,8 @@ import MatchDetailTablesView from "./components/MatchDetailTablesView";
 import ApiInspector from "./components/ApiInspector";
 import ApiManagementDashboard from "./components/ApiManagementDashboard";
 import WingoGameView from "./components/WingoGameView";
-import { RotateCw, ShieldCheck, Activity } from "lucide-react";
+import UniversalApiLogo from "./components/UniversalApiLogo";
+import { RotateCw, Menu, X } from "lucide-react";
 
 function getTabFromUrl() {
   const path = (window.location.pathname || "").toLowerCase();
@@ -45,6 +46,7 @@ function getTabFromUrl() {
 
 export default function App() {
   const [activeTab, setActiveTab] = useState(getTabFromUrl);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [selectedMatch, setSelectedMatch] = useState(() => {
     try {
       const saved = sessionStorage.getItem("app_selected_match");
@@ -80,6 +82,7 @@ export default function App() {
 
   const switchTab = (tab) => {
     setActiveTab(tab);
+    setMobileMenuOpen(false);
     try {
       localStorage.setItem("app_active_tab", tab);
     } catch (e) {}
@@ -128,184 +131,207 @@ export default function App() {
         fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif",
       }}
     >
-      {/* Top Header */}
+      {/* Top Header - Pure API Provider Theme */}
       <header
         style={{
-          background: "#0c1017",
-          borderBottom: "1px solid #1a2230",
-          padding: "0 20px",
-          height: "54px",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
+          background: "#0a0e14",
+          borderBottom: "1px solid #10b981",
           position: "sticky",
           top: 0,
           zIndex: 100,
-          gap: "16px",
+          width: "100%",
         }}
       >
-        {/* Left: Professional API Provider Logo */}
         <div
-          onClick={() => switchTab("GAMES")}
+          className="app-container"
           style={{
             display: "flex",
+            justifyContent: "space-between",
             alignItems: "center",
-            gap: "10px",
-            cursor: "pointer",
-            flexShrink: 0,
+            height: "56px",
+          }}
+        >
+          {/* Left: Brand Emblem Logo */}
+          <UniversalApiLogo
+            size="md"
+            onClick={() => switchTab("GAMES")}
+          />
+
+          {/* Right: Desktop Navigation Tabs */}
+          <nav
+            className="desktop-nav"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "20px",
+              height: "100%",
+            }}
+          >
+            {["GAMES", "SPORTS", "DOCS"].map((tab) => {
+              const isActive = activeTab === tab;
+              return (
+                <button
+                  key={tab}
+                  onClick={() => switchTab(tab)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: isActive ? "#34d399" : "#94a3b8",
+                    fontWeight: 800,
+                    fontSize: "12px",
+                    letterSpacing: "0.8px",
+                    cursor: "pointer",
+                    height: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    borderBottom: isActive
+                      ? "2px solid #10b981"
+                      : "2px solid transparent",
+                    transition: "all 0.15s",
+                    padding: "0 4px",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {tab}
+                </button>
+              );
+            })}
+
+            {/* Refresh icon */}
+            <button
+              onClick={() => window.location.reload()}
+              title="Reload live feeds"
+              style={{
+                background: "none",
+                border: "none",
+                color: "#64748b",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                padding: "4px",
+                transition: "color 0.15s",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "#34d399")}
+              onMouseLeave={(e) => (e.currentTarget.style.color = "#64748b")}
+            >
+              <RotateCw size={14} />
+            </button>
+          </nav>
+
+          {/* Mobile Hamburger Button */}
+          <button
+            className="mobile-menu-btn"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            aria-label="Toggle navigation menu"
+            style={{
+              background: "none",
+              border: "none",
+              color: "#f8fafc",
+              cursor: "pointer",
+              display: "none",
+              padding: "6px",
+            }}
+          >
+            {mobileMenuOpen ? <X size={22} color="#10b981" /> : <Menu size={22} />}
+          </button>
+        </div>
+      </header>
+
+      {/* Mobile Dropdown Navigation Drawer */}
+      {mobileMenuOpen && (
+        <div
+          style={{
+            backgroundColor: "#0d141d",
+            borderBottom: "1px solid #1e293b",
+            position: "sticky",
+            top: "56px",
+            zIndex: 99,
+            width: "100%",
           }}
         >
           <div
+            className="app-container"
             style={{
-              width: "28px",
-              height: "28px",
-              background: "linear-gradient(135deg, #0284c7 0%, #0369a1 100%)",
-              borderRadius: "6px",
+              padding: "14px 16px",
               display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontWeight: 900,
-              fontSize: "14px",
-              color: "#ffffff",
-              boxShadow: "0 2px 8px rgba(2, 132, 199, 0.25)",
+              flexDirection: "column",
+              gap: "10px",
             }}
           >
-            U
-          </div>
-          <div style={{ display: "flex", alignItems: "baseline", gap: "6px" }}>
-            <span
-              style={{
-                fontSize: "14px",
-                fontWeight: 900,
-                color: "#f8fafc",
-                letterSpacing: "0.5px",
-                textTransform: "uppercase",
-              }}
-            >
-              UNIVERSAL
-            </span>
-            <span
-              style={{
-                fontSize: "10px",
-                fontWeight: 800,
-                color: "#38bdf8",
-                letterSpacing: "0.8px",
-              }}
-            >
-              EXCHANGE
-            </span>
+            {["GAMES", "SPORTS", "DOCS"].map((tab) => {
+              const isActive = activeTab === tab;
+              return (
+                <button
+                  key={tab}
+                  onClick={() => switchTab(tab)}
+                  style={{
+                    background: isActive ? "#064e3b" : "transparent",
+                    border: isActive ? "1px solid #059669" : "1px solid #1e293b",
+                    borderRadius: "8px",
+                    color: isActive ? "#34d399" : "#cbd5e1",
+                    fontWeight: 800,
+                    fontSize: "13px",
+                    padding: "10px 14px",
+                    textAlign: "left",
+                    cursor: "pointer",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                >
+                  <span>{tab}</span>
+                  {isActive && (
+                    <span
+                      style={{
+                        width: "6px",
+                        height: "6px",
+                        borderRadius: "50%",
+                        backgroundColor: "#10b981",
+                      }}
+                    />
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
+      )}
 
-        {/* Right: Clean Professional Navigation Tabs */}
-        <nav
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "20px",
-            height: "100%",
-          }}
-        >
-          <button
-            onClick={() => switchTab("GAMES")}
-            style={{
-              background: "none",
-              border: "none",
-              color: activeTab === "GAMES" ? "#38bdf8" : "#94a3b8",
-              fontWeight: 800,
-              fontSize: "12px",
-              letterSpacing: "0.6px",
-              cursor: "pointer",
-              height: "100%",
-              display: "flex",
-              alignItems: "center",
-              borderBottom:
-                activeTab === "GAMES"
-                  ? "2px solid #38bdf8"
-                  : "2px solid transparent",
-              transition: "all 0.15s",
-              padding: "0 4px",
-              whiteSpace: "nowrap",
-            }}
-          >
-            GAMES
-          </button>
+      {/* Unified responsive container CSS */}
+      <style>{`
+        .app-container {
+          width: 75%;
+          max-width: 1140px;
+          margin: 0 auto;
+          padding: 0 16px;
+          box-sizing: border-box;
+        }
 
-          <button
-            onClick={() => switchTab("SPORTS")}
-            style={{
-              background: "none",
-              border: "none",
-              color: activeTab === "SPORTS" ? "#38bdf8" : "#94a3b8",
-              fontWeight: 800,
-              fontSize: "12px",
-              letterSpacing: "0.6px",
-              cursor: "pointer",
-              height: "100%",
-              display: "flex",
-              alignItems: "center",
-              borderBottom:
-                activeTab === "SPORTS"
-                  ? "2px solid #38bdf8"
-                  : "2px solid transparent",
-              transition: "all 0.15s",
-              padding: "0 4px",
-              whiteSpace: "nowrap",
-            }}
-          >
-            SPORTS
-          </button>
+        @media (max-width: 1080px) {
+          .app-container {
+            width: 90%;
+            max-width: 100%;
+            padding: 0 14px;
+          }
+        }
 
-          <button
-            onClick={() => switchTab("DOCS")}
-            style={{
-              background: "none",
-              border: "none",
-              color: activeTab === "DOCS" ? "#38bdf8" : "#94a3b8",
-              fontWeight: 800,
-              fontSize: "12px",
-              letterSpacing: "0.6px",
-              cursor: "pointer",
-              height: "100%",
-              display: "flex",
-              alignItems: "center",
-              borderBottom:
-                activeTab === "DOCS"
-                  ? "2px solid #38bdf8"
-                  : "2px solid transparent",
-              transition: "all 0.15s",
-              padding: "0 4px",
-              whiteSpace: "nowrap",
-            }}
-          >
-            DOCS
-          </button>
-
-          {/* Refresh icon */}
-          <button
-            onClick={() => window.location.reload()}
-            title="Reload live feeds"
-            style={{
-              background: "none",
-              border: "none",
-              color: "#64748b",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              padding: "4px",
-              transition: "color 0.15s",
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = "#94a3b8")}
-            onMouseLeave={(e) => (e.currentTarget.style.color = "#64748b")}
-          >
-            <RotateCw size={14} />
-          </button>
-        </nav>
-      </header>
+        @media (max-width: 768px) {
+          .app-container {
+            width: 100%;
+            padding: 0 16px;
+          }
+          .desktop-nav {
+            display: none !important;
+          }
+          .mobile-menu-btn {
+            display: flex !important;
+          }
+        }
+      `}</style>
 
       {/* Main Content Area */}
       <main style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-        {/* 1. GAMES TAB (Exact matching screenshot media_1793547711623_2f4e7a73.jpg) */}
+        {/* 1. GAMES TAB */}
         {activeTab === "GAMES" && <UniverseGamesView />}
 
         {/* 1.5 WINGO LOTTERY TAB */}
@@ -351,7 +377,7 @@ export default function App() {
             </div>
           ))}
 
-        {/* 3. GATEWAY HUB TAB (Enterprise API Load & Origin Block Telemetry) */}
+        {/* 3. GATEWAY HUB TAB */}
         {activeTab === "GATEWAY" && <ApiManagementDashboard />}
 
         {/* 4. DOCS TAB */}
@@ -381,6 +407,90 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {/* Footer matching user reference image media_1794350652170_5456cb32.png */}
+      <footer
+        style={{
+          backgroundColor: "#070b10",
+          borderTop: "1px solid #10b981",
+          padding: "44px 0 36px",
+          marginTop: "auto",
+          width: "100%",
+        }}
+      >
+        <div
+          className="app-container"
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            textAlign: "center",
+          }}
+        >
+          {/* Center Logo */}
+          <div style={{ marginBottom: "14px" }}>
+            <UniversalApiLogo
+              size="lg"
+              align="center"
+              onClick={() => switchTab("GAMES")}
+            />
+          </div>
+
+          {/* Tagline */}
+          <p
+            style={{
+              color: "#8e9eb3",
+              fontSize: "13px",
+              lineHeight: 1.5,
+              margin: "0 0 22px 0",
+              maxWidth: "520px",
+              fontFamily: "system-ui, -apple-system, sans-serif",
+            }}
+          >
+            Live tables, sports odds, TV, and a single partner contract.
+          </p>
+
+          {/* Footer Navigation Links */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "28px",
+              flexWrap: "wrap",
+            }}
+          >
+            {["GAMES", "SPORTS", "DOCS"].map((tab) => {
+              const isActive = activeTab === tab;
+              return (
+                <button
+                  key={tab}
+                  onClick={() => switchTab(tab)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: isActive ? "#34d399" : "#cbd5e1",
+                    fontWeight: 800,
+                    fontSize: "12px",
+                    letterSpacing: "1.2px",
+                    textTransform: "uppercase",
+                    cursor: "pointer",
+                    padding: "4px 8px",
+                    transition: "color 0.15s ease",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = "#34d399")}
+                  onMouseLeave={(e) =>
+                    (e.currentTarget.style.color = isActive ? "#34d399" : "#cbd5e1")
+                  }
+                >
+                  {tab}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

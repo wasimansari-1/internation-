@@ -388,83 +388,120 @@ export default function UniverseGamesView() {
           }
         }
 
-        /* Mobile Phone Screens (down to 340px) -> STRICTLY 3 CARDS IN ONE LINE */
+        /* Mobile Phone Screens (down to 300px) -> Exactly 2 cards per row & hide toolbar */
         @media (max-width: 768px) {
           .universe-games-page {
             width: 100%;
-            padding: 12px 6px;
+            padding: 18px 16px;
           }
 
+          /* Hide category pills and search bar on phone (Image 1) */
           .universe-games-toolbar {
-            gap: 10px;
-            margin-bottom: 14px;
-            padding-bottom: 10px;
+            display: none !important;
           }
 
-          .universe-games-categories {
-            flex-basis: 100%;
-            gap: 6px;
-          }
-
-          .universe-category-btn {
-            padding: 6px 12px;
-            font-size: 11.5px;
-          }
-
-          .universe-games-search {
-            flex: 1 1 100%;
-            min-width: 0;
-            min-height: 38px;
-            padding: 0 12px;
-          }
-
-          /* Exactly 3 cards per row matching mobile screen */
+          /* Exactly 2 cards per row on phone screens down to 300px (Image 2) */
           .universe-games-grid {
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 6px;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 10px !important;
+          }
+
+          .universe-game-card {
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+          }
+        }
+
+        /* Small mobile screens (300px - 360px) */
+        @media (max-width: 360px) {
+          .universe-games-page {
+            padding: 14px 12px;
+          }
+
+          .universe-games-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 8px !important;
           }
 
           .universe-game-card {
             border-radius: 10px;
-            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
-          }
-        }
-
-        /* Very narrow screens (340px and below) */
-        @media (max-width: 360px) {
-          .universe-games-page {
-            padding: 10px 4px;
-          }
-
-          .universe-games-grid {
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 5px;
-          }
-
-          .universe-game-card {
-            border-radius: 8px;
           }
         }
       `}</style>
 
+      {/* Hero Section matching reference Image 1 */}
+      <div style={{ marginBottom: "20px" }}>
+        <div
+          style={{
+            color: "#10b981",
+            fontSize: "11px",
+            fontWeight: 800,
+            letterSpacing: "2.5px",
+            textTransform: "uppercase",
+            marginBottom: "6px",
+          }}
+        >
+          TABLES
+        </div>
+        <h1
+          style={{
+            fontSize: "clamp(24px, 4vw, 32px)",
+            fontWeight: 900,
+            color: "#ffffff",
+            letterSpacing: "-0.5px",
+            textTransform: "uppercase",
+            margin: "0 0 8px 0",
+          }}
+        >
+          UNIVERSE LIVE
+        </h1>
+        <p
+          style={{
+            fontSize: "13.5px",
+            color: "#94a3b8",
+            margin: 0,
+            lineHeight: 1.5,
+            maxWidth: "600px",
+          }}
+        >
+          {tables.length || 15} live tables. Open a game for the round clock, markets, and results.
+        </p>
+      </div>
+
       {/* Category navigation and search. */}
       <div className="universe-games-toolbar">
         <div className="universe-games-categories">
-          {categories.map((category) => {
-            const isActive = activeCategory === category;
+          <button
+            type="button"
+            onClick={() => setActiveCategory("Universe Live")}
+            className={`universe-category-btn${activeCategory === "Universe Live" ? " is-active" : ""}`}
+          >
+            {tables.length || 15} GAMES
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveCategory("IN PLAY")}
+            className={`universe-category-btn${activeCategory === "IN PLAY" ? " is-active" : ""}`}
+          >
+            IN PLAY
+          </button>
+          {categories
+            .filter((c) => c !== "Universe Live")
+            .map((category) => {
+              const isActive = activeCategory === category;
 
-            return (
-              <button
-                key={category}
-                type="button"
-                onClick={() => setActiveCategory(category)}
-                className={`universe-category-btn${isActive ? " is-active" : ""}`}
-                aria-pressed={isActive}
-              >
-                {category}
-              </button>
-            );
-          })}
+              return (
+                <button
+                  key={category}
+                  type="button"
+                  onClick={() => setActiveCategory(category)}
+                  className={`universe-category-btn${isActive ? " is-active" : ""}`}
+                  aria-pressed={isActive}
+                >
+                  {category}
+                </button>
+              );
+            })}
         </div>
 
         <div className="universe-games-search">
