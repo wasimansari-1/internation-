@@ -57,10 +57,28 @@ export function extractWinnerFromResultsArr(resultsArr) {
   if (!winnerMarket || !winnerMarket.runners) return null;
 
   if (Array.isArray(winnerMarket.runners)) {
+    // 1. Check if TIE won on any table
+    const tieWin = winnerMarket.runners.find(
+      (r) =>
+        (String(r.name || r.runnerName || "").toUpperCase().includes("TIE")) &&
+        (r.result === "WINNER" || r.status === "WINNER" || r.result === "TIE" || r.status === "TIE")
+    );
+    if (tieWin) return "TIE";
+
+    const allTie = winnerMarket.runners.every((r) => r.result === "TIE" || r.status === "TIE");
+    if (winnerMarket.runners.length > 0 && allTie) return "TIE";
+
     const winRn = winnerMarket.runners.find((r) => r.result === "WINNER" || r.status === "WINNER");
     if (winRn) return winRn.name || winRn.runnerName || winRn.selectionId;
   } else if (typeof winnerMarket.runners === "object") {
     for (const [selectionId, status] of Object.entries(winnerMarket.runners)) {
+      const runnerName = String(winnerMarket.runnersName?.[selectionId] || selectionId).toUpperCase();
+      if ((status === "WINNER" || status === "TIE") && runnerName.includes("TIE")) {
+        return "TIE";
+      }
+      if (status === "TIE") {
+        return "TIE";
+      }
       if (status === "WINNER") {
         return winnerMarket.runnersName?.[selectionId] || selectionId;
       }
@@ -77,6 +95,18 @@ export function resolveWinnerLabel(winner, runnerName, eventName = "", eventId =
   const ev = (eventName || "").toUpperCase();
   const id = String(eventId || "");
   const w = String(winner || "").trim().toUpperCase();
+  const rn = String(runnerName || "").trim().toUpperCase();
+
+  // UNIVERSAL TIE: If any table has a Tie result, return "TIE" for badge display
+  if (
+    w === "TIE" ||
+    w.includes("TIE") ||
+    rn === "TIE" ||
+    rn.includes("TIE") ||
+    (w === "T" && (ev.includes("BACCARAT") || ev.includes("WAR") || ev.includes("TEEN")))
+  ) {
+    return "TIE";
+  }
 
   // 1. Table specific overrides
   if (ev.includes("ANDAR") || id === "99.0025" || id === "99.0034") {
@@ -86,7 +116,7 @@ export function resolveWinnerLabel(winner, runnerName, eventName = "", eventId =
   if (ev.includes("LUCKY") || id === "99.0030" || id === "99.0031" || id === "99.0032") {
     if (w === "L" || w === "LOW" || w === "LOW CARD") return "LOW CARD";
     if (w === "H" || w === "HIGH" || w === "HIGH CARD") return "HIGH CARD";
-    if (w === "7" || w === "TIE" || w === "LUCKY 7") return "LUCKY 7";
+    if (w === "7" || w === "TIE" || w === "LUCKY 7") return "TIE";
   }
   if (ev.includes("BACCARAT") || id === "99.0001" || id === "99.0002") {
     if (w === "P" || w === "PLAYER") return "PLAYER";
@@ -99,28 +129,31 @@ export function resolveWinnerLabel(winner, runnerName, eventName = "", eventId =
     if (w === "C" || w === "ANTHONY") return "ANTHONY";
   }
   if (ev.includes("DRAGON") || id === "99.0018" || id === "99.0019" || id === "99.0020" || id === "99.0021") {
+    if (w === "TIE") return "TIE";
     if (w === "D" || w === "DRAGON") return "DRAGON";
     if (w === "T" || w === "TIGER") return "TIGER";
-    if (w === "TIE") return "TIE";
   }
   if (ev.includes("DTL") || id === "99.0041" || id === "99.0004") {
+    if (w === "TIE") return "TIE";
     if (w === "D" || w === "DRAGON") return "DRAGON";
     if (w === "T" || w === "TIGER") return "TIGER";
     if (w === "L" || w === "LION") return "LION";
   }
   if (ev.includes("32") || id === "99.0022" || id === "99.0023") {
+    if (w.includes("TIE")) return "TIE";
     if (w.includes("8")) return "PLAYER 8";
     if (w.includes("9")) return "PLAYER 9";
     if (w.includes("10")) return "PLAYER 10";
     if (w.includes("11")) return "PLAYER 11";
   }
   if (ev.includes("WAR") || id === "99.0027") {
+    if (w === "T" || w === "TIE") return "TIE";
     if (w === "R" || w.includes("RED")) return "RED";
     if (w === "B" || w.includes("BLACK")) return "BLACK";
-    if (w === "T" || w === "TIE") return "TIE";
   }
 
   // 2. Generic winner mappings
+  if (w === "TIE" || w.includes("TIE")) return "TIE";
   if (w === "A" || w === "PLAYER_A" || w === "PLAYER A") return "PLAYER A";
   if (w === "B" || w === "PLAYER_B" || w === "PLAYER B") return "PLAYER B";
   if (w === "D" || w === "DRAGON") return "DRAGON";
@@ -128,10 +161,10 @@ export function resolveWinnerLabel(winner, runnerName, eventName = "", eventId =
   if (w === "L" || w === "LOW" || w === "LOW CARD") return "LOW CARD";
   if (w === "H" || w === "HIGH" || w === "HIGH CARD") return "HIGH CARD";
   if (w === "7" || w === "LUCKY 7") return "LUCKY 7";
-  if (w === "TIE") return "TIE";
 
   if (runnerName) {
     const clean = runnerName.replace(/\(.*?\)/g, "").trim();
+    if (clean.toUpperCase().includes("TIE")) return "TIE";
     if (clean) return clean;
   }
 

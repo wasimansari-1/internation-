@@ -357,6 +357,9 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
   const getWinnerBadge = (winner) => {
     if (!winner) return { label: '?', bg: '#facc15' };
     const w = String(winner).toUpperCase().trim();
+    if (w === 'TIE' || w.includes('TIE')) {
+      return { label: 'T', bg: '#10b981' }; // TIE (Green)
+    }
     if (w === 'L' || w === 'LOW' || w === 'LOW CARD' || w === 'LION') {
       return { label: 'L', bg: '#facc15' }; // Low Card / Lion (Yellow)
     }
@@ -387,9 +390,6 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
     if (w.includes('PLAYER_') || w.startsWith('PLAYER ')) {
       const num = w.replace(/[^0-9]/g, '');
       return { label: num || 'W', bg: '#c084fc' };
-    }
-    if (w === 'TIE') {
-      return { label: 'T', bg: '#10b981' };
     }
     return { label: w.slice(0, 2), bg: '#10b981' };
   };
@@ -969,16 +969,22 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
                       </svg>
                     </div>
 
-                    {/* Iconic Orange Winner Badge */}
+                    {/* Iconic Winner Badge */}
                     <div
                       style={{
                         position: 'absolute',
                         bottom: '22px',
                         zIndex: 6,
-                        background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+                        background:
+                          String(liveWinner).toUpperCase().includes('TIE')
+                            ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+                            : 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
                         borderRadius: '22px 6px 22px 6px',
-                        padding: '7px 22px',
-                        boxShadow: '0 4px 18px rgba(234, 88, 12, 0.75)',
+                        padding: '7px 24px',
+                        boxShadow:
+                          String(liveWinner).toUpperCase().includes('TIE')
+                            ? '0 4px 18px rgba(16, 185, 129, 0.8)'
+                            : '0 4px 18px rgba(234, 88, 12, 0.75)',
                         display: 'inline-flex',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -988,15 +994,17 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
                     >
                       <span
                         style={{
-                          color: '#000000',
+                          color: '#ffffff',
                           fontWeight: 900,
                           fontSize: '16px',
-                          letterSpacing: '0.6px',
+                          letterSpacing: '0.8px',
                           textTransform: 'uppercase',
                           fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
                         }}
                       >
-                        {String(liveWinner).toUpperCase().includes('WIN') || String(liveWinner).toUpperCase().includes('CARD') || String(liveWinner).toUpperCase().includes('TIE') || String(liveWinner).toUpperCase().includes('LUCKY 7')
+                        {String(liveWinner).toUpperCase().includes('TIE')
+                          ? 'TIE'
+                          : String(liveWinner).toUpperCase().includes('WIN') || String(liveWinner).toUpperCase().includes('CARD') || String(liveWinner).toUpperCase().includes('LUCKY 7')
                           ? liveWinner
                           : `${liveWinner} WIN`}
                       </span>
