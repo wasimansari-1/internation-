@@ -179,43 +179,6 @@ export default function App() {
           </button>
 
           <button
-            onClick={() => switchTab("WINGO")}
-            style={{
-              background:
-                activeTab === "WINGO" ? "rgba(244, 63, 94, 0.15)" : "none",
-              border: "none",
-              color: activeTab === "WINGO" ? "#f43f5e" : "#94a3b8",
-              fontWeight: 800,
-              fontSize: "12px",
-              letterSpacing: "0.8px",
-              cursor: "pointer",
-              height: "100%",
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              borderBottom:
-                activeTab === "WINGO"
-                  ? "2px solid #f43f5e"
-                  : "2px solid transparent",
-              transition: "all 0.2s",
-              padding: "0 8px",
-              whiteSpace: "nowrap",
-              flexShrink: 0,
-            }}
-          >
-            <span
-              style={{
-                width: "6px",
-                height: "6px",
-                borderRadius: "50%",
-                backgroundColor: "#f43f5e",
-                display: "inline-block",
-              }}
-            />
-            WINGO LOTTERY
-          </button>
-
-          <button
             onClick={() => switchTab("SPORTS")}
             style={{
               background: "none",
@@ -240,39 +203,6 @@ export default function App() {
           >
             SPORTS
           </button>
-
-          {/* ADMIN / GATEWAY DASHBOARD TAB */}
-          {/* <button
-            onClick={() => switchTab('GATEWAY')}
-            title="Open API Gateway & Origin Management Dashboard"
-            style={{
-              background: activeTab === 'GATEWAY' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(15, 23, 42, 0.6)',
-              border: activeTab === 'GATEWAY' ? '1px solid rgba(56, 189, 248, 0.5)' : '1px solid rgba(255, 255, 255, 0.1)',
-              color: activeTab === 'GATEWAY' ? '#38bdf8' : '#e2e8f0',
-              fontWeight: 800,
-              fontSize: '11px',
-              letterSpacing: '0.8px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '6px 10px',
-              borderRadius: '6px',
-              transition: 'all 0.2s',
-              whiteSpace: 'nowrap',
-              flexShrink: 0
-            }}
-          >
-            <span style={{
-              width: '7px',
-              height: '7px',
-              borderRadius: '50%',
-              backgroundColor: '#38bdf8',
-              boxShadow: '0 0 8px #38bdf8'
-            }} />
-            <Activity size={12} style={{ color: '#38bdf8' }} />
-            ADMIN HUB
-          </button> */}
 
           <button
             onClick={() => switchTab("DOCS")}
