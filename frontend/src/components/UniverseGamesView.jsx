@@ -3,43 +3,41 @@ import { RefreshCw, Play, Shield, Search, X, Maximize2 } from 'lucide-react';
 import axios from 'axios';
 import CustomCasinoGameView from './CustomCasinoGameView';
 
-const PREFERRED_ORDER = [
+export const ALLOWED_CASINO_IDS = [
   '99.0010', // 20-20 TEENPATTI
-  '99.0030', // LUCKY 7 - A
-  '99.0013', // 1DAY TEEN PATTI
+  '99.0030', // LUCKY 7
+  '99.0013', // 1 DAY TEENPATTI
   '99.0016', // JOKER TEEN PATTI
-  '99.0018', // DRAGON TIGER
+  '99.0019', // DRAGON TIGER
   '99.0001', // BACCARAT
-  '99.0002', // BACCARAT - A
-  '99.0025', // ANDAR BAHAR - A
-  '99.0022', // 32 CARDS - A
-  '99.0007', // 20-20 POKER - A
-  '99.0041', // DTL - A
+  '99.0025', // ANDAR BAHAR
+  '99.0022', // 32 CARDS
+  '99.0007', // POKER
+  '99.0041', // DTL
   '99.0021', // 1 DAY DRAGON TIGER
   '99.0014', // MUFLIS TEEN PATTI
-  '99.0046', // 20-20 CARD RACE
+  '99.0046', // CARD RACE
   '99.0005', // AMAR AKBAR ANTHONY
-  '99.0019', // 20-20 DRAGON TIGER
-  '99.0031', // LUCKY 7 - B
-  '99.0032', // FAST LUCKY - 7
-  '99.0020', // FAST DRAGON TIGER
-  '99.0023', // 32 CARDS - B
-  '99.0034', // ANDAR BAHAR - C
-  '99.0008', // 20-20 POKER - B
-  '99.0015', // POINT TEEN PATTI
-  '99.0004', // DTL TEENPATTI
-  '99.0040', // 3 CARD JUDGEMENT - A
-  '99.0027', // CASINO WAR
-  '99.0009', // INSTANT WORLI
-  '99.0050', // BOLLYWOOD CASINO
-  '99.0006', // INA MINA DIKA
-  '99.0058', // LOTTERY
-  '99.0051', // 1 CARD METER
-  '99.0057', // 1 CARD 20-20
-  '99.0060', // TRIO
-  '99.0059', // KBC
-  '99.0055', // CASINO METER
+  '99.0018', // DRAGON TIGER
 ];
+
+export const TABLE_METADATA = {
+  '99.0010': { name: '20-20 TEENPATTI', image: '/20-20teenpatti.jpg' },
+  '99.0030': { name: 'LUCKY 7', image: '/Lucky-7.jpg' },
+  '99.0013': { name: '1 DAY TEENPATTI', image: '/1Dayteenpatti.jpg' },
+  '99.0016': { name: 'JOKER TEENPATTI', image: '/Jokerteenpatti.jpg' },
+  '99.0019': { name: 'DRAGON TIGER', image: '/Dragontiger.jpg' },
+  '99.0001': { name: 'BACCARAT', image: '/Baccarat.jpg' },
+  '99.0025': { name: 'ANDAR BAHAR', image: '/AndarBahar.jpg' },
+  '99.0022': { name: '32 CARDS', image: '/32cards.jpg' },
+  '99.0007': { name: 'POKER', image: '/Poker.jpg' },
+  '99.0041': { name: 'DTL', image: '/DTL.jpg' },
+  '99.0021': { name: '1 DAY DRAGON TIGER', image: '/1DayDragontiger.jpg' },
+  '99.0014': { name: 'MUFLIS TEENPATTI', image: '/muflisteenpatti-01.jpg' },
+  '99.0046': { name: 'CARD RACE', image: '/CardRace.jpg' },
+  '99.0005': { name: 'AMAR AKBAR ANTHONY', image: '/AmarAkbarAnthony-01.jpg' },
+  '99.0018': { name: 'DRAGON TIGER', image: '/dragon-tiger-01.jpg' },
+};
 
 export default function UniverseGamesView() {
   const [tables, setTables] = useState([]);
@@ -54,24 +52,21 @@ export default function UniverseGamesView() {
       const res = await axios.post('/api/casino/tables', { id: 110 });
       const list = res.data?.data?.data || res.data?.data || [];
       if (Array.isArray(list)) {
-        // Filter out Balloon and Vimaan/Aviator as requested
-        const filtered = list.filter(
-          (t) =>
-            t.eventId !== '88.0022' &&
-            t.eventId !== '88.0023' &&
-            !(t.eventName || '').toUpperCase().includes('BALLOON') &&
-            !(t.eventName || '').toUpperCase().includes('VIMAAN') &&
-            !(t.eventName || '').toUpperCase().includes('AVIATOR')
-        );
+        // Filter strictly to allowed casino tables, removing extra games like Balloon, Vimaan, Heads & Tails, etc.
+        const filtered = list
+          .filter((t) => ALLOWED_CASINO_IDS.includes(String(t.eventId)))
+          .map((t) => {
+            const meta = TABLE_METADATA[String(t.eventId)] || {};
+            return {
+              ...t,
+              eventName: meta.name || String(t.eventName || '').replace(/\s*-\s*[A-Z0-9]+$/g, '').trim(),
+              image: meta.image || t.image || '/Lucky-7.jpg',
+            };
+          });
 
-        // Sort matching user screenshots
+        // Exact indexing preservation matching user defined order
         filtered.sort((a, b) => {
-          const idxA = PREFERRED_ORDER.indexOf(a.eventId);
-          const idxB = PREFERRED_ORDER.indexOf(b.eventId);
-          if (idxA !== -1 && idxB !== -1) return idxA - idxB;
-          if (idxA !== -1) return -1;
-          if (idxB !== -1) return 1;
-          return 0;
+          return ALLOWED_CASINO_IDS.indexOf(String(a.eventId)) - ALLOWED_CASINO_IDS.indexOf(String(b.eventId));
         });
 
         setTables(filtered);
@@ -187,7 +182,7 @@ export default function UniverseGamesView() {
         </div>
       </div>
 
-      {/* Grid of Real Live Casino Tables */}
+      {/* Grid of Real Live Casino Tables - ONLY CLEAN ARTWORK IMAGES (Zero text overlay / Zero Live Play pills) */}
       {loading ? (
         <div style={{ textAlign: 'center', padding: '80px', color: '#94a3b8' }}>
           <RefreshCw size={32} className="live-indicator" style={{ margin: '0 auto 12px', color: '#10b981' }} />
@@ -206,9 +201,7 @@ export default function UniverseGamesView() {
           }}
         >
           {displayList.map((game, idx) => {
-            const displayImg = game.image || '/casino_images/20-20teenpatti.jpg';
-            const displayName = game.eventName?.toUpperCase() || 'CASINO GAME';
-            const providerName = game.companyName || 'UNIVERSE';
+            const displayImg = game.image || '/Lucky-7.jpg';
 
             return (
               <div
@@ -216,143 +209,37 @@ export default function UniverseGamesView() {
                 onClick={() => setActiveGame(game)}
                 style={{
                   background: '#141414',
-                  borderRadius: '12px',
-                  border: '1px solid #222222',
+                  borderRadius: '16px',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
                   overflow: 'hidden',
                   position: 'relative',
-                  aspectRatio: '0.85',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'flex-end',
+                  aspectRatio: '0.96',
                   cursor: 'pointer',
                   boxShadow: '0 6px 18px rgba(0,0,0,0.45)',
                   transition: 'transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease'
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = 'translateY(-4px)';
+                  e.currentTarget.style.transform = 'translateY(-4px) scale(1.02)';
                   e.currentTarget.style.borderColor = '#10b981';
-                  e.currentTarget.style.boxShadow = '0 12px 28px rgba(16, 185, 129, 0.25)';
+                  e.currentTarget.style.boxShadow = '0 12px 28px rgba(16, 185, 129, 0.35)';
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.borderColor = '#222222';
+                  e.currentTarget.style.transform = 'translateY(0) scale(1)';
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)';
                   e.currentTarget.style.boxShadow = '0 6px 18px rgba(0,0,0,0.45)';
                 }}
               >
-                {/* Background Artwork */}
-                <div
+                {/* 100% Pure Clean Artwork Image - No overlay text, no live play badges */}
+                <img
+                  src={displayImg}
+                  alt={game.eventName || 'Casino Table'}
                   style={{
-                    position: 'absolute',
-                    inset: 0,
-                    backgroundImage: `url(${displayImg})`,
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center',
-                    filter: 'brightness(0.96)'
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                    display: 'block'
                   }}
                 />
-
-                {/* Top Badge: Provider Tag */}
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: '10px',
-                    left: '10px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    background: 'rgba(0,0,0,0.75)',
-                    backdropFilter: 'blur(4px)',
-                    padding: '3px 8px',
-                    borderRadius: '5px',
-                    border: '1px solid rgba(255,255,255,0.12)'
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: '9px',
-                      fontWeight: 900,
-                      color: '#ffffff',
-                      letterSpacing: '0.5px',
-                      textTransform: 'uppercase'
-                    }}
-                  >
-                    {providerName}
-                  </span>
-                </div>
-
-                {/* Dark Vignette Gradient */}
-                <div
-                  style={{
-                    position: 'absolute',
-                    inset: 0,
-                    background:
-                      'linear-gradient(180deg, rgba(0,0,0,0.05) 45%, rgba(0,0,0,0.85) 85%, rgba(0,0,0,0.98) 100%)'
-                  }}
-                />
-
-                {/* Card Bottom Content */}
-                <div
-                  style={{
-                    position: 'relative',
-                    zIndex: 2,
-                    padding: '12px 14px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '4px'
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: '15px',
-                      fontWeight: 900,
-                      color: '#ffffff',
-                      letterSpacing: '-0.3px',
-                      textTransform: 'uppercase',
-                      textShadow: '0 2px 4px rgba(0,0,0,0.9)',
-                      lineHeight: '1.2'
-                    }}
-                  >
-                    {displayName}
-                  </div>
-
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      marginTop: '4px'
-                    }}
-                  >
-                    <span
-                      style={{
-                        background: 'rgba(16, 185, 129, 0.25)',
-                        border: '1px solid rgba(16, 185, 129, 0.5)',
-                        color: '#34d399',
-                        fontSize: '9px',
-                        fontWeight: 800,
-                        padding: '2px 6px',
-                        borderRadius: '4px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px'
-                      }}
-                    >
-                      <span
-                        style={{
-                          width: '5px',
-                          height: '5px',
-                          background: 'currentColor',
-                          borderRadius: '50%'
-                        }}
-                      />
-                      LIVE
-                    </span>
-
-                    <span style={{ fontSize: '11px', color: '#38bdf8', fontWeight: 800 }}>
-                      PLAY ➔
-                    </span>
-                  </div>
-                </div>
               </div>
             );
           })}

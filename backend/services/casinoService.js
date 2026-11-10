@@ -45,38 +45,100 @@ export const activeCasinoSubscribers = new Set([
 export const casinoOddsCache = new Map();
 export const casinoLatestResultCache = new Map();
 export const casinoResultsHistoryCache = new Map();
+export const lastCelebratedWinnerCache = new Map();
+
+/**
+ * Extracts declared winner runner from Universe casino resultsArr
+ * Works for Lucky 7, 32 Cards, Dragon Tiger, Baccarat, Amar Akbar Anthony, etc.
+ */
+export function extractWinnerFromResultsArr(resultsArr) {
+  if (!Array.isArray(resultsArr) || resultsArr.length === 0) return null;
+  const winnerMarket = resultsArr.find((m) => m.marketName === "WINNER" || m.index === 0) || resultsArr[0];
+  if (!winnerMarket || !winnerMarket.runners) return null;
+
+  if (Array.isArray(winnerMarket.runners)) {
+    const winRn = winnerMarket.runners.find((r) => r.result === "WINNER" || r.status === "WINNER");
+    if (winRn) return winRn.name || winRn.runnerName || winRn.selectionId;
+  } else if (typeof winnerMarket.runners === "object") {
+    for (const [selectionId, status] of Object.entries(winnerMarket.runners)) {
+      if (status === "WINNER") {
+        return winnerMarket.runnersName?.[selectionId] || selectionId;
+      }
+    }
+    const runnerStatuses = Object.values(winnerMarket.runners);
+    if (runnerStatuses.length > 0 && runnerStatuses.every((s) => s === "TIE")) {
+      return "TIE";
+    }
+  }
+  return null;
+}
+
 export function resolveWinnerLabel(winner, runnerName, eventName = "", eventId = "") {
   const ev = (eventName || "").toUpperCase();
   const id = String(eventId || "");
-  if (runnerName) {
-    const clean = runnerName.replace(/\(.*?\)/g, "").trim();
-    if (clean) return clean;
-  }
-  if (!winner || !String(winner).trim()) return null;
   const w = String(winner || "").trim().toUpperCase();
-  if (w === "WINNER" || w === "DECLARED" || w === "NULL" || w === "UNDEFINED") return null;
+
+  // 1. Table specific overrides
+  if (ev.includes("ANDAR") || id === "99.0025" || id === "99.0034") {
+    if (w === "A" || w === "ANDAR") return "ANDAR";
+    if (w === "B" || w === "BAHAR") return "BAHAR";
+  }
+  if (ev.includes("LUCKY") || id === "99.0030" || id === "99.0031" || id === "99.0032") {
+    if (w === "L" || w === "LOW" || w === "LOW CARD") return "LOW CARD";
+    if (w === "H" || w === "HIGH" || w === "HIGH CARD") return "HIGH CARD";
+    if (w === "7" || w === "TIE" || w === "LUCKY 7") return "LUCKY 7";
+  }
+  if (ev.includes("BACCARAT") || id === "99.0001" || id === "99.0002") {
+    if (w === "P" || w === "PLAYER") return "PLAYER";
+    if (w === "B" || w === "BANKER") return "BANKER";
+    if (w === "T" || w === "TIE") return "TIE";
+  }
+  if (ev.includes("AMAR") || id === "99.0005") {
+    if (w === "A" || w === "AMAR") return "AMAR";
+    if (w === "B" || w === "AKBAR") return "AKBAR";
+    if (w === "C" || w === "ANTHONY") return "ANTHONY";
+  }
+  if (ev.includes("DRAGON") || id === "99.0018" || id === "99.0019" || id === "99.0020" || id === "99.0021") {
+    if (w === "D" || w === "DRAGON") return "DRAGON";
+    if (w === "T" || w === "TIGER") return "TIGER";
+    if (w === "TIE") return "TIE";
+  }
+  if (ev.includes("DTL") || id === "99.0041" || id === "99.0004") {
+    if (w === "D" || w === "DRAGON") return "DRAGON";
+    if (w === "T" || w === "TIGER") return "TIGER";
+    if (w === "L" || w === "LION") return "LION";
+  }
+  if (ev.includes("32") || id === "99.0022" || id === "99.0023") {
+    if (w.includes("8")) return "PLAYER 8";
+    if (w.includes("9")) return "PLAYER 9";
+    if (w.includes("10")) return "PLAYER 10";
+    if (w.includes("11")) return "PLAYER 11";
+  }
+  if (ev.includes("WAR") || id === "99.0027") {
+    if (w === "R" || w.includes("RED")) return "RED";
+    if (w === "B" || w.includes("BLACK")) return "BLACK";
+    if (w === "T" || w === "TIE") return "TIE";
+  }
+
+  // 2. Generic winner mappings
   if (w === "A" || w === "PLAYER_A" || w === "PLAYER A") return "PLAYER A";
   if (w === "B" || w === "PLAYER_B" || w === "PLAYER B") return "PLAYER B";
   if (w === "D" || w === "DRAGON") return "DRAGON";
   if (w === "T" || w === "TIGER") return "TIGER";
-  if (w === "L" || w === "LOW" || w === "LOW CARD") {
-    return ev.includes("LION") || ev.includes("DTL") || id === "99.0041" || id === "99.0004" ? "LION" : "LOW CARD";
-  }
+  if (w === "L" || w === "LOW" || w === "LOW CARD") return "LOW CARD";
   if (w === "H" || w === "HIGH" || w === "HIGH CARD") return "HIGH CARD";
   if (w === "7" || w === "LUCKY 7") return "LUCKY 7";
   if (w === "TIE") return "TIE";
-  if (w === "ANDAR") return "ANDAR";
-  if (w === "BAHAR") return "BAHAR";
-  if (w === "BANKER") return "BANKER";
-  if (w === "PLAYER") return "PLAYER";
-  if (w === "AMAR") return "AMAR";
-  if (w === "AKBAR") return "AKBAR";
-  if (w === "ANTHONY") return "ANTHONY";
-  if (w.startsWith("PLAYER_") || w.startsWith("PLAYER ")) {
-    const num = w.replace(/[^0-9]/g, "");
-    if (num) return `PLAYER ${num}`;
+
+  if (runnerName) {
+    const clean = runnerName.replace(/\(.*?\)/g, "").trim();
+    if (clean) return clean;
   }
-  return w ? String(winner).replace(/_/g, " ").trim() : null;
+
+  if (w && w !== "WINNER" && w !== "DECLARED" && w !== "NULL" && w !== "UNDEFINED") {
+    return String(winner).replace(/_/g, " ").trim();
+  }
+  return null;
 }
 
 let casinoSocket = null;
@@ -628,59 +690,86 @@ export async function ensureNiceCasinoSocket(forceReconnect = false) {
           casinoOddsCache.set(eventId, merged);
 
           // Instant Result Recording for the Dedicated Results API (<1ms latency)
-          if (
+          const incomingResultsArr = payload?.resultsArr || packet?.resultsArr;
+          let resultsArrWinner = null;
+          if (incomingResultsArr) {
+            resultsArrWinner = extractWinnerFromResultsArr(incomingResultsArr);
+          }
+
+          let declaredWinner =
+            resultsArrWinner ||
             gameResult ||
+            payload?.gameResult ||
+            packet?.gameResult ||
+            payload?.winner ||
+            packet?.winner;
+
+          if (
+            declaredWinner ||
             roundStatus === "RESULT_DECLARED" ||
             payload?.roundStatus === "RESULT_DECLARED"
           ) {
-            let declaredWinner =
-              gameResult ||
-              payload?.gameResult ||
-              packet?.gameResult ||
-              payload?.winner ||
-              packet?.winner;
-
             if (declaredWinner) {
               const resolved = resolveWinnerLabel(declaredWinner, null, merged.eventName, eventId);
-              merged.winner = resolved;
-              merged.gameResult = resolved;
-              merged.badgeresult = resolved;
-              merged.badgeResult = resolved;
-              const resultPayload = {
-                eventId,
-                eventName: merged.eventName,
-                roundId,
-                winner: resolved,
-                gameResult: resolved,
-                badgeresult: resolved,
-                badgeResult: resolved,
-                status: "RESULT_DECLARED",
-                roundStatus: "RESULT_DECLARED",
-                cardsArr: JSON.parse(JSON.stringify(currentCards)),
-                timestamp: Date.now(),
-                declaredAt: new Date().toISOString(),
-              };
-              casinoLatestResultCache.set(eventId, resultPayload);
+              if (resolved && resolved !== "WINNER" && resolved !== "DECLARED") {
+                merged.winner = resolved;
+                merged.gameResult = resolved;
+                merged.badgeresult = resolved;
+                merged.badgeResult = resolved;
+                merged.roundStatus = "RESULT_DECLARED";
+                merged.status = "SUSPEND";
 
-              const history = casinoResultsHistoryCache.get(eventId) || [];
-              if (!history.find((h) => h.roundId === roundId)) {
-                history.unshift(resultPayload);
-                if (history.length > 50) history.pop();
-                casinoResultsHistoryCache.set(eventId, history);
+                const resultPayload = {
+                  eventId,
+                  eventName: merged.eventName,
+                  roundId,
+                  winner: resolved,
+                  gameResult: resolved,
+                  badgeresult: resolved,
+                  badgeResult: resolved,
+                  status: "RESULT_DECLARED",
+                  roundStatus: "RESULT_DECLARED",
+                  cardsArr: JSON.parse(JSON.stringify(currentCards)),
+                  timestamp: Date.now(),
+                  declaredAt: new Date().toISOString(),
+                };
+                casinoLatestResultCache.set(eventId, resultPayload);
+                lastCelebratedWinnerCache.set(eventId, {
+                  label: resolved,
+                  roundId,
+                  declaredAt: Date.now(),
+                });
+
+                const history = casinoResultsHistoryCache.get(eventId) || [];
+                if (!history.find((h) => h.roundId === roundId)) {
+                  history.unshift(resultPayload);
+                  if (history.length > 50) history.pop();
+                  casinoResultsHistoryCache.set(eventId, history);
+                }
               }
             } else {
               // Asynchronously query actual winner if socket payload omitted it
-              getDedicatedCasinoResult(eventId).then((resObj) => {
-                if (resObj?.data?.winner) {
-                  const live = casinoOddsCache.get(eventId);
-                  if (live && String(live.roundId) === String(roundId)) {
-                    live.winner = resObj.data.winner;
-                    live.gameResult = resObj.data.winner;
-                    live.badgeresult = resObj.data.badgeresult || resObj.data.winner;
-                    live.badgeResult = live.badgeresult;
+              getDedicatedCasinoResult(eventId)
+                .then((resObj) => {
+                  if (resObj?.data?.winner) {
+                    const resolved = resolveWinnerLabel(resObj.data.winner, null, merged.eventName, eventId);
+                    if (resolved && resolved !== "WINNER" && resolved !== "DECLARED") {
+                      const live = casinoOddsCache.get(eventId);
+                      if (live && String(live.roundId) === String(roundId)) {
+                        live.winner = resolved;
+                        live.gameResult = resolved;
+                        live.badgeresult = resolved;
+                        live.badgeResult = resolved;
+                        lastCelebratedWinnerCache.set(eventId, {
+                          label: resolved,
+                          roundId,
+                          declaredAt: Date.now(),
+                        });
+                      }
+                    }
                   }
-                }
-              }).catch(() => {});
+                })
+                .catch(() => {});
             }
           }
         } catch (err) {

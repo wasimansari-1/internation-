@@ -31,12 +31,14 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
   const [rulesOpen, setRulesOpen] = useState(false);
   const [showLiveTv, setShowLiveTv] = useState(true);
   const [dtlTab, setDtlTab] = useState('DRAGON'); // 'DRAGON' | 'TIGER' | 'LION' for DTL games
+  const [celebratedWinner, setCelebratedWinner] = useState(null);
 
   const containerRef = useRef(null);
   const targetEndRef = useRef(0);
   const lastRoundIdRef = useRef(null);
   const lastResultsFetchRoundRef = useRef(null);
   const lastDedicatedFetchRoundRef = useRef(null);
+  const lastCelebratedRoundRef = useRef(null);
 
   // 1. Fetch Decrypted Recent Results
   const fetchRecentResults = async () => {
@@ -49,6 +51,33 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
       console.error('Error fetching recent results:', err);
     }
   };
+
+  // Auto-celebrate winner when round finishes on ALL tables (including Lucky 7)
+  useEffect(() => {
+    const latest = results?.[0];
+    if (latest && latest.roundId && (latest.badgeresult || latest.winner)) {
+      // On initial page load, set baseline so we don't flash stale past round
+      if (!lastCelebratedRoundRef.current) {
+        lastCelebratedRoundRef.current = latest.roundId;
+        return;
+      }
+      // Trigger when a new round result arrives
+      if (lastCelebratedRoundRef.current !== latest.roundId) {
+        lastCelebratedRoundRef.current = latest.roundId;
+        const winnerLabel = latest.badgeresult || latest.winner;
+        if (winnerLabel && winnerLabel !== 'WINNER' && winnerLabel !== 'DECLARED') {
+          setCelebratedWinner({
+            label: winnerLabel,
+            roundId: latest.roundId
+          });
+          const timer = setTimeout(() => {
+            setCelebratedWinner(null);
+          }, 6000);
+          return () => clearTimeout(timer);
+        }
+      }
+    }
+  }, [results]);
 
   // 2. Fetch Initial Cached Live Odds
   const fetchInitialOdds = async () => {
@@ -81,21 +110,26 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
           setOddsData(data);
 
           const serverSec = Number(data.leftSec ?? 0);
-          const isRoundOver = serverSec <= 0 || data.roundStatus === 'RESULT_DECLARED';
+          const isRoundOver =
+            serverSec <= 0 ||
+            data.roundStatus === 'RESULT_DECLARED' ||
+            data.status === 'SUSPEND' ||
+            data.status === 'SUSPENDED';
 
           if (isRoundOver) {
             targetEndRef.current = 0;
             setTimeLeft(0);
           } else {
-            // New round started or local timer was 0
+            // New round started or uninitialized target timestamp
             if (data.roundId !== lastRoundIdRef.current || targetEndRef.current === 0) {
               lastRoundIdRef.current = data.roundId;
               targetEndRef.current = Date.now() + serverSec * 1000;
               setTimeLeft(serverSec);
             } else {
-              // Drift correction if local timer deviates by > 1 second
+              // Strictly monotonic countdown: never allow timer to fluctuate or jump UP during an active round!
               const currentRem = Math.max(0, Math.ceil((targetEndRef.current - Date.now()) / 1000));
-              if (Math.abs(currentRem - serverSec) > 1) {
+              // Only pull forward if server ended round earlier or paused
+              if (serverSec < currentRem - 2) {
                 targetEndRef.current = Date.now() + serverSec * 1000;
                 setTimeLeft(serverSec);
               }
@@ -103,11 +137,30 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
           }
 
           const now = Date.now();
-          const isResultRound = data.roundStatus === 'RESULT_DECLARED' || data.gameResult;
+          const isResultRound = data.roundStatus === 'RESULT_DECLARED' || Boolean(data.gameResult) || Boolean(data.badgeresult);
+          const isSuspended = serverSec <= 0 || data.status === 'SUSPEND' || data.status === 'SUSPENDED';
+          const isNearEnd = serverSec <= 2 || isSuspended || isResultRound;
+
+          // Seamless celebration trigger directly from live odds packet
+          if (data.badgeresult && data.badgeresult !== 'WINNER' && data.badgeresult !== 'DECLARED') {
+            const decRound = data.recentDeclaredRoundId || data.roundId;
+            if (decRound && lastCelebratedRoundRef.current !== decRound) {
+              lastCelebratedRoundRef.current = decRound;
+              setCelebratedWinner({
+                label: data.badgeresult,
+                roundId: decRound,
+              });
+              setTimeout(() => {
+                setCelebratedWinner(null);
+              }, 6000);
+            }
+          }
+
           if (
             (data.roundId && data.roundId !== lastFetchedRoundId) ||
             (isResultRound && lastResultsFetchRoundRef.current !== data.roundId) ||
-            now - lastResultsFetchTime > 20000
+            (isNearEnd && now - lastResultsFetchTime > 1500) ||
+            now - lastResultsFetchTime > 12000
           ) {
             if (data.roundId && data.roundId !== lastFetchedRoundId) {
               lastFetchedRoundId = data.roundId;
@@ -157,7 +210,12 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
     const timer = setInterval(() => {
       if (targetEndRef.current > 0) {
         const remaining = Math.max(0, Math.ceil((targetEndRef.current - Date.now()) / 1000));
-        setTimeLeft(remaining);
+        setTimeLeft((prev) => {
+          if (remaining > prev && prev > 0 && targetEndRef.current > 0) {
+            return prev;
+          }
+          return remaining;
+        });
       }
     }, 200);
     return () => clearInterval(timer);
@@ -298,8 +356,14 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
   const getWinnerBadge = (winner) => {
     if (!winner) return { label: '?', bg: '#facc15' };
     const w = String(winner).toUpperCase().trim();
-    if (w === 'L' || w === 'LION') {
-      return { label: 'L', bg: '#facc15' }; // Lion (Yellow)
+    if (w === 'L' || w === 'LOW' || w === 'LOW CARD' || w === 'LION') {
+      return { label: 'L', bg: '#facc15' }; // Low Card / Lion (Yellow)
+    }
+    if (w === 'H' || w === 'HIGH' || w === 'HIGH CARD') {
+      return { label: 'H', bg: '#72bbef' }; // High Card (Blue)
+    }
+    if (w === '7' || w === 'LUCKY 7') {
+      return { label: '7', bg: '#10b981' }; // Lucky 7 (Green)
     }
     if (w === 'D' || w === 'DRAGON') {
       return { label: 'D', bg: '#72bbef' }; // Dragon (Blue)
@@ -307,22 +371,16 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
     if (w === 'T' || w === 'TIGER') {
       return { label: 'T', bg: '#f97316' }; // Tiger (Orange)
     }
-    if (w === 'LOW' || w === 'LOW CARD') {
-      return { label: 'L', bg: '#72bbef' }; // Low Card (Blue)
+    if (w === 'A' || w === 'PLAYER A' || w === 'ANDAR' || w === 'AMAR') {
+      return { label: 'A', bg: '#72bbef' };
     }
-    if (w === 'HIGH' || w === 'HIGH CARD') {
-      return { label: 'H', bg: '#f9a9ba' }; // High Card (Pink)
+    if (w === 'B' || w === 'PLAYER B' || w === 'BAHAR' || w === 'BANKER' || w === 'AKBAR') {
+      return { label: 'B', bg: '#f9a9ba' };
     }
-    if (w === '7' || w === 'LUCKY 7') {
-      return { label: '7', bg: '#facc15' }; // Lucky 7 (Yellow)
+    if (w === 'C' || w === 'ANTHONY') {
+      return { label: 'C', bg: '#facc15' };
     }
-    if (w === 'A' || w === 'PLAYER A' || w === 'ANDAR') {
-      return { label: w === 'ANDAR' ? 'A' : (w.startsWith('P') ? 'A' : w[0]), bg: '#72bbef' };
-    }
-    if (w === 'B' || w === 'PLAYER B' || w === 'BAHAR' || w === 'BANKER') {
-      return { label: (w === 'BAHAR' || w === 'BANKER') ? 'B' : (w.startsWith('P') ? 'B' : w[0]), bg: '#f9a9ba' };
-    }
-    if (w === 'PLAYER') {
+    if (w === 'P' || w === 'PLAYER') {
       return { label: 'P', bg: '#72bbef' };
     }
     if (w.includes('PLAYER_') || w.startsWith('PLAYER ')) {
@@ -349,79 +407,40 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
 
   // Determine actual real-time declared winner for all games (Teen Patti, Dragon Tiger, Lucky 7, etc.)
   const getLiveDeclaredWinner = () => {
-    // 0. During active betting countdown, round is in-flight (NEVER show winner early!)
-    if (timeLeft > 0) return null;
-
-    // 1. Direct from badgeresult / badgeResult key on current oddsData
-    const directBadge = oddsData?.badgeresult || oddsData?.badgeResult;
-    if (directBadge && directBadge !== 'WINNER' && directBadge !== 'DECLARED') {
-      return directBadge;
+    // 1. If currently celebrating a newly declared round (auto-fires on all tables including Lucky 7 for 6 seconds):
+    if (celebratedWinner?.label) {
+      return celebratedWinner.label;
     }
 
-    // 2. Direct from oddsData winner or gameResult
-    const raw = oddsData?.winner || oddsData?.gameResult;
-    if (raw && raw !== 'DECLARED' && raw !== 'WINNER') {
-      const w = String(raw).trim().toUpperCase();
-      if (w === 'A' || w === 'PLAYER_A' || w === 'PLAYER A') return 'PLAYER A';
-      if (w === 'B' || w === 'PLAYER_B' || w === 'PLAYER B') return 'PLAYER B';
-      if (w === 'D' || w === 'DRAGON') return 'DRAGON';
-      if (w === 'T' || w === 'TIGER') return 'TIGER';
-      if (w === 'L' || w === 'LOW' || w === 'LOW CARD') {
-        const ev = (gameName || oddsData?.eventName || '').toUpperCase();
-        return ev.includes('LION') || ev.includes('DTL') || gameId === '99.0041' || gameId === '99.0004' ? 'LION' : 'LOW CARD';
+    // 2. Direct from current live odds if officially declared:
+    const isDeclaredState =
+      oddsData?.roundStatus === 'RESULT_DECLARED' ||
+      Boolean(oddsData?.gameResult) ||
+      (Boolean(oddsData?.badgeresult) && (timeLeft <= 0 || oddsData?.status === 'SUSPEND'));
+
+    if (isDeclaredState) {
+      const directBadge = oddsData?.badgeresult || oddsData?.badgeResult;
+      if (directBadge && directBadge !== 'WINNER' && directBadge !== 'DECLARED') {
+        return directBadge;
       }
-      if (w === 'H' || w === 'HIGH' || w === 'HIGH CARD') return 'HIGH CARD';
-      if (w === '7' || w === 'LUCKY 7') return 'LUCKY 7';
-      if (w === 'TIE') return 'TIE';
-      if (w === 'ANDAR') return 'ANDAR';
-      if (w === 'BAHAR') return 'BAHAR';
-      if (w === 'BANKER') return 'BANKER';
-      if (w === 'PLAYER') return 'PLAYER';
-      if (w === 'AMAR') return 'AMAR';
-      if (w === 'AKBAR') return 'AKBAR';
-      if (w === 'ANTHONY') return 'ANTHONY';
-      if (w.startsWith('PLAYER_') || w.startsWith('PLAYER ')) {
-        const num = w.replace(/[^0-9]/g, '');
-        if (num) return `PLAYER ${num}`;
+      const raw = oddsData?.winner || oddsData?.gameResult;
+      if (raw && raw !== 'DECLARED' && raw !== 'WINNER') {
+        return String(raw).replace(/_/g, ' ').trim();
       }
-      return String(raw).replace(/_/g, ' ').replace(/\bWIN\b|\bWON\b/gi, '').trim();
     }
 
-    // 3. ONLY check recent results IF the roundId matches CURRENT round AND cards have been dealt!
+    // 3. If suspended/timer ended and matching roundId in recent results:
     const latestResult = results?.[0];
     if (
+      (timeLeft <= 0 || oddsData?.status === 'SUSPEND') &&
       latestResult &&
       oddsData?.roundId &&
       String(latestResult.roundId) === String(oddsData.roundId) &&
       areCardsDealt()
     ) {
-      if (latestResult.badgeresult || latestResult.badgeResult) {
-        const b = latestResult.badgeresult || latestResult.badgeResult;
-        if (b && b !== 'WINNER' && b !== 'DECLARED') return b;
-      }
-      const mainMkt = latestResult.results?.find((m) => m.marketName === 'WINNER' || m.index === 0);
-      const winRunner = mainMkt?.runners?.find((rn) => rn.result === 'WINNER');
-      const runnerName = winRunner && mainMkt?.runnersName ? mainMkt.runnersName[winRunner.selectionId] : null;
-
-      if (runnerName) {
-        const clean = runnerName.replace(/\(.*?\)/g, '').trim();
-        if (clean) return clean;
-      }
-
+      const b = latestResult.badgeresult || latestResult.badgeResult;
+      if (b && b !== 'WINNER' && b !== 'DECLARED') return b;
       const w = String(latestResult.winner || '').trim().toUpperCase();
-      if (w === 'A' || w === 'PLAYER_A' || w === 'PLAYER A') return 'PLAYER A';
-      if (w === 'B' || w === 'PLAYER_B' || w === 'PLAYER B') return 'PLAYER B';
-      if (w === 'D' || w === 'DRAGON') return 'DRAGON';
-      if (w === 'T' || w === 'TIGER') return 'TIGER';
-      if (w === 'L' || w === 'LOW' || w === 'LOW CARD') {
-        const ev = (gameName || oddsData?.eventName || '').toUpperCase();
-        return ev.includes('LION') || ev.includes('DTL') || gameId === '99.0041' || gameId === '99.0004' ? 'LION' : 'LOW CARD';
-      }
-      if (w === 'H' || w === 'HIGH' || w === 'HIGH CARD') return 'HIGH CARD';
-      if (w === '7' || w === 'LUCKY 7') return 'LUCKY 7';
-      if (w === 'TIE') return 'TIE';
-      if (w === 'ANDAR') return 'ANDAR';
-      if (w === 'BAHAR') return 'BAHAR';
       if (w) return w;
     }
 
@@ -594,7 +613,7 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
                 margin: 0
               }}
             >
-              {gameName || 'CASINO TABLE'}
+              {String(gameName || 'CASINO TABLE').replace(/\s*-\s*[A-Z0-9]+$/g, '').trim()}
             </h2>
           </div>
 
@@ -847,16 +866,7 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
             {/* Universe Casino Planetary Orbit + 3D Dice Result Banner (Exact matching user design) */}
             {(() => {
               const liveWinner = getLiveDeclaredWinner();
-              // Strictly verify that round has ended (timeLeft is 0, cards have been scanned, and winner officially declared)
-              const isDeclared =
-                timeLeft <= 0 &&
-                Boolean(liveWinner) &&
-                (oddsData?.roundStatus === 'RESULT_DECLARED' ||
-                 Boolean(oddsData?.gameResult) ||
-                 (Boolean(oddsData?.badgeresult) && oddsData?.badgeresult !== 'WINNER') ||
-                 (results?.[0] && String(results[0].roundId) === String(oddsData?.roundId) && areCardsDealt()));
-
-              if (!isDeclared || !liveWinner) return null;
+              if (!liveWinner) return null;
 
               return (
                 <div

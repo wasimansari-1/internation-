@@ -7,6 +7,7 @@ import {
   getCasinoTableList,
   getDedicatedCasinoResult,
   resolveWinnerLabel,
+  lastCelebratedWinnerCache,
 } from "../services/casinoService.js";
 import { casinoConfig } from "../config/casinoConfig.js";
 import { providerManager } from "../providers/index.js";
@@ -547,11 +548,19 @@ router.get("/live-odds/:gameId", async (req, res) => {
   try {
     const data = await getScrapedCasinoLiveOdds(gameId);
     if (data) {
+      const recent = lastCelebratedWinnerCache.get(gameId);
+      const isRecentCelebration = recent && Date.now() - recent.declaredAt < 6000;
+
       const raw = data.winner || data.gameResult;
       if (raw && raw !== "WINNER" && raw !== "DECLARED") {
         const badge = resolveWinnerLabel(raw, null, data.eventName, gameId);
         data.badgeresult = badge;
         data.badgeResult = badge;
+      } else if (isRecentCelebration) {
+        data.badgeresult = recent.label;
+        data.badgeResult = recent.label;
+        data.recentDeclaredRoundId = recent.roundId;
+        data.declaredAt = recent.declaredAt;
       } else {
         data.badgeresult = null;
         data.badgeResult = null;
