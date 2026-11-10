@@ -6,6 +6,7 @@ import {
   getScrapedCasinoLiveOdds,
   getCasinoTableList,
   getDedicatedCasinoResult,
+  resolveWinnerLabel,
 } from "../services/casinoService.js";
 import { casinoConfig } from "../config/casinoConfig.js";
 import { providerManager } from "../providers/index.js";
@@ -489,7 +490,18 @@ router.get("/results/:gameId", async (req, res) => {
         },
       );
       if (Array.isArray(upstreamRes.data?.data) && upstreamRes.data.data.length > 0) {
-        return res.json({ success: true, data: upstreamRes.data.data });
+        const enriched = upstreamRes.data.data.map((item) => {
+          const mainMkt = item.results?.find((m) => m.marketName === "WINNER" || m.index === 0);
+          const winRunner = mainMkt?.runners?.find((rn) => rn.result === "WINNER");
+          const runnerName = winRunner && mainMkt?.runnersName ? mainMkt.runnersName[winRunner.selectionId] : null;
+          const badge = resolveWinnerLabel(item.winner || item.gameResult, runnerName, item.eventName, gameId);
+          return {
+            ...item,
+            badgeresult: badge,
+            badgeResult: badge,
+          };
+        });
+        return res.json({ success: true, data: enriched });
       }
     } catch (err) {
       continue;
@@ -534,6 +546,17 @@ router.get("/live-odds/:gameId", async (req, res) => {
   const { gameId } = req.params;
   try {
     const data = await getScrapedCasinoLiveOdds(gameId);
+    if (data) {
+      const raw = data.winner || data.gameResult;
+      if (raw && raw !== "WINNER" && raw !== "DECLARED") {
+        const badge = resolveWinnerLabel(raw, null, data.eventName, gameId);
+        data.badgeresult = badge;
+        data.badgeResult = badge;
+      } else {
+        data.badgeresult = null;
+        data.badgeResult = null;
+      }
+    }
     return res.json({ success: true, data });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message, data: null });

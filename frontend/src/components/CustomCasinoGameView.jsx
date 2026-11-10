@@ -307,11 +307,23 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
     if (w === 'T' || w === 'TIGER') {
       return { label: 'T', bg: '#f97316' }; // Tiger (Orange)
     }
-    if (w === 'A' || w === 'PLAYER A' || w === 'H' || w === 'LOW') {
-      return { label: w.startsWith('P') ? 'A' : w[0], bg: '#72bbef' };
+    if (w === 'LOW' || w === 'LOW CARD') {
+      return { label: 'L', bg: '#72bbef' }; // Low Card (Blue)
     }
-    if (w === 'B' || w === 'PLAYER B' || w === 'HIGH') {
-      return { label: w.startsWith('P') ? 'B' : w[0], bg: '#f9a9ba' };
+    if (w === 'HIGH' || w === 'HIGH CARD') {
+      return { label: 'H', bg: '#f9a9ba' }; // High Card (Pink)
+    }
+    if (w === '7' || w === 'LUCKY 7') {
+      return { label: '7', bg: '#facc15' }; // Lucky 7 (Yellow)
+    }
+    if (w === 'A' || w === 'PLAYER A' || w === 'ANDAR') {
+      return { label: w === 'ANDAR' ? 'A' : (w.startsWith('P') ? 'A' : w[0]), bg: '#72bbef' };
+    }
+    if (w === 'B' || w === 'PLAYER B' || w === 'BAHAR' || w === 'BANKER') {
+      return { label: (w === 'BAHAR' || w === 'BANKER') ? 'B' : (w.startsWith('P') ? 'B' : w[0]), bg: '#f9a9ba' };
+    }
+    if (w === 'PLAYER') {
+      return { label: 'P', bg: '#72bbef' };
     }
     if (w.includes('PLAYER_') || w.startsWith('PLAYER ')) {
       const num = w.replace(/[^0-9]/g, '');
@@ -323,29 +335,70 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
     return { label: w.slice(0, 2), bg: '#10b981' };
   };
 
+  const areCardsDealt = () => {
+    const cards = oddsData?.cardsArr;
+    if (!cards || typeof cards !== 'object') return false;
+    for (const val of Object.values(cards)) {
+      const list = getCardsList(val);
+      if (list.some((c) => c && c !== '0' && c !== 'null' && c !== '-' && c !== 'undefined')) {
+        return true;
+      }
+    }
+    return false;
+  };
+
   // Determine actual real-time declared winner for all games (Teen Patti, Dragon Tiger, Lucky 7, etc.)
   const getLiveDeclaredWinner = () => {
-    // 1. Direct from oddsData
+    // 0. During active betting countdown, round is in-flight (NEVER show winner early!)
+    if (timeLeft > 0) return null;
+
+    // 1. Direct from badgeresult / badgeResult key on current oddsData
+    const directBadge = oddsData?.badgeresult || oddsData?.badgeResult;
+    if (directBadge && directBadge !== 'WINNER' && directBadge !== 'DECLARED') {
+      return directBadge;
+    }
+
+    // 2. Direct from oddsData winner or gameResult
     const raw = oddsData?.winner || oddsData?.gameResult;
-    if (raw && raw !== 'DECLARED') {
+    if (raw && raw !== 'DECLARED' && raw !== 'WINNER') {
       const w = String(raw).trim().toUpperCase();
-      if (w === 'A' || w === 'PLAYER_A') return 'PLAYER A';
-      if (w === 'B' || w === 'PLAYER_B') return 'PLAYER B';
+      if (w === 'A' || w === 'PLAYER_A' || w === 'PLAYER A') return 'PLAYER A';
+      if (w === 'B' || w === 'PLAYER_B' || w === 'PLAYER B') return 'PLAYER B';
       if (w === 'D' || w === 'DRAGON') return 'DRAGON';
       if (w === 'T' || w === 'TIGER') return 'TIGER';
-      if (w === 'L' || w === 'LOW') {
+      if (w === 'L' || w === 'LOW' || w === 'LOW CARD') {
         const ev = (gameName || oddsData?.eventName || '').toUpperCase();
-        return ev.includes('LION') || ev.includes('DTL') ? 'LION' : 'LOW CARD';
+        return ev.includes('LION') || ev.includes('DTL') || gameId === '99.0041' || gameId === '99.0004' ? 'LION' : 'LOW CARD';
       }
-      if (w === 'H' || w === 'HIGH') return 'HIGH CARD';
-      if (w === '7') return 'LUCKY 7';
+      if (w === 'H' || w === 'HIGH' || w === 'HIGH CARD') return 'HIGH CARD';
+      if (w === '7' || w === 'LUCKY 7') return 'LUCKY 7';
       if (w === 'TIE') return 'TIE';
+      if (w === 'ANDAR') return 'ANDAR';
+      if (w === 'BAHAR') return 'BAHAR';
+      if (w === 'BANKER') return 'BANKER';
+      if (w === 'PLAYER') return 'PLAYER';
+      if (w === 'AMAR') return 'AMAR';
+      if (w === 'AKBAR') return 'AKBAR';
+      if (w === 'ANTHONY') return 'ANTHONY';
+      if (w.startsWith('PLAYER_') || w.startsWith('PLAYER ')) {
+        const num = w.replace(/[^0-9]/g, '');
+        if (num) return `PLAYER ${num}`;
+      }
       return String(raw).replace(/_/g, ' ').replace(/\bWIN\b|\bWON\b/gi, '').trim();
     }
 
-    // 2. Check latest results item from results list ONLY IF roundId matches current round!
+    // 3. ONLY check recent results IF the roundId matches CURRENT round AND cards have been dealt!
     const latestResult = results?.[0];
-    if (latestResult && String(latestResult.roundId) === String(oddsData?.roundId)) {
+    if (
+      latestResult &&
+      oddsData?.roundId &&
+      String(latestResult.roundId) === String(oddsData.roundId) &&
+      areCardsDealt()
+    ) {
+      if (latestResult.badgeresult || latestResult.badgeResult) {
+        const b = latestResult.badgeresult || latestResult.badgeResult;
+        if (b && b !== 'WINNER' && b !== 'DECLARED') return b;
+      }
       const mainMkt = latestResult.results?.find((m) => m.marketName === 'WINNER' || m.index === 0);
       const winRunner = mainMkt?.runners?.find((rn) => rn.result === 'WINNER');
       const runnerName = winRunner && mainMkt?.runnersName ? mainMkt.runnersName[winRunner.selectionId] : null;
@@ -356,17 +409,19 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
       }
 
       const w = String(latestResult.winner || '').trim().toUpperCase();
-      if (w === 'A') return 'PLAYER A';
-      if (w === 'B') return 'PLAYER B';
-      if (w === 'D') return 'DRAGON';
-      if (w === 'T') return 'TIGER';
-      if (w === 'L') {
+      if (w === 'A' || w === 'PLAYER_A' || w === 'PLAYER A') return 'PLAYER A';
+      if (w === 'B' || w === 'PLAYER_B' || w === 'PLAYER B') return 'PLAYER B';
+      if (w === 'D' || w === 'DRAGON') return 'DRAGON';
+      if (w === 'T' || w === 'TIGER') return 'TIGER';
+      if (w === 'L' || w === 'LOW' || w === 'LOW CARD') {
         const ev = (gameName || oddsData?.eventName || '').toUpperCase();
-        return ev.includes('LION') || ev.includes('DTL') ? 'LION' : 'LOW CARD';
+        return ev.includes('LION') || ev.includes('DTL') || gameId === '99.0041' || gameId === '99.0004' ? 'LION' : 'LOW CARD';
       }
-      if (w === 'H') return 'HIGH CARD';
-      if (w === '7') return 'LUCKY 7';
+      if (w === 'H' || w === 'HIGH' || w === 'HIGH CARD') return 'HIGH CARD';
+      if (w === '7' || w === 'LUCKY 7') return 'LUCKY 7';
       if (w === 'TIE') return 'TIE';
+      if (w === 'ANDAR') return 'ANDAR';
+      if (w === 'BAHAR') return 'BAHAR';
       if (w) return w;
     }
 
@@ -792,8 +847,14 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
             {/* Universe Casino Planetary Orbit + 3D Dice Result Banner (Exact matching user design) */}
             {(() => {
               const liveWinner = getLiveDeclaredWinner();
+              // Strictly verify that round has ended (timeLeft is 0, cards have been scanned, and winner officially declared)
               const isDeclared =
-                oddsData?.roundStatus === 'RESULT_DECLARED' || Boolean(oddsData?.gameResult);
+                timeLeft <= 0 &&
+                Boolean(liveWinner) &&
+                (oddsData?.roundStatus === 'RESULT_DECLARED' ||
+                 Boolean(oddsData?.gameResult) ||
+                 (Boolean(oddsData?.badgeresult) && oddsData?.badgeresult !== 'WINNER') ||
+                 (results?.[0] && String(results[0].roundId) === String(oddsData?.roundId) && areCardsDealt()));
 
               if (!isDeclared || !liveWinner) return null;
 
@@ -916,7 +977,9 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
                           fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
                         }}
                       >
-                        {liveWinner} WIN
+                        {String(liveWinner).toUpperCase().includes('WIN') || String(liveWinner).toUpperCase().includes('CARD') || String(liveWinner).toUpperCase().includes('TIE') || String(liveWinner).toUpperCase().includes('LUCKY 7')
+                          ? liveWinner
+                          : `${liveWinner} WIN`}
                       </span>
                     </div>
                   </div>
