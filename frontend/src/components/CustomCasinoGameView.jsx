@@ -29,6 +29,7 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [timeLeft, setTimeLeft] = useState(0);
   const [rulesOpen, setRulesOpen] = useState(false);
+  const [showLiveTv, setShowLiveTv] = useState(true);
   const [dtlTab, setDtlTab] = useState('DRAGON'); // 'DRAGON' | 'TIGER' | 'LION' for DTL games
 
   const containerRef = useRef(null);
@@ -544,11 +545,11 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <button
-              onClick={handleOpenOfficialStream}
+              onClick={() => setShowLiveTv(!showLiveTv)}
               style={{
-                backgroundColor: '#0284c7',
+                backgroundColor: showLiveTv ? '#059669' : '#1e293b',
                 color: '#ffffff',
-                border: 'none',
+                border: showLiveTv ? '1px solid #10b981' : '1px solid #334155',
                 borderRadius: '4px',
                 padding: '4px 10px',
                 fontSize: '11px',
@@ -557,11 +558,12 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '4px',
-                boxShadow: '0 2px 6px rgba(2, 132, 199, 0.4)'
+                boxShadow: showLiveTv ? '0 2px 6px rgba(16, 185, 129, 0.4)' : 'none',
+                transition: 'all 0.2s'
               }}
-              title="Open Official Live Stream"
+              title="Toggle Live TV Stream"
             >
-              <span>📺 LIVE TV</span>
+              <span>📺 LIVE TV {showLiveTv ? 'ON' : 'OFF'}</span>
             </button>
             <button
               onClick={() => setRulesOpen(!rulesOpen)}
@@ -636,70 +638,91 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
               overflow: 'hidden'
             }}
           >
-            {/* Center Universe Casino Brand Canvas */}
-            <div
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                height: '100%',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                background: 'radial-gradient(circle, #150928 0%, #030206 100%)',
-                zIndex: 1
-              }}
-            >
-              <div style={{ position: 'relative', width: '74px', height: '74px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <div style={{
+            {/* Direct Studio Live Casino Video Stream */}
+            {showLiveTv && (
+              <iframe
+                src={`/api/direct-stream/casino/player/${gameId}`}
+                title={gameName || 'Live Casino Table'}
+                style={{
                   position: 'absolute',
-                  inset: 0,
-                  borderRadius: '50%',
-                  border: '2px solid rgba(168, 85, 247, 0.35)',
-                  animation: 'spin 12s linear infinite'
-                }} />
-                <div style={{
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: '100%',
+                  border: 'none',
+                  backgroundColor: '#000',
+                  zIndex: 1
+                }}
+                allow="autoplay; fullscreen; unload"
+              />
+            )}
+
+            {/* Fallback Brand Canvas when Live TV is toggled off */}
+            {!showLiveTv && (
+              <div
+                style={{
                   position: 'absolute',
-                  inset: '7px',
-                  borderRadius: '50%',
-                  border: '2px dashed rgba(236, 72, 153, 0.45)',
-                  animation: 'spin 8s linear infinite reverse'
-                }} />
-                <div style={{
-                  width: '36px',
-                  height: '36px',
-                  borderRadius: '8px',
-                  background: 'linear-gradient(135deg, #9333ea, #db2777)',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: '100%',
                   display: 'flex',
+                  flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  boxShadow: '0 0 16px rgba(219, 39, 119, 0.5)'
+                  background: 'radial-gradient(circle, #150928 0%, #030206 100%)',
+                  zIndex: 1
+                }}
+              >
+                <div style={{ position: 'relative', width: '74px', height: '74px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div style={{
+                    position: 'absolute',
+                    inset: 0,
+                    borderRadius: '50%',
+                    border: '2px solid rgba(168, 85, 247, 0.35)',
+                    animation: 'spin 12s linear infinite'
+                  }} />
+                  <div style={{
+                    position: 'absolute',
+                    inset: '7px',
+                    borderRadius: '50%',
+                    border: '2px dashed rgba(236, 72, 153, 0.45)',
+                    animation: 'spin 8s linear infinite reverse'
+                  }} />
+                  <div style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '8px',
+                    background: 'linear-gradient(135deg, #9333ea, #db2777)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 0 16px rgba(219, 39, 119, 0.5)'
+                  }}>
+                    <span style={{ fontSize: '18px' }}>🎲</span>
+                  </div>
+                </div>
+                <div style={{
+                  color: '#ec4899',
+                  fontWeight: 900,
+                  fontSize: '14px',
+                  letterSpacing: '2px',
+                  marginTop: '8px',
+                  textTransform: 'uppercase'
                 }}>
-                  <span style={{ fontSize: '18px' }}>🎲</span>
+                  Universe
+                </div>
+                <div style={{
+                  color: '#64748b',
+                  fontWeight: 700,
+                  fontSize: '9px',
+                  letterSpacing: '3px',
+                  textTransform: 'uppercase'
+                }}>
+                  Live Table
                 </div>
               </div>
-              <div style={{
-                color: '#ec4899',
-                fontWeight: 900,
-                fontSize: '14px',
-                letterSpacing: '2px',
-                marginTop: '8px',
-                textTransform: 'uppercase'
-              }}>
-                Universe
-              </div>
-              <div style={{
-                color: '#64748b',
-                fontWeight: 700,
-                fontSize: '9px',
-                letterSpacing: '3px',
-                textTransform: 'uppercase'
-              }}>
-                Live Table
-              </div>
-            </div>
+            )}
 
             {/* Top-Left: Live Dealt Cards & Round ID Overlay (Dynamic for all games: 32 Cards, Dragon Tiger, Lucky 7, etc.) */}
             <div

@@ -100,6 +100,60 @@ app.use("/api/admin", adminRouter);
 app.use("/api/wingo", wingoRouter);
 app.use("/api/direct-stream", directStreamRouter);
 
+// Stream Relay Fallback & Asset Proxy (Guarantees zero 404s for Nanocosmos / H5Live Player)
+app.get("/api/relay/route/:wsid", async (req, res) => {
+  try {
+    const upstreamRes = await axios.get(
+      `https://stream.trubets365.com/api/relay/route/${encodeURIComponent(req.params.wsid)}`,
+      { httpsAgent: nativeHttpsAgent, timeout: 5000 }
+    );
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    return res.status(upstreamRes.status).json(upstreamRes.data);
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.use("/stream-assets", async (req, res) => {
+  try {
+    const upstreamUrl = `https://stream.trubets365.com/stream-assets${req.path}`;
+    const upstreamRes = await axios({
+      method: "GET",
+      url: upstreamUrl,
+      responseType: "stream",
+      httpsAgent: nativeHttpsAgent,
+      timeout: 10000
+    });
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    if (upstreamRes.headers["content-type"]) {
+      res.setHeader("Content-Type", upstreamRes.headers["content-type"]);
+    }
+    return upstreamRes.data.pipe(res);
+  } catch (err) {
+    return res.status(404).send("Asset not found");
+  }
+});
+
+app.use("/player", async (req, res) => {
+  try {
+    const upstreamUrl = `https://stream.trubets365.com/stream-assets/player${req.path}`;
+    const upstreamRes = await axios({
+      method: "GET",
+      url: upstreamUrl,
+      responseType: "stream",
+      httpsAgent: nativeHttpsAgent,
+      timeout: 10000
+    });
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    if (upstreamRes.headers["content-type"]) {
+      res.setHeader("Content-Type", upstreamRes.headers["content-type"]);
+    }
+    return upstreamRes.data.pipe(res);
+  } catch (err) {
+    return res.status(404).send("Asset not found");
+  }
+});
+
 // Universal proxy for /w/* (WebRTC stream signaling, ping, and player telemetry)
 app.all("/w/*", async (req, res) => {
   try {
