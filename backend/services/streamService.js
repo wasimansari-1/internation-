@@ -1,6 +1,6 @@
 import axios from "axios";
 import https from "https";
-import { getDemoToken, getStartexchToken, getCbtfToken, proxyRequest } from "./authService.js";
+import { getDemoToken, getStartexchToken, getCbtfToken, getAsstarplayToken, proxyRequest } from "./authService.js";
 import { httpsAgent } from "../config/hosts.js";
 
 // Clean native HTTPS agent for CDN edges without custom static IP overriding
@@ -402,7 +402,7 @@ export const fetchDirectHlsStream = async (rawId, sportId = "4", forceRefresh = 
     }
   }
 
-  // 3. Tertiary: CBTFexchange fallback (3-Way Mesh)
+  // 3. Tertiary: CBTFexchange fallback
   if (!watchUrl) {
     try {
       const cbtfToken = await getCbtfToken(forceRefresh);
@@ -429,6 +429,36 @@ export const fetchDirectHlsStream = async (rawId, sportId = "4", forceRefresh = 
       }
     } catch (cbtfErr) {
       console.warn("[StreamService] CBTF fallback failed:", cbtfErr.message);
+    }
+  }
+
+  // 4. Quaternary: Asstarplay fallback (4-Way Mesh)
+  if (!watchUrl) {
+    try {
+      const asstarToken = await getAsstarplayToken(forceRefresh);
+      if (asstarToken) {
+        const res = await axios.post(
+          "https://asstarplay.com/api/exchange/streaming/exchEventsWatchLink",
+          { streamId: String(streamId), timestamp: Date.now() },
+          {
+            headers: {
+              Authorization: `Bearer ${asstarToken}`,
+              Origin: "https://asstarplay.com",
+              Referer: "https://asstarplay.com/",
+              "User-Agent":
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            },
+            httpsAgent: nativeHttpsAgent,
+            timeout: 6000,
+          },
+        );
+        if (res.data?.data?.url) {
+          watchUrl = res.data.data.url;
+          origin = "https://asstarplay.com";
+        }
+      }
+    } catch (asstarErr) {
+      console.warn("[StreamService] Asstarplay fallback failed:", asstarErr.message);
     }
   }
 

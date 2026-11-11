@@ -348,8 +348,105 @@ export const getCbtfToken = async (forceRefresh = false) => {
   return cachedCbtfToken;
 };
 
-// 3-Way Load Balancing Provider Pointer (Nice444, Startexch99, CBTFexchange)
+// Asstarplay Integration (4th Provider in Multi-Provider Mesh)
+export const ASSTARPLAY_BASE = "https://asstarplay.com";
+export const ASSTARPLAY_CASINO_BASE = "https://casino.asstarplay.com";
+
+export const ASSTARPLAY_ACCOUNTS = [
+  { userName: "zak1984", password: "Asdf123" },
+];
+
+const asstarplaySessions = ASSTARPLAY_ACCOUNTS.map((acc) => ({
+  userName: acc.userName,
+  password: acc.password,
+  token: null,
+  tokenExpiry: 0,
+  lastLoginTime: 0,
+  failedAttempts: 0,
+  disabledUntil: 0,
+  loginPromise: null,
+}));
+
+export const getAsstarplayToken = async (forceRefresh = false) => {
+  const session = asstarplaySessions[0];
+  if (session.disabledUntil && Date.now() < session.disabledUntil) {
+    return null;
+  }
+  if (!forceRefresh && session.token && Date.now() < session.tokenExpiry) {
+    return session.token;
+  }
+  if (session.token && Date.now() - session.lastLoginTime < 60000 && !forceRefresh) {
+    return session.token;
+  }
+  if (session.loginPromise) {
+    return session.loginPromise;
+  }
+
+  session.loginPromise = (async () => {
+    try {
+      const res = await axios.post(
+        `${ASSTARPLAY_BASE}/app/users/userLogin`,
+        {
+          userName: session.userName,
+          password: session.password,
+          ipInfo: {},
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+            Origin: ASSTARPLAY_BASE,
+            Referer: `${ASSTARPLAY_BASE}/`,
+            "User-Agent":
+              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+          },
+          timeout: 8000,
+        },
+      );
+      if (res.data?.data?.accessToken) {
+        session.token = res.data.data.accessToken;
+        session.tokenExpiry = Date.now() + 30 * 60 * 1000;
+        session.lastLoginTime = Date.now();
+        session.failedAttempts = 0;
+        session.disabledUntil = 0;
+        telemetry.recordAuthAttempt("asstarplay", true);
+        telemetry.recordUpstreamHit("Asstarplay", `/app/users/userLogin (${session.userName})`, 200, 180);
+        return session.token;
+      }
+    } catch (err) {
+      session.failedAttempts = (session.failedAttempts || 0) + 1;
+      const status = err.response?.status;
+      const msg = err.response?.data?.meta?.message || err.message;
+      console.error(`Error getting Asstarplay token (${session.userName}, Status ${status}):`, msg);
+      if (status === 401 || status === 422 || session.failedAttempts >= 3) {
+        session.disabledUntil = Date.now() + 15 * 60 * 1000;
+        session.token = null;
+      }
+      telemetry.recordAuthAttempt("asstarplay", false, msg);
+    } finally {
+      session.loginPromise = null;
+    }
+    return session.token;
+  })();
+
+  return session.loginPromise;
+};
+
+// 4-Way Load Balancing Provider Pointer (Nice444, Startexch99, CBTFexchange, Asstarplay)
 let globalProviderIndex = 0;
+
+// Bounded Last-Known-Good (LKG) stale fallback cache so brief simultaneous upstream blips never show API errors
+const LKG_CACHE_MAX = 300;
+const LKG_CACHE_TTL_MS = 15 * 60 * 1000;
+const BLOCK_COOLDOWN_MS = 3 * 60 * 1000;
+const lkgResponseCache = new Map();
+
+function saveLkgCache(cacheKey, provider, data) {
+  if (lkgResponseCache.size >= LKG_CACHE_MAX && !lkgResponseCache.has(cacheKey)) {
+    const oldestKey = lkgResponseCache.keys().next().value;
+    if (oldestKey) lkgResponseCache.delete(oldestKey);
+  }
+  lkgResponseCache.set(cacheKey, { provider, data, cachedAt: Date.now() });
+}
 
 export const proxyRequest = async (endpoint, payload = {}, method = "POST") => {
   const persona = telemetry?.getCurrentPersona ? telemetry.getCurrentPersona() : {
@@ -360,13 +457,13 @@ export const proxyRequest = async (endpoint, payload = {}, method = "POST") => {
 
   const configured = (telemetry?.routingConfig?.sportsProvider || "AUTO").toUpperCase();
 
-  // Define the 3 providers
+  // Define the 4 providers
   const providers = [
     {
       id: "NICE444",
       name: "Nice444",
       base: TARGET_BASE,
-      getToken: () => getDemoToken(),
+      getToken: (force = false) => getDemoToken(force),
       buildHeaders: (tok) => ({
         ...getStealthHeaders(),
         Origin: TARGET_BASE,
@@ -379,7 +476,7 @@ export const proxyRequest = async (endpoint, payload = {}, method = "POST") => {
       id: "STARTEXCH99",
       name: "Startexch99",
       base: STARTEXCH_BASE,
-      getToken: () => getStartexchToken(),
+      getToken: (force = false) => getStartexchToken(force),
       buildHeaders: (tok) => ({
         "Content-Type": "application/json",
         Accept: "application/json, text/plain, */*",
@@ -395,7 +492,7 @@ export const proxyRequest = async (endpoint, payload = {}, method = "POST") => {
       id: "CBTFEXCHANGE",
       name: "CBTFexchange",
       base: CBTF_BASE,
-      getToken: () => getCbtfToken(),
+      getToken: (force = false) => getCbtfToken(force),
       buildHeaders: (tok) => ({
         "Content-Type": "application/json",
         Accept: "application/json, text/plain, */*",
@@ -407,90 +504,150 @@ export const proxyRequest = async (endpoint, payload = {}, method = "POST") => {
       }),
       buildPayload: (p) => ({ key: "2", ...p }),
     },
+    {
+      id: "ASSTARPLAY",
+      name: "Asstarplay",
+      base: ASSTARPLAY_BASE,
+      getToken: (force = false) => getAsstarplayToken(force),
+      buildHeaders: (tok) => ({
+        "Content-Type": "application/json",
+        Accept: "application/json, text/plain, */*",
+        Origin: ASSTARPLAY_BASE,
+        Referer: `${ASSTARPLAY_BASE}/`,
+        "User-Agent": persona.userAgent,
+        "X-Forwarded-For": persona.ip,
+        Authorization: tok ? `Bearer ${tok}` : undefined,
+      }),
+      buildPayload: (p) => ({ key: "2", ...p }),
+    },
   ];
 
   // Determine provider execution order based on routing config & health
   let executionOrder = [];
-  if (configured === "CBTFEXCHANGE") {
-    executionOrder = [providers[2], providers[1], providers[0]];
+  if (configured === "ASSTARPLAY") {
+    executionOrder = [providers[3], providers[1], providers[0], providers[2]];
+  } else if (configured === "CBTFEXCHANGE") {
+    executionOrder = [providers[2], providers[3], providers[1], providers[0]];
   } else if (configured === "STARTEXCH99") {
-    executionOrder = [providers[1], providers[2], providers[0]];
+    executionOrder = [providers[1], providers[3], providers[2], providers[0]];
   } else if (configured === "NICE444") {
-    executionOrder = [providers[0], providers[2], providers[1]];
+    executionOrder = [providers[0], providers[3], providers[2], providers[1]];
   } else {
-    // AUTO: 3-way smooth round-robin distribution
+    // AUTO: 4-way smooth round-robin distribution
     const startIdx = globalProviderIndex % providers.length;
     globalProviderIndex = (globalProviderIndex + 1) % providers.length;
 
-    executionOrder = [
-      providers[startIdx],
-      providers[(startIdx + 1) % providers.length],
-      providers[(startIdx + 2) % providers.length],
-    ];
+    executionOrder = providers.map((_, idx) => providers[(startIdx + idx) % providers.length]);
 
-    // Deprioritize any currently blocked or degraded providers to the back of the queue
+    // Auto-expire stale block flags after cooldown & push blocked providers to the back of the queue
+    const nowTs = Date.now();
     executionOrder.sort((a, b) => {
-      const aBlocked = telemetry?.providerHealth?.[a.id.toLowerCase()]?.isBlocked ? 1 : 0;
-      const bBlocked = telemetry?.providerHealth?.[b.id.toLowerCase()]?.isBlocked ? 1 : 0;
-      return aBlocked - bBlocked;
+      const aHealth = telemetry?.providerHealth?.[a.id.toLowerCase()];
+      const bHealth = telemetry?.providerHealth?.[b.id.toLowerCase()];
+      if (aHealth?.isBlocked && aHealth.blockedAt && nowTs - aHealth.blockedAt > BLOCK_COOLDOWN_MS) {
+        aHealth.isBlocked = false;
+        aHealth.status = "RECOVERING";
+      }
+      if (bHealth?.isBlocked && bHealth.blockedAt && nowTs - bHealth.blockedAt > BLOCK_COOLDOWN_MS) {
+        bHealth.isBlocked = false;
+        bHealth.status = "RECOVERING";
+      }
+      return (aHealth?.isBlocked ? 1 : 0) - (bHealth?.isBlocked ? 1 : 0);
     });
   }
 
   let lastError = null;
   let lastStatus = 500;
+  const cacheKey = `${method}:${endpoint}:${JSON.stringify(payload || {})}`;
 
-  // Execute with Instant Auto-Failover across the 3 providers
+  // Execute with Instant Auto-Failover across all 4 providers
   for (let i = 0; i < executionOrder.length; i++) {
     const p = executionOrder[i];
+    const pKey = p.id.toLowerCase();
     const startTime = Date.now();
-    try {
-      const token = await p.getToken();
-      const headers = p.buildHeaders(token);
-      const data = p.buildPayload(payload);
-      const url = `${p.base}${endpoint}`;
 
-      const response = await axios({
-        method,
-        url,
-        data,
-        headers,
-        timeout: 7000,
-      });
-
-      if (response.status >= 200 && response.status < 400 && response.data) {
-        telemetry.recordUpstreamHit(p.name, endpoint, response.status, Date.now() - startTime);
-        return {
-          success: true,
-          statusCode: response.status,
-          latency: Date.now() - startTime,
-          provider: p.name,
-          data: response.data,
-        };
-      }
-    } catch (err) {
-      lastStatus = err.response?.status || 500;
-      lastError = err.response?.data || err.message;
-      const isBlocked = lastStatus === 422 || lastStatus === 403;
-
-      console.warn(`[ProxyRequest] ${p.name} failed on ${endpoint} (Status: ${lastStatus}): ${err.message}. Trying next provider...`);
-
-      if (telemetry?.providerHealth?.[p.id.toLowerCase()]) {
-        telemetry.providerHealth[p.id.toLowerCase()].consecutiveErrors++;
-        if (isBlocked) {
-          telemetry.providerHealth[p.id.toLowerCase()].isBlocked = true;
-          telemetry.providerHealth[p.id.toLowerCase()].status = "BLOCKED";
-          telemetry.triggerAutoFailover(p.id.toLowerCase(), `${p.name} returned HTTP ${lastStatus}`);
+    for (let authAttempt = 0; authAttempt < 2; authAttempt++) {
+      try {
+        const token = await p.getToken(authAttempt > 0);
+        if (!token) {
+          throw new Error(`${p.name} auth token unavailable`);
         }
+
+        const headers = p.buildHeaders(token);
+        const data = p.buildPayload(payload);
+        const url = `${p.base}${endpoint}`;
+
+        const response = await axios({
+          method,
+          url,
+          data,
+          headers,
+          httpsAgent,
+          timeout: 5500,
+        });
+
+        if (response.status >= 200 && response.status < 400 && response.data) {
+          if (telemetry?.providerHealth?.[pKey]) {
+            telemetry.providerHealth[pKey].consecutiveErrors = 0;
+            telemetry.providerHealth[pKey].isBlocked = false;
+            telemetry.providerHealth[pKey].blockedAt = null;
+            telemetry.providerHealth[pKey].status = "HEALTHY";
+          }
+          saveLkgCache(cacheKey, p.name, response.data);
+          telemetry.recordUpstreamHit(p.name, endpoint, response.status, Date.now() - startTime);
+          return {
+            success: true,
+            statusCode: response.status,
+            latency: Date.now() - startTime,
+            provider: p.name,
+            data: response.data,
+          };
+        }
+        break;
+      } catch (err) {
+        lastStatus = err.response?.status || 500;
+        lastError = err.response?.data || err.message;
+
+        // If upstream rejected an expired session token, force-refresh once before moving on
+        if (lastStatus === 401 && authAttempt === 0) {
+          continue;
+        }
+
+        const isBlocked = lastStatus === 422 || lastStatus === 403;
+        console.warn(`[ProxyRequest] ${p.name} failed on ${endpoint} (Status: ${lastStatus}): ${err.message}. Trying next provider...`);
+
+        if (telemetry?.providerHealth?.[pKey]) {
+          telemetry.providerHealth[pKey].consecutiveErrors++;
+          if (isBlocked) {
+            telemetry.providerHealth[pKey].isBlocked = true;
+            telemetry.providerHealth[pKey].blockedAt = Date.now();
+            telemetry.providerHealth[pKey].status = "BLOCKED";
+            telemetry.triggerAutoFailover(pKey, `${p.name} returned HTTP ${lastStatus}`);
+          }
+        }
+        break;
       }
-      // Continue to next provider in loop (Zero user disruption)
     }
   }
 
-  // If all 3 providers failed
+  // Last-Known-Good fallback if all 4 providers experienced a simultaneous transient blip
+  const cachedLkg = lkgResponseCache.get(cacheKey);
+  if (cachedLkg && Date.now() - cachedLkg.cachedAt < LKG_CACHE_TTL_MS) {
+    return {
+      success: true,
+      statusCode: 200,
+      latency: 1,
+      provider: `${cachedLkg.provider} (Shield Cache)`,
+      staleFallback: true,
+      data: cachedLkg.data,
+    };
+  }
+
+  // If all providers failed and no LKG cache exists
   return {
     success: false,
     statusCode: lastStatus,
-    error: lastError || "All providers (Nice444, Startexch99, CBTFexchange) timed out",
+    error: lastError || "All providers (Nice444, Startexch99, CBTFexchange, Asstarplay) timed out",
   };
 };
 

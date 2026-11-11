@@ -1,5 +1,5 @@
 import axios from "axios";
-import { getStartexchToken, getDemoToken } from "../services/authService.js";
+import { getStartexchToken, getDemoToken, getAsstarplayToken } from "../services/authService.js";
 import { nativeHttpsAgent } from "../services/streamService.js";
 
 // Game ID mapping: Maps common exchange IDs / names to Official Universe Provider Stream IDs
@@ -88,9 +88,10 @@ export function resolveProviderStreamId(input) {
  * Fetch direct studio WebRTC stream watch link from official upstream providers
  * Startexch99 is Primary, Nice444 is Failover
  */
-export async function getDirectCasinoStreamUrl(rawGameId, forceRefresh = false) {
+export async function getDirectCasinoStreamUrl(rawGameId, forceRefresh = false, clientIp = "") {
   const streamId = resolveProviderStreamId(rawGameId);
-  const cacheKey = `casino_${streamId}`;
+  const forwardedIp = clientIp || "103.21.124.5";
+  const cacheKey = `casino_${streamId}_${forwardedIp}`;
 
   // Check cache
   if (!forceRefresh && streamUrlCache.has(cacheKey)) {
@@ -108,6 +109,11 @@ export async function getDirectCasinoStreamUrl(rawGameId, forceRefresh = false) 
 
   const providers = [
     {
+      name: "Asstarplay",
+      domain: "https://casino.asstarplay.com",
+      getToken: (force) => getAsstarplayToken(force)
+    },
+    {
       name: "Startexch99",
       domain: "https://casino.startexch99.com",
       getToken: (force) => getStartexchToken(force)
@@ -119,86 +125,76 @@ export async function getDirectCasinoStreamUrl(rawGameId, forceRefresh = false) 
     }
   ];
 
+  const candidateIps = forwardedIp === "103.21.124.5" ? [forwardedIp] : [forwardedIp, "103.21.124.5"];
+
+  const requestWatchLink = async (p, token, ip) => {
+    const res = await axios.post(
+      `${p.domain}/casinoapp/exchange/users/streaming/casinoGameWatchLink`,
+      { streamId: String(streamId), timestamp: Date.now() },
+      {
+        headers: {
+          Origin: p.domain,
+          Referer: `${p.domain}/`,
+          Authorization: `Bearer ${token}`,
+          "X-Forwarded-For": ip,
+          "X-Real-IP": ip,
+          "CF-Connecting-IP": ip,
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+          "Content-Type": "application/json"
+        },
+        httpsAgent: nativeHttpsAgent,
+        timeout: 6000
+      }
+    );
+    return res.data?.data?.url || "";
+  };
+
   for (const p of providers) {
-    try {
-      let token = await p.getToken(false);
-      if (!token) continue;
+    let token = await p.getToken(false);
+    if (!token) continue;
 
-      const endpoint = `${p.domain}/casinoapp/exchange/users/streaming/casinoGameWatchLink`;
-      const res = await axios.post(
-        endpoint,
-        { streamId: String(streamId), timestamp: Date.now() },
-        {
-          headers: {
-            Origin: p.domain,
-            Referer: `${p.domain}/`,
-            Authorization: `Bearer ${token}`,
-            "User-Agent":
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-            "Content-Type": "application/json"
-          },
-          httpsAgent: nativeHttpsAgent,
-          timeout: 6000
+    for (const ip of candidateIps) {
+      try {
+        const streamUrl = await requestWatchLink(p, token, ip);
+        if (streamUrl) {
+          streamUrlCache.set(cacheKey, {
+            url: streamUrl,
+            provider: p.name,
+            expiresAt: Date.now() + 180000
+          });
+          console.log(`[DirectStreamEngine] Casino ${rawGameId} (${streamId}) resolved via ${p.name}`);
+          return {
+            success: true,
+            url: streamUrl,
+            streamId,
+            provider: p.name,
+            cached: false
+          };
         }
-      );
-
-      const streamUrl = res.data?.data?.url;
-      if (streamUrl) {
-        // Cache for 3 minutes (180,000 ms)
-        streamUrlCache.set(cacheKey, {
-          url: streamUrl,
-          provider: p.name,
-          expiresAt: Date.now() + 180000
-        });
-
-        console.log(`[DirectStreamEngine] Casino ${rawGameId} (${streamId}) resolved via ${p.name}`);
-        return {
-          success: true,
-          url: streamUrl,
-          streamId,
-          provider: p.name,
-          cached: false
-        };
-      }
-    } catch (err) {
-      // If 401/403, retry once with refreshed token
-      if (err.response?.status === 401 || err.response?.status === 403) {
-        try {
-          const freshToken = await p.getToken(true);
-          const retryRes = await axios.post(
-            `${p.domain}/casinoapp/exchange/users/streaming/casinoGameWatchLink`,
-            { streamId: String(streamId), timestamp: Date.now() },
-            {
-              headers: {
-                Origin: p.domain,
-                Referer: `${p.domain}/`,
-                Authorization: `Bearer ${freshToken}`,
-                "User-Agent":
-                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-                "Content-Type": "application/json"
-              },
-              httpsAgent: nativeHttpsAgent,
-              timeout: 6000
+      } catch (err) {
+        if (err.response?.status === 401 || err.response?.status === 403) {
+          try {
+            token = await p.getToken(true);
+            const streamUrl = await requestWatchLink(p, token, ip);
+            if (streamUrl) {
+              streamUrlCache.set(cacheKey, {
+                url: streamUrl,
+                provider: p.name,
+                expiresAt: Date.now() + 180000
+              });
+              return {
+                success: true,
+                url: streamUrl,
+                streamId,
+                provider: p.name,
+                cached: false
+              };
             }
-          );
-          if (retryRes.data?.data?.url) {
-            const streamUrl = retryRes.data.data.url;
-            streamUrlCache.set(cacheKey, {
-              url: streamUrl,
-              provider: p.name,
-              expiresAt: Date.now() + 180000
-            });
-            return {
-              success: true,
-              url: streamUrl,
-              streamId,
-              provider: p.name,
-              cached: false
-            };
-          }
-        } catch (_) {}
+          } catch (_) {}
+        }
+        console.warn(`[DirectStreamEngine] Provider ${p.name} (${ip}) failed for ${streamId}:`, err.message);
       }
-      console.warn(`[DirectStreamEngine] Provider ${p.name} failed for ${streamId}:`, err.message);
     }
   }
 

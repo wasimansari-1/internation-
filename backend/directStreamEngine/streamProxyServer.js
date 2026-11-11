@@ -271,9 +271,11 @@ export async function renderCasinoPlayerHtml(gameId, req, res) {
     const streamInfo = await getDirectCasinoStreamUrl(gameId, false, clientIp);
     if (streamInfo.success && streamInfo.url) {
       const providerOrigin =
-        streamInfo.provider === "Startexch99"
-          ? "https://casino.startexch99.com"
-          : "https://casino.nice444.com";
+        streamInfo.provider === "Asstarplay"
+          ? "https://casino.asstarplay.com"
+          : streamInfo.provider === "Startexch99"
+            ? "https://casino.startexch99.com"
+            : "https://casino.nice444.com";
 
       const streamRes = await axios.get(streamInfo.url, {
         headers: {

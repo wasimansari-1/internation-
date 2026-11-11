@@ -1,6 +1,6 @@
 import express from "express";
 import { telemetry } from "../services/telemetryService.js";
-import { getDemoToken, getStartexchToken, getCbtfToken } from "../services/authService.js";
+import { getDemoToken, getStartexchToken, getCbtfToken, getAsstarplayToken } from "../services/authService.js";
 
 const router = express.Router();
 
@@ -31,7 +31,7 @@ router.post("/routing", (req, res) => {
 // 3. Trigger Active Origin Block Probe
 router.post("/probe", async (req, res) => {
   try {
-    const probeResults = await telemetry.probeProviders(getDemoToken, getStartexchToken, getCbtfToken);
+    const probeResults = await telemetry.probeProviders(getDemoToken, getStartexchToken, getCbtfToken, getAsstarplayToken);
     return res.json({ success: true, probeResults, providerHealth: telemetry.providerHealth });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });

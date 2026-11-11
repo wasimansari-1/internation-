@@ -1,6 +1,6 @@
 import express from "express";
 import axios from "axios";
-import { getDemoToken, getStartexchToken, proxyRequest } from "../services/authService.js";
+import { getDemoToken, getStartexchToken, getAsstarplayToken, proxyRequest } from "../services/authService.js";
 import { telemetry } from "../services/telemetryService.js";
 import {
   getScrapedCasinoLiveOdds,
@@ -192,28 +192,33 @@ async function fetchUpstreamWatchUrl(gameId, incomingIp) {
   const mode = telemetry.routingConfig.streamProvider || "AUTO";
   let providers;
 
-  if (mode === "STARTEXCH99") {
+  if (mode === "ASSTARPLAY") {
+    providers = [
+      { name: "Asstarplay", domain: "https://casino.asstarplay.com", getToken: () => getAsstarplayToken() },
+      { name: "Startexch99", domain: "https://casino.startexch99.com", getToken: () => getStartexchToken() },
+      { name: "Nice444", domain: "https://casino.nice444.com", getToken: () => getDemoToken() },
+    ];
+  } else if (mode === "STARTEXCH99") {
     providers = [
       { name: "Startexch99", domain: "https://casino.startexch99.com", getToken: () => getStartexchToken() },
+      { name: "Asstarplay", domain: "https://casino.asstarplay.com", getToken: () => getAsstarplayToken() },
       { name: "Nice444", domain: "https://casino.nice444.com", getToken: () => getDemoToken() },
     ];
   } else if (mode === "NICE444") {
     providers = [
       { name: "Nice444", domain: "https://casino.nice444.com", getToken: () => getDemoToken() },
+      { name: "Asstarplay", domain: "https://casino.asstarplay.com", getToken: () => getAsstarplayToken() },
       { name: "Startexch99", domain: "https://casino.startexch99.com", getToken: () => getStartexchToken() },
     ];
   } else {
-    // AUTO: Alternates 50/50 to avoid overloading or blocking any single provider
-    providers =
-      streamProviderCounter % 2 === 0
-        ? [
-            { name: "Startexch99", domain: "https://casino.startexch99.com", getToken: () => getStartexchToken() },
-            { name: "Nice444", domain: "https://casino.nice444.com", getToken: () => getDemoToken() },
-          ]
-        : [
-            { name: "Nice444", domain: "https://casino.nice444.com", getToken: () => getDemoToken() },
-            { name: "Startexch99", domain: "https://casino.startexch99.com", getToken: () => getStartexchToken() },
-          ];
+    // AUTO: Rotates across Asstarplay, Startexch99, Nice444 to avoid overloading any single provider
+    const pool = [
+      { name: "Asstarplay", domain: "https://casino.asstarplay.com", getToken: () => getAsstarplayToken() },
+      { name: "Startexch99", domain: "https://casino.startexch99.com", getToken: () => getStartexchToken() },
+      { name: "Nice444", domain: "https://casino.nice444.com", getToken: () => getDemoToken() },
+    ];
+    const startIdx = streamProviderCounter % pool.length;
+    providers = pool.map((_, i) => pool[(startIdx + i) % pool.length]);
   }
 
   const candidateIps = [incomingIp, ...RESIDENTIAL_IPS].filter(Boolean);
@@ -443,39 +448,34 @@ router.get("/stream-proxy/:gameId", async (req, res) => {
 });
 
 let resultsProviderCounter = 0;
+const lastKnownResultsMap = new Map();
 
 router.get("/results/:gameId", async (req, res) => {
   const { gameId } = req.params;
   resultsProviderCounter++;
-  const mode = telemetry.routingConfig.casinoProvider || "AUTO";
-  let providers;
+  const mode = (telemetry.routingConfig.casinoProvider || "AUTO").toUpperCase();
+  const baseProviders = [
+    { key: "NICE444", domain: "https://casino.nice444.com", getToken: getDemoToken },
+    { key: "STARTEXCH99", domain: "https://casino.startexch99.com", getToken: getStartexchToken },
+    { key: "ASSTARPLAY", domain: "https://casino.asstarplay.com", getToken: getAsstarplayToken },
+  ];
 
-  if (mode === "STARTEXCH99") {
+  let providers;
+  const preferredIdx = baseProviders.findIndex((p) => p.key === mode);
+  if (preferredIdx >= 0) {
     providers = [
-      { domain: "https://casino.startexch99.com", getToken: getStartexchToken },
-      { domain: "https://casino.nice444.com", getToken: getDemoToken },
-    ];
-  } else if (mode === "NICE444") {
-    providers = [
-      { domain: "https://casino.nice444.com", getToken: getDemoToken },
-      { domain: "https://casino.startexch99.com", getToken: getStartexchToken },
+      baseProviders[preferredIdx],
+      ...baseProviders.filter((_, idx) => idx !== preferredIdx),
     ];
   } else {
-    providers =
-      resultsProviderCounter % 2 === 0
-        ? [
-            { domain: "https://casino.startexch99.com", getToken: getStartexchToken },
-            { domain: "https://casino.nice444.com", getToken: getDemoToken },
-          ]
-        : [
-            { domain: "https://casino.nice444.com", getToken: getDemoToken },
-            { domain: "https://casino.startexch99.com", getToken: getStartexchToken },
-          ];
+    const startIdx = resultsProviderCounter % baseProviders.length;
+    providers = baseProviders.map((_, idx) => baseProviders[(startIdx + idx) % baseProviders.length]);
   }
 
   for (const p of providers) {
     try {
       const token = await p.getToken();
+      if (!token) continue;
       const upstreamRes = await axios.post(
         `${p.domain}/casinoapp/users/casino/casinoEventResults`,
         { eventId: String(gameId) },
@@ -502,6 +502,7 @@ router.get("/results/:gameId", async (req, res) => {
             badgeResult: badge,
           };
         });
+        lastKnownResultsMap.set(String(gameId), enriched);
         return res.json({ success: true, data: enriched });
       }
     } catch (err) {
@@ -509,7 +510,8 @@ router.get("/results/:gameId", async (req, res) => {
     }
   }
 
-  return res.json({ success: true, data: [] });
+  const cached = lastKnownResultsMap.get(String(gameId)) || [];
+  return res.json({ success: true, data: cached });
 });
 
 // Dedicated ultra-fast result API (instant response as soon as round ends)

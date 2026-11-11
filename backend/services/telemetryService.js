@@ -141,6 +141,7 @@ class TelemetryService {
       nice444Hits: 0,
       startexchHits: 0,
       cbtfHits: 0,
+      asstarplayHits: 0,
       recentTimestamps: [],
     };
 
@@ -199,6 +200,18 @@ class TelemetryService {
         lastError: null,
         status: "ACTIVE",
       },
+      asstarplay: {
+        account: "zak1984",
+        domain: "https://asstarplay.com",
+        casinoDomain: "https://casino.asstarplay.com",
+        attempts: 0,
+        successes: 0,
+        failures: 0,
+        lastAttempt: null,
+        lastSuccess: null,
+        lastError: null,
+        status: "ACTIVE",
+      },
     };
 
     this.providerHealth = {
@@ -235,6 +248,19 @@ class TelemetryService {
         isBlocked: false,
         consecutiveErrors: 0,
         latencyMs: 110,
+        totalCalls: 0,
+        successCount: 0,
+        blockCount: 0,
+        lastTested: null,
+        lastError: null,
+      },
+      asstarplay: {
+        name: "Asstarplay",
+        domain: "casino.asstarplay.com",
+        status: "HEALTHY",
+        isBlocked: false,
+        consecutiveErrors: 0,
+        latencyMs: 125,
         totalCalls: 0,
         successCount: 0,
         blockCount: 0,
@@ -279,6 +305,7 @@ class TelemetryService {
     if (p.includes("nice") || p.includes("firestore")) this.upstreamMetrics.nice444Hits++;
     else if (p.includes("start")) this.upstreamMetrics.startexchHits++;
     else if (p.includes("cbtf")) this.upstreamMetrics.cbtfHits++;
+    else if (p.includes("asstar")) this.upstreamMetrics.asstarplayHits++;
 
     const now = Date.now();
     this.upstreamMetrics.recentTimestamps.push(now);
@@ -440,7 +467,7 @@ class TelemetryService {
       this.requestTimestamps.shift();
     }
 
-    if (provider === "Nice444" || provider === "Startexch99") {
+    if (provider === "Nice444" || provider === "Startexch99" || provider === "CBTFexchange" || provider === "Asstarplay") {
       const pKey = provider.toLowerCase();
       if (this.providerHealth[pKey]) {
         this.providerHealth[pKey].totalCalls++;
@@ -449,11 +476,13 @@ class TelemetryService {
           this.providerHealth[pKey].consecutiveErrors = 0;
           this.providerHealth[pKey].status = "HEALTHY";
           this.providerHealth[pKey].isBlocked = false;
+          this.providerHealth[pKey].blockedAt = null;
         } else if (status === 422 || status === 403) {
           this.providerHealth[pKey].blockCount++;
           this.providerHealth[pKey].consecutiveErrors++;
           this.providerHealth[pKey].status = "BLOCKED";
           this.providerHealth[pKey].isBlocked = true;
+          this.providerHealth[pKey].blockedAt = Date.now();
 
           // Trigger instant Master Brain Failover
           this.triggerAutoFailover(pKey, `Origin responded with HTTP ${status} (Access Blocked)`);
@@ -490,17 +519,29 @@ class TelemetryService {
    * If any provider is blocked or fails, traffic automatically flips to the next healthy provider in <1ms!
    */
   triggerAutoFailover(failingProviderKey, reason) {
-    const candidateKeys = ["cbtfexchange", "startexch99", "nice444"].filter(
+    const candidateKeys = ["asstarplay", "cbtfexchange", "startexch99", "nice444"].filter(
       (k) => k !== failingProviderKey && !this.providerHealth[k]?.isBlocked
     );
-    const backupKey = candidateKeys[0] || (failingProviderKey === "nice444" ? "startexch99" : "cbtfexchange");
-    const backupName = backupKey === "nice444" ? "NICE444" : backupKey === "startexch99" ? "STARTEXCH99" : "CBTFEXCHANGE";
+    const backupKey = candidateKeys[0] || (failingProviderKey === "nice444" ? "startexch99" : "asstarplay");
+    const nameMap = {
+      nice444: "NICE444",
+      startexch99: "STARTEXCH99",
+      cbtfexchange: "CBTFEXCHANGE",
+      asstarplay: "ASSTARPLAY",
+    };
+    const labelMap = {
+      NICE444: "Nice444",
+      STARTEXCH99: "Startexch99",
+      CBTFEXCHANGE: "CBTFexchange",
+      ASSTARPLAY: "Asstarplay",
+    };
+    const backupName = nameMap[backupKey] || "CBTFEXCHANGE";
 
     const alertMsg = `⚠️ Master Brain Failover: ${failingProviderKey.toUpperCase()} experienced an issue (${reason}). Instantly rerouting traffic to ${backupName}!`;
     console.warn(alertMsg);
 
-    this.routingConfig.effectiveCasino = backupName === "NICE444" ? "Nice444" : backupName === "STARTEXCH99" ? "Startexch99" : "CBTFexchange";
-    this.routingConfig.effectiveStream = backupName === "NICE444" ? "Nice444" : backupName === "STARTEXCH99" ? "Startexch99" : "CBTFexchange";
+    this.routingConfig.effectiveCasino = labelMap[backupName] || "CBTFexchange";
+    this.routingConfig.effectiveStream = labelMap[backupName] || "CBTFexchange";
 
     this.brainStatus.state = "FAILOVER_ACTIVE";
     this.brainStatus.aiHeadline = `Failover Active: Rerouted to ${backupName}`;
@@ -584,36 +625,38 @@ class TelemetryService {
     }
     const rpm = this.requestTimestamps.length;
 
-    const nice = this.providerHealth.nice444;
-    const start = this.providerHealth.startexch99;
-    const cbtf = this.providerHealth.cbtfexchange;
+    const providerEntries = [
+      { key: "nice444", action: "NICE444", label: "Nice444", health: this.providerHealth.nice444 },
+      { key: "startexch99", action: "STARTEXCH99", label: "Startexch99", health: this.providerHealth.startexch99 },
+      { key: "cbtfexchange", action: "CBTFEXCHANGE", label: "CBTFexchange", health: this.providerHealth.cbtfexchange },
+      { key: "asstarplay", action: "ASSTARPLAY", label: "Asstarplay", health: this.providerHealth.asstarplay },
+    ];
 
-    const healthyCount = [nice, start, cbtf].filter((p) => p && !p.isBlocked).length;
+    const healthyPeers = providerEntries.filter((p) => p.health && !p.health.isBlocked);
+    const blockedPeers = providerEntries.filter((p) => p.health?.isBlocked);
 
-    if (healthyCount === 3) {
+    if (healthyPeers.length === providerEntries.length) {
       this.brainStatus.state = "OPTIMAL";
-      this.brainStatus.aiHeadline = "Master Brain: Optimal State (3-Way Mesh Active)";
-      this.brainStatus.aiMessage = `Traffic velocity: ${rpm} req/min. All 3 origins (Nice444, Startexch99, CBTFexchange) healthy and balanced.`;
+      this.brainStatus.aiHeadline = "Master Brain: Optimal State (4-Way Mesh Active)";
+      this.brainStatus.aiMessage = `Traffic velocity: ${rpm} req/min. All 4 origins (Nice444, Startexch99, CBTFexchange, Asstarplay) healthy and balanced.`;
       this.brainStatus.recommendedAction = "AUTO";
-    } else if (nice.isBlocked && !cbtf.isBlocked) {
+    } else if (healthyPeers.length > 0) {
+      const primaryHealthy = healthyPeers[0];
+      const blockedNames = blockedPeers.map((p) => p.label).join(", ");
+      const healthyNames = healthyPeers.map((p) => p.label).join(", ");
       this.brainStatus.state = "FAILOVER_ACTIVE";
-      this.brainStatus.aiHeadline = "Nice444 Blocked -> Route to CBTF / Startexch";
-      this.brainStatus.aiMessage = "Nice444 upstream blocked. Traffic automatically distributed between CBTFexchange and Startexch99.";
-      this.brainStatus.recommendedAction = "CBTFEXCHANGE";
-    } else if (start.isBlocked && !cbtf.isBlocked) {
-      this.brainStatus.state = "FAILOVER_ACTIVE";
-      this.brainStatus.aiHeadline = "Startexch99 Blocked -> Route to CBTF / Nice444";
-      this.brainStatus.aiMessage = "Startexch99 upstream blocked. Traffic automatically distributed between CBTFexchange and Nice444.";
-      this.brainStatus.recommendedAction = "CBTFEXCHANGE";
-    } else if (cbtf.isBlocked && !nice.isBlocked) {
-      this.brainStatus.state = "FAILOVER_ACTIVE";
-      this.brainStatus.aiHeadline = "CBTFexchange Blocked -> Route to Nice444";
-      this.brainStatus.aiMessage = "CBTFexchange upstream blocked. Traffic automatically routed to Nice444 / Startexch99.";
-      this.brainStatus.recommendedAction = "NICE444";
+      this.brainStatus.aiHeadline = `${blockedNames} Blocked -> ${healthyPeers.length}/4 Healthy Mesh Active`;
+      this.brainStatus.aiMessage = `${blockedNames} blocked/degraded. Traffic automatically balanced across healthy origins: ${healthyNames} (Zero user downtime).`;
+      this.brainStatus.recommendedAction = healthyPeers.length >= 2 ? "AUTO" : primaryHealthy.action;
+    } else {
+      this.brainStatus.state = "CRITICAL";
+      this.brainStatus.aiHeadline = "All 4 Origins Blocked — LKG Shield Cache Active";
+      this.brainStatus.aiMessage = "All 4 upstreams returned errors; serving cached responses while probing recovery.";
+      this.brainStatus.recommendedAction = "AUTO";
     }
   }
 
-  async probeProviders(getDemoToken, getStartexchToken, getCbtfToken) {
+  async probeProviders(getDemoToken, getStartexchToken, getCbtfToken, getAsstarplayToken) {
     const results = {};
     const persona = this.getCurrentPersona();
 
@@ -687,15 +730,16 @@ class TelemetryService {
       if (is422) this.triggerAutoFailover("startexch99", "Probe detected 422/403 origin block");
     }
 
-    // 3. Probe CBTFexchange
+    // 3. Probe CBTFexchange (using live exchange endpoint so expired match IDs don't cause false no_coverage blocks)
     try {
       const t0 = Date.now();
       const token = getCbtfToken ? await getCbtfToken() : null;
       const res = await axios.post(
-        "https://cbtfexchange.com/api/exchange/streaming/exchEventsWatchLink",
-        { streamId: "4002026114122829531", timestamp: Date.now() },
+        "https://cbtfexchange.com/api/exchange/sports/sportsList",
+        { key: "2" },
         {
           headers: {
+            "Content-Type": "application/json",
             Origin: "https://cbtfexchange.com",
             Referer: "https://cbtfexchange.com/",
             Authorization: token ? `Bearer ${token}` : undefined,
@@ -709,17 +753,59 @@ class TelemetryService {
       this.providerHealth.cbtfexchange.latencyMs = lat;
       this.providerHealth.cbtfexchange.status = "HEALTHY";
       this.providerHealth.cbtfexchange.isBlocked = false;
+      this.providerHealth.cbtfexchange.blockedAt = null;
       this.providerHealth.cbtfexchange.lastTested = new Date().toISOString();
       this.providerHealth.cbtfexchange.lastError = null;
       results.cbtfexchange = { ok: true, latency: lat, status: res.status };
     } catch (e) {
-      const is422 = e.response?.status === 422 || e.response?.status === 403;
-      this.providerHealth.cbtfexchange.status = is422 ? "BLOCKED" : "DEGRADED";
-      this.providerHealth.cbtfexchange.isBlocked = is422;
+      const msg = e.response?.data?.meta?.message || e.message;
+      const isBlock = (e.response?.status === 422 || e.response?.status === 403) && msg !== "no_coverage";
+      this.providerHealth.cbtfexchange.status = isBlock ? "BLOCKED" : "DEGRADED";
+      this.providerHealth.cbtfexchange.isBlocked = isBlock;
+      if (isBlock) this.providerHealth.cbtfexchange.blockedAt = Date.now();
       this.providerHealth.cbtfexchange.lastTested = new Date().toISOString();
-      this.providerHealth.cbtfexchange.lastError = e.response?.data?.meta?.message || e.message;
-      results.cbtfexchange = { ok: false, error: this.providerHealth.cbtfexchange.lastError, status: e.response?.status };
-      if (is422) this.triggerAutoFailover("cbtfexchange", "Probe detected 422/403 origin block");
+      this.providerHealth.cbtfexchange.lastError = msg;
+      results.cbtfexchange = { ok: false, error: msg, status: e.response?.status };
+      if (isBlock) this.triggerAutoFailover("cbtfexchange", "Probe detected 422/403 origin block");
+    }
+
+    // 4. Probe Asstarplay
+    if (getAsstarplayToken) {
+      try {
+        const t0 = Date.now();
+        const token = await getAsstarplayToken();
+        const res = await axios.post(
+          "https://casino.asstarplay.com/casinoapp/exchange/users/streaming/casinoGameWatchLink",
+          { streamId: "99.0010", timestamp: Date.now() },
+          {
+            headers: {
+              Origin: "https://casino.asstarplay.com",
+              Referer: "https://casino.asstarplay.com/",
+              Authorization: `Bearer ${token}`,
+              "X-Forwarded-For": persona.ip,
+              "X-Real-IP": persona.ip,
+              "CF-Connecting-IP": persona.ip,
+              "User-Agent": persona.userAgent,
+            },
+            timeout: 4000,
+          },
+        );
+        const lat = Date.now() - t0;
+        this.providerHealth.asstarplay.latencyMs = lat;
+        this.providerHealth.asstarplay.status = "HEALTHY";
+        this.providerHealth.asstarplay.isBlocked = false;
+        this.providerHealth.asstarplay.lastTested = new Date().toISOString();
+        this.providerHealth.asstarplay.lastError = null;
+        results.asstarplay = { ok: true, latency: lat, status: res.status };
+      } catch (e) {
+        const is422 = e.response?.status === 422 || e.response?.status === 403;
+        this.providerHealth.asstarplay.status = is422 ? "BLOCKED" : "DEGRADED";
+        this.providerHealth.asstarplay.isBlocked = is422;
+        this.providerHealth.asstarplay.lastTested = new Date().toISOString();
+        this.providerHealth.asstarplay.lastError = e.response?.data?.meta?.message || e.message;
+        results.asstarplay = { ok: false, error: this.providerHealth.asstarplay.lastError, status: e.response?.status };
+        if (is422) this.triggerAutoFailover("asstarplay", "Probe detected 422/403 origin block");
+      }
     }
 
     return results;
@@ -739,36 +825,49 @@ class TelemetryService {
     }
     const upstreamRpm = this.upstreamMetrics.recentTimestamps.length;
 
-    // REAL SERIOUS RISK EVALUATION (RED ONLY ON GENUINE ISSUES)
-    const niceBlocked = Boolean(this.providerHealth.nice444?.isBlocked);
-    const startBlocked = Boolean(this.providerHealth.startexch99?.isBlocked);
-    const niceErr = (this.providerHealth.nice444?.consecutiveErrors || 0) >= 3;
-    const startErr = (this.providerHealth.startexch99?.consecutiveErrors || 0) >= 3;
+    // REAL SERIOUS RISK EVALUATION ACROSS ALL 4 ORIGINS
+    const originPeers = [
+      { name: "Nice444", health: this.providerHealth.nice444 },
+      { name: "Startexch99", health: this.providerHealth.startexch99 },
+      { name: "CBTFexchange", health: this.providerHealth.cbtfexchange },
+      { name: "Asstarplay", health: this.providerHealth.asstarplay },
+    ];
+    const blockedPeers = originPeers.filter((p) => Boolean(p.health?.isBlocked));
+    const healthyCount = originPeers.length - blockedPeers.length;
+    const erroredPeers = originPeers.filter((p) => !p.health?.isBlocked && (p.health?.consecutiveErrors || 0) >= 3);
 
     let loadRisk = {
       level: "LOW",
-      label: "SAFE (ALL OK)",
+      label: "SAFE (4/4 OK)",
       color: "#10b981",
-      message: `Origins 100% healthy. User requests served locally from RAM in <15ms. Upstream hits: ${upstreamRpm} req/min.`,
+      message: `All 4 origins 100% healthy. User requests served locally from RAM in <15ms. Upstream hits: ${upstreamRpm} req/min.`,
       percentage: Math.min(100, Math.max(5, Math.round((upstreamRpm / 150) * 100))),
     };
 
-    if (niceBlocked || startBlocked) {
-      const blockedName = niceBlocked ? "Nice444" : "Startexch99";
+    if (healthyCount === 0) {
       loadRisk = {
         level: "CRITICAL",
-        label: "ORIGIN BLOCKED",
+        label: "ALL 4 ORIGINS BLOCKED",
         color: "#ef4444",
-        message: `SERIOUS: ${blockedName} returned HTTP 422/403 Block! Master Brain auto-routed to healthy peer.`,
+        message: "All 4 upstreams returned errors/blocks. Serving Shield Cache while probing recovery.",
         percentage: 100,
       };
-    } else if (niceErr || startErr) {
+    } else if (blockedPeers.length > 0) {
+      const blockedNames = blockedPeers.map((p) => p.name).join(", ");
       loadRisk = {
         level: "WARNING",
-        label: "ORIGIN DEGRADED",
+        label: `FAILOVER ACTIVE (${healthyCount}/4 OK)`,
         color: "#f59e0b",
-        message: "Upstream provider returned consecutive errors. Failover backup ready.",
-        percentage: 75,
+        message: `${blockedNames} blocked — traffic auto-routed across ${healthyCount} healthy origins with zero user downtime.`,
+        percentage: Math.min(90, blockedPeers.length * 25),
+      };
+    } else if (erroredPeers.length > 0) {
+      loadRisk = {
+        level: "WARNING",
+        label: `ORIGIN DEGRADED (${healthyCount}/4 OK)`,
+        color: "#f59e0b",
+        message: `${erroredPeers.map((p) => p.name).join(", ")} had transient errors. Healthy peers absorbing load.`,
+        percentage: 55,
       };
     } else if (upstreamRpm >= 250) {
       loadRisk = {
@@ -804,6 +903,8 @@ class TelemetryService {
         totalHits: this.upstreamMetrics.totalHits,
         nice444Hits: this.upstreamMetrics.nice444Hits,
         startexchHits: this.upstreamMetrics.startexchHits,
+        cbtfHits: this.upstreamMetrics.cbtfHits,
+        asstarplayHits: this.upstreamMetrics.asstarplayHits,
         rpm: upstreamRpm,
       },
       loadRisk,

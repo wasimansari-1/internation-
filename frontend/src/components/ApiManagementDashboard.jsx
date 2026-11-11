@@ -1,34 +1,73 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { 
-  ShieldCheck, 
-  ShieldAlert, 
-  Activity, 
-  Server, 
-  Cpu, 
-  RefreshCw, 
-  CheckCircle2, 
-  XCircle, 
+import {
+  ShieldCheck,
+  ShieldAlert,
+  Activity,
+  Server,
+  RefreshCw,
+  CheckCircle2,
+  XCircle,
   AlertTriangle,
-  Zap,
-  Globe,
   Radio,
   ArrowRightLeft,
   Users,
-  Lock,
-  Eye,
   EyeOff,
-  Bell,
   Check,
   TrendingUp,
   SlidersHorizontal,
-  Flame,
-  Shield,
   Layers,
-  ArrowUpRight,
-  ChevronRight,
-  ExternalLink
+  Clock,
+  Shuffle,
+  Zap,
+  Globe,
 } from 'lucide-react';
+
+const ROUTING_MODES = ['AUTO', 'NICE444', 'STARTEXCH99', 'CBTFEXCHANGE', 'ASSTARPLAY'];
+
+const ORIGIN_METADATA = [
+  {
+    key: 'nice444',
+    title: 'Nice444',
+    domain: 'casino.nice444.com',
+    fallbackAccount: 'demo52 / rio001',
+    fallbackLatency: 140,
+  },
+  {
+    key: 'startexch99',
+    title: 'Startexch99',
+    domain: 'casino.startexch99.com',
+    fallbackAccount: 'smdemo / suraj01s / santosh01s',
+    fallbackLatency: 120,
+  },
+  {
+    key: 'cbtfexchange',
+    title: 'CBTFexchange',
+    domain: 'cbtfexchange.com',
+    fallbackAccount: '8292463648',
+    fallbackLatency: 135,
+  },
+  {
+    key: 'asstarplay',
+    title: 'Asstarplay',
+    domain: 'casino.asstarplay.com',
+    fallbackAccount: 'zak1984',
+    fallbackLatency: 130,
+  },
+];
+
+const PROVIDER_BADGE_STYLES = {
+  Nice444: { bg: '#ecfdf5', color: '#047857', border: '#a7f3d0' },
+  Startexch99: { bg: '#f0fdf4', color: '#15803d', border: '#bbf7d0' },
+  CBTFexchange: { bg: '#fffbeb', color: '#b45309', border: '#fde68a' },
+  Asstarplay: { bg: '#f0fdfa', color: '#0f766e', border: '#99f6e4' },
+};
+
+const DURATION_PROFILES = [
+  { min: 60, max: 480, label: '1m - 8m', Icon: Shuffle },
+  { min: 60, max: 180, label: '1m - 3m', Icon: Zap },
+  { min: 300, max: 600, label: '5m - 10m', Icon: Clock },
+];
 
 export default function ApiManagementDashboard({ onSwitchTab }) {
   const [metrics, setMetrics] = useState(null);
@@ -41,7 +80,6 @@ export default function ApiManagementDashboard({ onSwitchTab }) {
   const [toastMessage, setToastMessage] = useState(null);
   const [localCountdown, setLocalCountdown] = useState(150);
 
-  // Client-side smooth 1s countdown tick for next auto-rotation
   useEffect(() => {
     const timer = setInterval(() => {
       setLocalCountdown((prev) => (prev > 0 ? prev - 1 : 150));
@@ -50,9 +88,10 @@ export default function ApiManagementDashboard({ onSwitchTab }) {
   }, []);
 
   const showToast = (title, message, type = 'success') => {
-    setToastMessage({ title, message, type, id: Date.now() });
+    const id = Date.now();
+    setToastMessage({ title, message, type, id });
     setTimeout(() => {
-      setToastMessage((prev) => (prev?.id === Date.now() ? null : prev));
+      setToastMessage((prev) => (prev?.id === id ? null : prev));
     }, 4500);
   };
 
@@ -84,15 +123,15 @@ export default function ApiManagementDashboard({ onSwitchTab }) {
       const payload = {
         ...current,
         [type]: value,
-        changedBy: 'dashboard_ui'
+        changedBy: 'dashboard_ui',
       };
       const res = await axios.post('/api/admin/routing', payload);
       if (res.data?.success) {
         setMetrics((prev) => ({
           ...prev,
-          routingConfig: res.data.routingConfig
+          routingConfig: res.data.routingConfig,
         }));
-        showToast('Routing Switch Applied', `${type.toUpperCase()} now routed to ${value}`, 'success');
+        showToast('Routing Updated', `${type} set to ${value}`, 'success');
       }
     } catch (err) {
       showToast('Routing Error', err.message, 'error');
@@ -101,15 +140,15 @@ export default function ApiManagementDashboard({ onSwitchTab }) {
     }
   };
 
-  const handleApplyBrainRecommendation = async () => {
+  const handleApplyRecommendation = async () => {
     try {
       const res = await axios.post('/api/admin/brain/apply');
       if (res.data?.success) {
         fetchMetrics(true);
-        showToast('Configuration Updated', res.data.message, 'success');
+        showToast('Failover Applied', res.data.message, 'success');
       }
     } catch (err) {
-      showToast('Action Error', err.message, 'error');
+      showToast('Action Failed', err.message, 'error');
     }
   };
 
@@ -120,10 +159,14 @@ export default function ApiManagementDashboard({ onSwitchTab }) {
       if (res.data?.success) {
         fetchMetrics(true);
         if (patch.autoRotate !== undefined) {
-          showToast('Auto-Rotation Engine', `Auto-rotation is now ${patch.autoRotate ? 'ACTIVE (Timed)' : 'PAUSED'}`, 'info');
+          showToast(
+            'Auto-Rotation',
+            `IP rotation ${patch.autoRotate ? 'enabled' : 'paused'}`,
+            'info',
+          );
         }
         if (patch.minIntervalSeconds !== undefined) {
-          showToast('Interval Profile Updated', 'Organic random human duration configured', 'success');
+          showToast('Rotation Window', 'Lease interval updated', 'success');
         }
       }
     } catch (err) {
@@ -138,7 +181,11 @@ export default function ApiManagementDashboard({ onSwitchTab }) {
       const res = await axios.post('/api/admin/stealth/select', { personaId });
       if (res.data?.success) {
         fetchMetrics(true);
-        showToast('ISP Persona Selected', `Active subscriber: ${res.data.persona.name} (${res.data.persona.city})`, 'info');
+        showToast(
+          'Operator Switched',
+          `${res.data.persona.name} (${res.data.persona.city})`,
+          'info',
+        );
       }
     } catch (err) {
       showToast('Select Error', err.message, 'error');
@@ -151,7 +198,11 @@ export default function ApiManagementDashboard({ onSwitchTab }) {
       const res = await axios.post('/api/admin/stealth/rotate');
       if (res.data?.success) {
         fetchMetrics(true);
-        showToast('ISP Persona Rotated', `Spoofed: ${res.data.persona.name} (${res.data.persona.city})`, 'info');
+        showToast(
+          'ISP Rotated',
+          `${res.data.persona.name} (${res.data.persona.ip})`,
+          'info',
+        );
       }
     } catch (err) {
       showToast('Rotation Error', err.message, 'error');
@@ -165,7 +216,11 @@ export default function ApiManagementDashboard({ onSwitchTab }) {
       const res = await axios.post('/api/admin/stealth/toggle');
       if (res.data?.success) {
         fetchMetrics(true);
-        showToast('Stealth Masking', `ISP Residential Masking is now ${res.data.enabled ? 'ACTIVE' : 'DISABLED'}`, res.data.enabled ? 'success' : 'warning');
+        showToast(
+          'Origin Masking',
+          res.data.enabled ? 'Enabled' : 'Disabled',
+          res.data.enabled ? 'success' : 'warning',
+        );
       }
     } catch (err) {
       showToast('Toggle Error', err.message, 'error');
@@ -178,13 +233,20 @@ export default function ApiManagementDashboard({ onSwitchTab }) {
       const res = await axios.post('/api/admin/probe');
       if (res.data?.success) {
         fetchMetrics(true);
-        const niceOk = res.data.probeResults?.nice444?.ok;
-        const startOk = res.data.probeResults?.startexch99?.ok;
-        if (niceOk && startOk) {
-          showToast('Health Probe Result', 'Both Nice444 and Startexch99 are 100% HEALTHY (200 OK)', 'success');
-        } else {
-          showToast('Probe Alert', `Nice444: ${niceOk ? 'OK' : 'BLOCKED'}, Startexch: ${startOk ? 'OK' : 'BLOCKED'}`, 'warning');
-        }
+        const probe = res.data.probeResults || {};
+        const statuses = [
+          { label: 'Nice444', ok: probe.nice444?.ok },
+          { label: 'Startexch', ok: probe.startexch99?.ok },
+          { label: 'CBTF', ok: probe.cbtfexchange?.ok },
+          { label: 'Asstarplay', ok: probe.asstarplay?.ok },
+        ];
+        const okCount = statuses.filter((s) => s.ok).length;
+        const summary = statuses.map((s) => `${s.label}: ${s.ok ? '200 OK' : 'DOWN'}`).join(' | ');
+        showToast(
+          `Origin Probe (${okCount}/4 Healthy)`,
+          okCount === 4 ? 'All 4 origins responded 200 OK' : summary,
+          okCount === 4 ? 'success' : okCount > 0 ? 'warning' : 'error',
+        );
       }
     } catch (err) {
       showToast('Probe Failed', err.message, 'error');
@@ -195,19 +257,17 @@ export default function ApiManagementDashboard({ onSwitchTab }) {
 
   if (loading && !metrics) {
     return (
-      <div style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: '#f8fafc',
-        fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif"
-      }}>
-        <div style={{ textAlign: 'center', padding: '40px' }}>
-          <RefreshCw className="animate-spin" size={32} style={{ margin: '0 auto 16px', color: '#0284c7' }} />
-          <div style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>Loading Gateway Telemetry...</div>
-          <div style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>Connecting to VPS edge metrics engine</div>
+      <div className="adm-loading">
+        <div className="adm-loading-box">
+          <RefreshCw className="animate-spin" size={28} style={{ color: '#059669', margin: '0 auto 12px' }} />
+          <div style={{ fontSize: '15px', fontWeight: 700, color: '#064e3b' }}>
+            Connecting to Gateway Telemetry
+          </div>
+          <div style={{ fontSize: '12px', color: '#475569', marginTop: '4px' }}>
+            Fetching upstream health & cache metrics...
+          </div>
         </div>
+        <style>{DASHBOARD_CSS}</style>
       </div>
     );
   }
@@ -224,1235 +284,1495 @@ export default function ApiManagementDashboard({ onSwitchTab }) {
     brainStatus = {},
     stealthConfig = {},
     scaleStats = {},
-    recentRequests = []
+    recentRequests = [],
   } = metrics || {};
 
   const currentPersona = stealthConfig.currentPersona || {};
+  const healthyOriginCount = ORIGIN_METADATA.filter((o) => !providerHealth[o.key]?.isBlocked).length;
+  const remainingSec = stealthConfig.nextRotationInSeconds ?? localCountdown;
+  const countdownMins = Math.floor(remainingSec / 60);
+  const countdownSecs = (remainingSec % 60).toString().padStart(2, '0');
+  const shieldEfficiency =
+    counters.totalRequests > 0
+      ? `${Math.max(90, ((counters.totalRequests - (upstreamMetrics.totalHits || 0)) / counters.totalRequests) * 100).toFixed(1)}%`
+      : scaleStats.cacheAbsorptionRate || '99.4%';
+
+  const isCritical = loadRisk.level === 'CRITICAL';
+  const isWarning = loadRisk.level === 'WARNING' || loadRisk.level === 'MODERATE';
+  const statusColor = isCritical ? '#dc2626' : isWarning ? '#d97706' : '#059669';
+  const statusBg = isCritical ? '#fef2f2' : isWarning ? '#fffbeb' : '#ecfdf5';
+  const statusBorder = isCritical ? '#fecaca' : isWarning ? '#fde68a' : '#a7f3d0';
+
+  const cleanHeadline = (brainStatus.aiHeadline || '4-Way Mesh Operational').replace(/^Master Brain:\s*/i, '');
+  const cleanSummary = (brainStatus.aiMessage || 'All active origins healthy; read traffic cached in local RAM.').replace(/Master Brain\s*/gi, 'Gateway ');
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: 'linear-gradient(180deg, #f0f6fc 0%, #f8fafc 25%, #ffffff 100%)',
-      color: '#0f172a',
-      fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif",
-      paddingBottom: '80px'
-    }}>
+    <div className="adm-root">
+      <style>{DASHBOARD_CSS}</style>
 
-      {/* Floating Toast Notification */}
+      {/* Hanging Green Top Wash */}
+      <div className="adm-hanging-fade" aria-hidden="true" />
+
+      {/* Toast Notification */}
       {toastMessage && (
-        <div style={{
-          position: 'fixed',
-          bottom: '24px',
-          right: '24px',
-          zIndex: 9999,
-          background: '#ffffff',
-          border: toastMessage.type === 'error' ? '1px solid #fecaca' : toastMessage.type === 'warning' ? '1px solid #fde68a' : '1px solid #bae6fd',
-          boxShadow: '0 20px 25px -5px rgba(15, 23, 42, 0.1), 0 8px 10px -6px rgba(15, 23, 42, 0.05)',
-          borderRadius: '12px',
-          padding: '14px 18px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          maxWidth: '420px',
-          animation: 'fadeIn 0.2s ease-out'
-        }}>
+        <div
+          className="adm-toast"
+          style={{
+            borderColor:
+              toastMessage.type === 'error'
+                ? '#fecaca'
+                : toastMessage.type === 'warning'
+                  ? '#fde68a'
+                  : '#a7f3d0',
+          }}
+        >
           {toastMessage.type === 'error' ? (
-            <XCircle size={20} style={{ color: '#dc2626', flexShrink: 0 }} />
+            <XCircle size={18} style={{ color: '#dc2626', flexShrink: 0 }} />
           ) : toastMessage.type === 'warning' ? (
-            <AlertTriangle size={20} style={{ color: '#d97706', flexShrink: 0 }} />
+            <AlertTriangle size={18} style={{ color: '#d97706', flexShrink: 0 }} />
           ) : (
-            <CheckCircle2 size={20} style={{ color: '#0284c7', flexShrink: 0 }} />
+            <CheckCircle2 size={18} style={{ color: '#059669', flexShrink: 0 }} />
           )}
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a' }}>{toastMessage.title}</div>
-            <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>{toastMessage.message}</div>
+            <div style={{ fontSize: '12px', color: '#475569', marginTop: '2px', overflowWrap: 'anywhere' }}>
+              {toastMessage.message}
+            </div>
           </div>
-          <button 
+          <button
+            type="button"
             onClick={() => setToastMessage(null)}
-            style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '18px', padding: '0 4px' }}
+            className="adm-toast-close"
+            aria-label="Close notification"
           >
-            ×
+            <XCircle size={16} />
           </button>
         </div>
       )}
 
-      {/* TOP SENIOR ENTERPRISE NAVBAR (Clean White with Faded Blue Trim) */}
-      <header style={{
-        background: '#ffffff',
-        borderBottom: '1px solid #e2e8f0',
-        boxShadow: '0 1px 3px 0 rgba(15, 23, 42, 0.03)',
-        position: 'sticky',
-        top: 0,
-        zIndex: 100
-      }}>
-        <div style={{
-          maxWidth: '1440px',
-          margin: '0 auto',
-          padding: '12px 24px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: '16px'
-        }}>
-          {/* Logo & Product Identity */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div style={{
-              width: '40px',
-              height: '40px',
-              borderRadius: '10px',
-              background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(2, 132, 199, 0.25)'
-            }}>
-              <ShieldCheck size={22} style={{ color: '#ffffff' }} />
+      {/* Sticky Top Header */}
+      <header className="adm-header">
+        <div className="adm-header-inner">
+          <div className="adm-brand">
+            <div className="adm-brand-icon">
+              <ShieldCheck size={20} style={{ color: '#ffffff' }} />
             </div>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <h1 style={{ fontSize: '18px', fontWeight: 800, color: '#0f172a', margin: 0, letterSpacing: '-0.3px' }}>
-                  Gateway & Origin Telemetry Hub
-                </h1>
-                <span style={{
-                  fontSize: '10px',
-                  fontWeight: 800,
-                  padding: '2px 8px',
-                  borderRadius: '999px',
-                  background: '#e0f2fe',
-                  color: '#0369a1',
-                  border: '1px solid #bae6fd'
-                }}>
-                  ENTERPRISE v3.2
-                </span>
-                <span style={{
-                  fontSize: '11px',
-                  fontWeight: 700,
-                  padding: '2px 8px',
-                  borderRadius: '999px',
-                  background: '#ecfdf5',
-                  color: '#059669',
-                  border: '1px solid #a7f3d0',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '4px'
-                }}>
-                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#059669' }} />
-                  ORIGINS 200 OK
+            <div style={{ minWidth: 0 }}>
+              <div className="adm-brand-title-row">
+                <h1 className="adm-title">Gateway Console</h1>
+                <span
+                  className="adm-status-pill"
+                  style={{ background: statusBg, color: statusColor, borderColor: statusBorder }}
+                >
+                  <span className="adm-dot" style={{ backgroundColor: statusColor }} />
+                  {healthyOriginCount}/4 ORIGINS OK
                 </span>
               </div>
-              <p style={{ fontSize: '12px', color: '#64748b', margin: '2px 0 0 0' }}>
-                Edge Load Balancer • 10 Lakh Stampede Protection • Indian Residential ISP Cloaking
+              <p className="adm-subtitle">
+                Multi-Origin Load Balancer &amp; Edge Cache Monitor
               </p>
             </div>
           </div>
 
-          {/* Action Toolbar */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <div className="adm-toolbar">
             {onSwitchTab && (
               <>
-                <button
-                  onClick={() => onSwitchTab('GAMES')}
-                  style={{
-                    background: '#f8fafc',
-                    color: '#334155',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '8px',
-                    padding: '8px 14px',
-                    fontSize: '12px',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    transition: 'all 0.15s'
-                  }}
-                >
-                  <Layers size={14} style={{ color: '#0284c7' }} />
-                  Casino Tables
+                <button type="button" onClick={() => onSwitchTab('GAMES')} className="adm-btn">
+                  <Layers size={14} style={{ color: '#059669' }} />
+                  <span>Casino</span>
                 </button>
-
-                <button
-                  onClick={() => onSwitchTab('SPORTS')}
-                  style={{
-                    background: '#f8fafc',
-                    color: '#334155',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '8px',
-                    padding: '8px 14px',
-                    fontSize: '12px',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    transition: 'all 0.15s'
-                  }}
-                >
+                <button type="button" onClick={() => onSwitchTab('SPORTS')} className="adm-btn">
                   <TrendingUp size={14} style={{ color: '#059669' }} />
-                  Exchange Sports
+                  <span>Sports</span>
                 </button>
               </>
             )}
 
             <button
+              type="button"
               onClick={handleProbeOrigins}
               disabled={probing}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                background: '#f0f7ff',
-                color: '#0369a1',
-                border: '1px solid #bae6fd',
-                borderRadius: '8px',
-                padding: '8px 14px',
-                fontSize: '12px',
-                fontWeight: 700,
-                cursor: probing ? 'not-allowed' : 'pointer',
-                transition: 'all 0.15s'
-              }}
+              className="adm-btn adm-btn-emerald"
             >
-              <Radio size={14} className={probing ? 'animate-pulse' : ''} style={{ color: '#0284c7' }} />
-              {probing ? 'Probing Origins...' : 'Probe Origins (Live Test)'}
+              <Radio size={14} className={probing ? 'animate-pulse' : ''} />
+              <span>{probing ? 'Probing...' : 'Probe Origins'}</span>
             </button>
 
             <button
+              type="button"
               onClick={() => fetchMetrics(true)}
               disabled={refreshing}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                background: '#ffffff',
-                color: '#334155',
-                border: '1px solid #cbd5e1',
-                borderRadius: '8px',
-                padding: '8px 14px',
-                fontSize: '12px',
-                fontWeight: 700,
-                cursor: 'pointer',
-                transition: 'all 0.15s'
-              }}
+              className="adm-btn"
+              aria-label="Refresh telemetry"
             >
-              <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} style={{ color: '#64748b' }} />
-              Refresh
+              <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} style={{ color: '#475569' }} />
+              <span>Refresh</span>
             </button>
           </div>
         </div>
       </header>
 
-      {/* MAIN CONTAINER */}
-      <div style={{
-        maxWidth: '1440px',
-        margin: '0 auto',
-        padding: '24px 24px 0'
-      }}>
-
-        {/* EXECUTIVE STATUS SUMMARY BANNER (Senior Professional Design) */}
-        <div style={{
-          background: '#ffffff',
-          border: '1px solid #bae6fd',
-          borderRadius: '14px',
-          padding: '16px 20px',
-          marginBottom: '20px',
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '16px',
-          boxShadow: '0 2px 10px rgba(2, 132, 199, 0.05)'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: 1, minWidth: '280px' }}>
-            <div style={{
-              width: '42px',
-              height: '42px',
-              borderRadius: '10px',
-              background: '#f0f7ff',
-              border: '1px solid #bae6fd',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0
-            }}>
-              <CheckCircle2 size={22} style={{ color: '#0284c7' }} />
-            </div>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '14px', fontWeight: 800, color: '#0f172a' }}>
-                  {brainStatus.aiHeadline || 'System Operational Status: All Origins Healthy'}
-                </span>
-                <span style={{
-                  fontSize: '10px',
-                  fontWeight: 700,
-                  padding: '2px 8px',
-                  borderRadius: '4px',
-                  background: brainStatus.state === 'OPTIMAL' ? '#ecfdf5' : '#fffbeb',
-                  color: brainStatus.state === 'OPTIMAL' ? '#059669' : '#d97706',
-                  border: brainStatus.state === 'OPTIMAL' ? '1px solid #a7f3d0' : '1px solid #fde68a'
-                }}>
-                  {brainStatus.state}
-                </span>
-              </div>
-              <div style={{ fontSize: '13px', color: '#475569', marginTop: '3px', lineHeight: 1.4 }}>
-                {brainStatus.aiMessage || 'Operating in dual-redundant mode. Client requests are fulfilled directly from RAM cache, shielding upstream origins from traffic load.'}
-              </div>
-            </div>
-          </div>
-
-          {/* Action Button if Recommendation Exists */}
-          {brainStatus.recommendedAction && brainStatus.recommendedAction !== 'KEEP_CURRENT' && (
-            <button
-              onClick={handleApplyBrainRecommendation}
-              style={{
-                background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: '8px',
-                padding: '9px 16px',
-                fontSize: '12px',
-                fontWeight: 700,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                boxShadow: '0 4px 12px rgba(2, 132, 199, 0.25)',
-                whiteSpace: 'nowrap'
-              }}
+      {/* Main Content */}
+      <main className="adm-container">
+        {/* Status Summary Bar */}
+        <section className="adm-card adm-banner" style={{ borderColor: statusBorder }}>
+          <div className="adm-banner-info">
+            <div
+              className="adm-icon-tile"
+              style={{ background: statusBg, borderColor: statusBorder, color: statusColor }}
             >
-              <Check size={14} />
-              Apply Recommendation: {brainStatus.recommendedAction}
-            </button>
-          )}
-        </div>
-
-        {/* TOP 4 EXECUTIVE KPI CARDS */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-          gap: '16px',
-          marginBottom: '20px'
-        }}>
-          {/* Card 1: User Ingress Velocity */}
-          <div style={{
-            background: '#ffffff',
-            border: '1px solid #e2e8f0',
-            borderRadius: '12px',
-            padding: '18px 20px',
-            boxShadow: '0 1px 3px rgba(15, 23, 42, 0.04)'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <span style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', letterSpacing: '0.8px', textTransform: 'uppercase' }}>
-                CLIENT INGRESS VELOCITY
-              </span>
-              <Activity size={18} style={{ color: '#0284c7' }} />
+              {isCritical ? <ShieldAlert size={20} /> : <CheckCircle2 size={20} />}
             </div>
-            <div style={{ fontSize: '26px', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div className="adm-banner-head">
+                <span className="adm-banner-title">{cleanHeadline}</span>
+                <span
+                  className="adm-tag"
+                  style={{ background: statusBg, color: statusColor, borderColor: statusBorder }}
+                >
+                  {brainStatus.state || 'OPTIMAL'}
+                </span>
+              </div>
+              <p className="adm-banner-desc">{cleanSummary}</p>
+            </div>
+          </div>
+
+          {brainStatus.recommendedAction &&
+            brainStatus.recommendedAction !== 'KEEP_CURRENT' &&
+            brainStatus.recommendedAction !== 'AUTO' && (
+              <button
+                type="button"
+                onClick={handleApplyRecommendation}
+                className="adm-btn adm-btn-primary"
+              >
+                <Check size={14} />
+                <span>Switch to {brainStatus.recommendedAction}</span>
+              </button>
+            )}
+        </section>
+
+        {/* Top 4 KPI Cards */}
+        <section className="adm-grid-4">
+          <div className="adm-card adm-kpi">
+            <div className="adm-kpi-top">
+              <span className="adm-label">Client Ingress</span>
+              <Activity size={16} style={{ color: '#059669' }} />
+            </div>
+            <div className="adm-kpi-value">
               {reqPerMinute}
-              <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>req/min</span>
+              <span className="adm-kpi-unit">req/min</span>
             </div>
-            <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-              Total Requests: <strong>{counters.totalRequests?.toLocaleString() || 0}</strong>
+            <div className="adm-kpi-sub">
+              Total served: <strong>{counters.totalRequests?.toLocaleString() || 0}</strong>
             </div>
-            <div style={{ marginTop: '12px', height: '6px', background: '#f1f5f9', borderRadius: '3px', overflow: 'hidden' }}>
-              <div style={{
-                width: `${Math.min(100, Math.max(8, Math.round((reqPerMinute / 300) * 100)))}%`,
-                height: '100%',
-                background: '#0284c7',
-                transition: 'width 0.4s ease'
-              }} />
+            <div className="adm-progress-track">
+              <div
+                className="adm-progress-fill"
+                style={{ width: `${Math.min(100, Math.max(8, Math.round((reqPerMinute / 300) * 100)))}%` }}
+              />
             </div>
           </div>
 
-          {/* Card 2: 10 Lakh User Stampede Shield */}
-          <div style={{
-            background: '#ffffff',
-            border: '1px solid #e2e8f0',
-            borderRadius: '12px',
-            padding: '18px 20px',
-            boxShadow: '0 1px 3px rgba(15, 23, 42, 0.04)'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <span style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', letterSpacing: '0.8px', textTransform: 'uppercase' }}>
-                RAM CACHE ABSORPTION
-              </span>
-              <ShieldCheck size={18} style={{ color: '#059669' }} />
+          <div className="adm-card adm-kpi">
+            <div className="adm-kpi-top">
+              <span className="adm-label">Cache Absorption</span>
+              <ShieldCheck size={16} style={{ color: '#059669' }} />
             </div>
-            <div style={{ fontSize: '26px', fontWeight: 800, color: '#059669' }}>
-              {scaleStats.cacheAbsorptionRate || '99.4%'}
+            <div className="adm-kpi-value" style={{ color: '#047857' }}>
+              {shieldEfficiency}
             </div>
-            <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-              Served Locally in &lt; 15ms
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#64748b', marginTop: '12px', borderTop: '1px solid #f1f5f9', paddingTop: '8px' }}>
-              <span>Scale: 10 Lakh Ready</span>
-              <span style={{ color: '#059669', fontWeight: 700 }}>Shield: ACTIVE</span>
+            <div className="adm-kpi-sub">Local RAM hit latency &lt; 15ms</div>
+            <div className="adm-kpi-footer">
+              <span>Single-Flight</span>
+              <span style={{ color: '#059669', fontWeight: 700 }}>ACTIVE</span>
             </div>
           </div>
 
-          {/* Card 3: Origin Block Risk Level (Serious Matters Only) */}
-          <div style={{
-            background: '#ffffff',
-            border: '1px solid #e2e8f0',
-            borderRadius: '12px',
-            padding: '18px 20px',
-            boxShadow: '0 1px 3px rgba(15, 23, 42, 0.04)'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <span style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', letterSpacing: '0.8px', textTransform: 'uppercase' }}>
-                ORIGIN BLOCK RISK
-              </span>
-              <AlertTriangle size={18} style={{ color: loadRisk.level === 'CRITICAL' ? '#dc2626' : '#059669' }} />
-            </div>
-            <div style={{ fontSize: '26px', fontWeight: 800, color: loadRisk.level === 'CRITICAL' ? '#dc2626' : '#059669' }}>
-              {loadRisk.label || 'SAFE'}
-            </div>
-            <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {loadRisk.message || 'Origins 100% healthy.'}
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#64748b', marginTop: '12px', borderTop: '1px solid #f1f5f9', paddingTop: '8px' }}>
-              <span>Auto-Failover: ARMED</span>
-              <span style={{ color: '#0284c7', fontWeight: 700 }}>&lt; 1ms Switch</span>
-            </div>
-          </div>
-
-          {/* Card 4: Host Server Engine */}
-          <div style={{
-            background: '#ffffff',
-            border: '1px solid #e2e8f0',
-            borderRadius: '12px',
-            padding: '18px 20px',
-            boxShadow: '0 1px 3px rgba(15, 23, 42, 0.04)'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <span style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', letterSpacing: '0.8px', textTransform: 'uppercase' }}>
-                HOST SERVER ENGINE (VPS)
-              </span>
-              <Server size={18} style={{ color: '#0284c7' }} />
-            </div>
-            <div style={{ fontSize: '26px', fontWeight: 800, color: '#0f172a' }}>
-              {system.memoryRssMb || 54} <span style={{ fontSize: '13px', fontWeight: 600, color: '#64748b' }}>MB RAM</span>
-            </div>
-            <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-              Uptime: {Math.floor((system.uptimeSeconds || 0) / 60)} min • CPU Cores: {system.cpuCount || 4}
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#64748b', marginTop: '12px', borderTop: '1px solid #f1f5f9', paddingTop: '8px' }}>
-              <span>Node {system.nodeVersion || 'v20'}</span>
-              <span style={{ color: '#059669', fontWeight: 700 }}>2xx Success: {counters.byStatus?.['2xx'] || 0}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* ========================================================================= */}
-        {/* DEDICATED TRAFFIC SEPARATION: USER INGRESS VS UPSTREAM FORWARDING MONITOR */}
-        {/* ========================================================================= */}
-        <div style={{
-          background: '#ffffff',
-          border: '1px solid #bae6fd',
-          borderRadius: '16px',
-          padding: '24px',
-          marginBottom: '24px',
-          boxShadow: '0 4px 20px -2px rgba(2, 132, 199, 0.06)'
-        }}>
-          {/* Section Header */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '20px', borderBottom: '1px solid #f1f5f9', paddingBottom: '16px' }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div style={{
-                  width: '32px',
-                  height: '32px',
-                  borderRadius: '8px',
-                  background: '#f0f7ff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  border: '1px solid #bae6fd'
-                }}>
-                  <ArrowRightLeft size={18} style={{ color: '#0284c7' }} />
-                </div>
-                <h2 style={{ fontSize: '17px', fontWeight: 800, color: '#0f172a', margin: 0 }}>
-                  Traffic Separation & Upstream Shield Monitor
-                </h2>
-                <span style={{
-                  fontSize: '11px',
-                  fontWeight: 700,
-                  padding: '3px 8px',
-                  borderRadius: '6px',
-                  background: '#ecfdf5',
-                  color: '#059669',
-                  border: '1px solid #a7f3d0'
-                }}>
-                  99.4% LOCAL ABSORPTION
-                </span>
-              </div>
-              <p style={{ fontSize: '12px', color: '#64748b', margin: '4px 0 0 42px' }}>
-                Live Comparison: Hamare server pe aaya user load vs Upstream exchange provider pe gaye real network hits
-              </p>
-            </div>
-
-            {/* Quick Efficiency Meter */}
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px',
-              background: '#f8fafc',
-              padding: '8px 16px',
-              borderRadius: '10px',
-              border: '1px solid #e2e8f0'
-            }}>
-              <ShieldCheck size={20} style={{ color: '#059669' }} />
-              <div>
-                <div style={{ fontSize: '10px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Shield Efficiency</div>
-                <div style={{ fontSize: '14px', fontWeight: 800, color: '#059669' }}>
-                  {counters.totalRequests > 0 
-                    ? `${Math.max(90, (((counters.totalRequests - (upstreamMetrics.totalHits || 0)) / counters.totalRequests) * 100)).toFixed(1)}% Local RAM`
-                    : '99.6% Local RAM'}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* 2-Side Columns Grid */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
-            gap: '20px'
-          }}>
-            {/* SIDE 1: HAMARE SERVER PE AAYA TRAFFIC (CLIENTS / USERS) */}
-            <div style={{
-              background: '#f8fafc',
-              border: '1px solid #e2e8f0',
-              borderRadius: '12px',
-              padding: '20px',
-              position: 'relative'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Users size={18} style={{ color: '#0284c7' }} />
-                  <span style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a', letterSpacing: '0.3px' }}>
-                    1. HAMARE SERVER PE AAYA TRAFFIC (USERS)
-                  </span>
-                </div>
-                <span style={{
-                  fontSize: '10px',
-                  fontWeight: 700,
-                  color: '#0369a1',
-                  background: '#e0f2fe',
-                  padding: '2px 8px',
-                  borderRadius: '4px',
-                  border: '1px solid #bae6fd'
-                }}>
-                  SERVED FROM RAM
-                </span>
-              </div>
-
-              {/* Big Stat */}
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '14px' }}>
-                <span style={{ fontSize: '32px', fontWeight: 800, color: '#0f172a' }}>
-                  {reqPerMinute}
-                </span>
-                <span style={{ fontSize: '13px', fontWeight: 600, color: '#0284c7' }}>req/min incoming</span>
-              </div>
-
-              {/* Metric rows */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 10px', background: '#ffffff', borderRadius: '6px', border: '1px solid #f1f5f9' }}>
-                  <span style={{ color: '#64748b' }}>Total Requests Processed:</span>
-                  <span style={{ color: '#0f172a', fontWeight: 700 }}>{counters.totalRequests?.toLocaleString() || 0} calls</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 10px', background: '#ffffff', borderRadius: '6px', border: '1px solid #f1f5f9' }}>
-                  <span style={{ color: '#64748b' }}>Local Server Latency:</span>
-                  <span style={{ color: '#059669', fontWeight: 700 }}>&lt; 15 ms (Instant RAM Cache)</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 10px', background: '#ffffff', borderRadius: '6px', border: '1px solid #f1f5f9' }}>
-                  <span style={{ color: '#64748b' }}>Live Matches / Sports Hits:</span>
-                  <span style={{ color: '#0284c7', fontWeight: 700 }}>{counters.byCategory?.sports || 0} reqs</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 10px', background: '#ffffff', borderRadius: '6px', border: '1px solid #f1f5f9' }}>
-                  <span style={{ color: '#64748b' }}>Casino Odds & Tables:</span>
-                  <span style={{ color: '#7c3aed', fontWeight: 700 }}>{counters.byCategory?.casinoOdds || 0} reqs</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 10px', background: '#ffffff', borderRadius: '6px', border: '1px solid #f1f5f9' }}>
-                  <span style={{ color: '#64748b' }}>Live Video Stream Requests:</span>
-                  <span style={{ color: '#d97706', fontWeight: 700 }}>{counters.byCategory?.streamWatch || 0} reqs</span>
-                </div>
-              </div>
-
-              {/* Footnote */}
-              <div style={{
-                marginTop: '16px',
-                padding: '10px 12px',
-                borderRadius: '8px',
-                background: '#f0f7ff',
-                border: '1px solid #bae6fd',
-                fontSize: '11px',
-                color: '#334155',
-                lineHeight: 1.4
-              }}>
-                💡 <b style={{ color: '#0f172a' }}>High Concurrency Safe:</b> Users chahe kitne bhi phone ya browser se refresh karein, 99.4% data hamara server RAM cache se deta hai bina upstream provider ko distrub kiye.
-              </div>
-            </div>
-
-            {/* SIDE 2: PROVIDER KE SERVER PE GAYA DATA (OUTGOING HITS) */}
-            <div style={{
-              background: '#f0fdf4',
-              border: '1px solid #bbf7d0',
-              borderRadius: '12px',
-              padding: '20px',
-              position: 'relative'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Radio size={18} style={{ color: '#059669' }} />
-                  <span style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a', letterSpacing: '0.3px' }}>
-                    2. PROVIDER KO KITNA BAR HIT KIYA (UPSTREAM)
-                  </span>
-                </div>
-                <span style={{
-                  fontSize: '10px',
-                  fontWeight: 700,
-                  color: '#059669',
-                  background: '#dcfce7',
-                  padding: '2px 8px',
-                  borderRadius: '4px',
-                  border: '1px solid #86efac'
-                }}>
-                  STEALTH MASKED
-                </span>
-              </div>
-
-              {/* Big Stat */}
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '14px' }}>
-                <span style={{ fontSize: '32px', fontWeight: 800, color: '#059669' }}>
-                  {upstreamMetrics.rpm || 0}
-                </span>
-                <span style={{ fontSize: '13px', fontWeight: 600, color: '#059669' }}>req/min real upstream hits</span>
-              </div>
-
-              {/* Metric rows */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 10px', background: '#ffffff', borderRadius: '6px', border: '1px solid #dcfce7' }}>
-                  <span style={{ color: '#64748b' }}>Total Hits Sent to Upstream:</span>
-                  <span style={{ color: '#059669', fontWeight: 700 }}>{upstreamMetrics.totalHits || 0} hits</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 10px', background: '#ffffff', borderRadius: '6px', border: '1px solid #dcfce7' }}>
-                  <span style={{ color: '#64748b' }}>Nice444 Hits:</span>
-                  <span style={{ color: '#0284c7', fontWeight: 700 }}>{upstreamMetrics.nice444Hits || 0} hits</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 10px', background: '#ffffff', borderRadius: '6px', border: '1px solid #dcfce7' }}>
-                  <span style={{ color: '#64748b' }}>Startexch99 Hits:</span>
-                  <span style={{ color: '#7c3aed', fontWeight: 700 }}>{upstreamMetrics.startexchHits || 0} hits</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 10px', background: '#ffffff', borderRadius: '6px', border: '1px solid #dcfce7' }}>
-                  <span style={{ color: '#64748b' }}>Provider Origin Health:</span>
-                  <span style={{ color: '#059669', fontWeight: 700 }}>🟢 100% SAFE (Zero Blocks)</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 10px', background: '#ffffff', borderRadius: '6px', border: '1px solid #dcfce7' }}>
-                  <span style={{ color: '#64748b' }}>Current Stealth Spoofed Persona:</span>
-                  <span style={{ color: '#0369a1', fontWeight: 700 }}>
-                    {currentPersona.name || 'Jio 5G Fiber'} ({currentPersona.city || 'Mumbai'})
-                  </span>
-                </div>
-              </div>
-
-              {/* Footnote */}
-              <div style={{
-                marginTop: '16px',
-                padding: '10px 12px',
-                borderRadius: '8px',
-                background: '#ffffff',
-                border: '1px solid #86efac',
-                fontSize: '11px',
-                color: '#334155',
-                lineHeight: 1.4
-              }}>
-                🛡️ <b style={{ color: '#0f172a' }}>Stealth Shield Active:</b> Provider ke server pe sirf zaroorat padne par ({upstreamMetrics.rpm || 0} req/min) hit jata hai. Unke firewall ko lagta hai ki sirf 1 residential user apne ghar se browse kar raha hai!
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* MIDDLE SECTION: STEALTH ISP MASKING & 1-CLICK ROUTING */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))',
-          gap: '20px',
-          marginBottom: '20px'
-        }}>
-
-          {/* SECTION A: STEALTH RESIDENTIAL ISP ORIGIN MASKING */}
-          <div style={{
-            background: '#ffffff',
-            border: '1px solid #e2e8f0',
-            borderRadius: '14px',
-            padding: '20px',
-            boxShadow: '0 1px 3px rgba(15, 23, 42, 0.04)',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between'
-          }}>
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <EyeOff size={18} style={{ color: '#0284c7' }} />
-                  <span style={{ fontSize: '15px', fontWeight: 800, color: '#0f172a' }}>
-                    Stealth Origin Masking (ISP Spoofing)
-                  </span>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <button
-                    onClick={() => handleUpdateStealthConfig({ autoRotate: !stealthConfig.autoRotate })}
-                    style={{
-                      background: stealthConfig.autoRotate ? '#e0f2fe' : '#f1f5f9',
-                      border: stealthConfig.autoRotate ? '1px solid #7dd3fc' : '1px solid #cbd5e1',
-                      color: stealthConfig.autoRotate ? '#0369a1' : '#64748b',
-                      borderRadius: '6px',
-                      padding: '5px 10px',
-                      fontSize: '11px',
-                      fontWeight: 800,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px'
-                    }}
-                  >
-                    <RefreshCw size={11} className={stealthConfig.autoRotate ? 'animate-spin' : ''} />
-                    AUTO-ROTATE: {stealthConfig.autoRotate ? 'ON' : 'OFF'}
-                  </button>
-
-                  <button
-                    onClick={handleToggleStealth}
-                    style={{
-                      background: stealthConfig.enabled ? '#ecfdf5' : '#fef2f2',
-                      border: stealthConfig.enabled ? '1px solid #a7f3d0' : '1px solid #fecaca',
-                      color: stealthConfig.enabled ? '#059669' : '#dc2626',
-                      borderRadius: '6px',
-                      padding: '5px 10px',
-                      fontSize: '11px',
-                      fontWeight: 800,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {stealthConfig.enabled ? 'SHIELD: ACTIVE' : 'SHIELD: OFF'}
-                  </button>
-                </div>
-              </div>
-
-              <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 14px 0', lineHeight: 1.4 }}>
-                Upstream exchange provider ko hamara server IP nahi dikhta. System time-to-time real Indian residential subscribers ban kar automatic rotate hota rehta hai (Jio, Airtel, ACT, Vi, BSNL).
-              </p>
-
-              {/* Auto-Rotation Timing & Live Countdown Bar */}
-              {stealthConfig.autoRotate && (
-                <div style={{
-                  background: '#f0f7ff',
-                  border: '1px solid #bae6fd',
-                  borderRadius: '10px',
-                  padding: '12px 14px',
-                  marginBottom: '14px',
-                  fontSize: '11px'
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#0284c7' }} />
-                      <span style={{ color: '#0f172a', fontWeight: 800 }}>
-                        Next Random Switch In:
-                      </span>
-                      <span style={{ color: '#0284c7', fontWeight: 800, fontSize: '13px', fontFamily: 'monospace' }}>
-                        {Math.floor((stealthConfig.nextRotationInSeconds || localCountdown) / 60)}m {((stealthConfig.nextRotationInSeconds || localCountdown) % 60).toString().padStart(2, '0')}s
-                      </span>
-                    </div>
-
-                    <span style={{ color: '#64748b', fontSize: '11px' }}>
-                      Current Lease: <strong style={{ color: '#0f172a' }}>{Math.floor((stealthConfig.intervalSeconds || 165) / 60)}m {(stealthConfig.intervalSeconds || 165) % 60}s</strong>
-                    </span>
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
-                    <span style={{ fontSize: '11px', color: '#64748b' }}>
-                      Random Duration Profile:
-                    </span>
-                    <div style={{ display: 'flex', gap: '4px' }}>
-                      {[
-                        { min: 60, max: 480, label: '🎲 Organic (1m - 8m)' },
-                        { min: 60, max: 180, label: '⚡ Fast (1m - 3m)' },
-                        { min: 300, max: 600, label: '⏳ Long (5m - 10m)' }
-                      ].map((modeItem) => {
-                        const isCur =
-                          (stealthConfig.minIntervalSeconds || 60) === modeItem.min &&
-                          (stealthConfig.maxIntervalSeconds || 480) === modeItem.max;
-                        return (
-                          <button
-                            key={modeItem.label}
-                            disabled={updatingStealth}
-                            onClick={() => handleUpdateStealthConfig({ minIntervalSeconds: modeItem.min, maxIntervalSeconds: modeItem.max })}
-                            style={{
-                              background: isCur ? '#0284c7' : '#ffffff',
-                              color: isCur ? '#ffffff' : '#64748b',
-                              border: isCur ? 'none' : '1px solid #cbd5e1',
-                              borderRadius: '4px',
-                              padding: '3px 8px',
-                              fontSize: '10px',
-                              fontWeight: 700,
-                              cursor: 'pointer',
-                              transition: 'all 0.15s'
-                            }}
-                          >
-                            {modeItem.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
+          <div className="adm-card adm-kpi">
+            <div className="adm-kpi-top">
+              <span className="adm-label">Origin Risk</span>
+              {isCritical || isWarning ? (
+                <AlertTriangle size={16} style={{ color: statusColor }} />
+              ) : (
+                <CheckCircle2 size={16} style={{ color: '#059669' }} />
               )}
+            </div>
+            <div className="adm-kpi-value" style={{ color: statusColor, fontSize: '20px', lineHeight: '30px' }}>
+              {loadRisk.label || 'SAFE (4/4 OK)'}
+            </div>
+            <div className="adm-kpi-sub adm-truncate" title={loadRisk.message}>
+              {loadRisk.message || 'All 4 origins healthy.'}
+            </div>
+            <div className="adm-kpi-footer">
+              <span>4-Way Failover</span>
+              <span style={{ color: '#047857', fontWeight: 700 }}>ARMED</span>
+            </div>
+          </div>
 
-              {/* Active ISP Profile Card */}
-              <div style={{
-                background: '#f8fafc',
-                border: '1px solid #e2e8f0',
-                borderRadius: '10px',
-                padding: '14px 16px',
-                marginBottom: '14px'
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 800, color: '#0369a1' }}>
-                    CURRENT ACTIVE RESIDENTIAL SUBSCRIBER
-                  </span>
-                  <span style={{ fontSize: '10px', background: '#e0f2fe', color: '#0369a1', padding: '2px 8px', borderRadius: '4px', fontWeight: 800, border: '1px solid #bae6fd' }}>
-                    {currentPersona.carrier || 'Jio True 5G'}
-                  </span>
-                </div>
+          <div className="adm-card adm-kpi">
+            <div className="adm-kpi-top">
+              <span className="adm-label">Host Runtime</span>
+              <Server size={16} style={{ color: '#059669' }} />
+            </div>
+            <div className="adm-kpi-value">
+              {system.memoryRssMb || 54}
+              <span className="adm-kpi-unit">MB RSS</span>
+            </div>
+            <div className="adm-kpi-sub">
+              Uptime {Math.floor((system.uptimeSeconds || 0) / 60)}m • {system.cpuCount || 4} Cores
+            </div>
+            <div className="adm-kpi-footer">
+              <span>Node {system.nodeVersion || 'v20'}</span>
+              <span style={{ color: '#059669', fontWeight: 700 }}>
+                2xx: {counters.byStatus?.['2xx'] || 0}
+              </span>
+            </div>
+          </div>
+        </section>
 
-                <div style={{ fontSize: '17px', fontWeight: 800, color: '#0f172a', marginTop: '6px' }}>
-                  {currentPersona.name || 'Jio 5G Fiber'}
+        {/* Traffic Separation Monitor */}
+        <section className="adm-card adm-section">
+          <div className="adm-section-head">
+            <div className="adm-section-title-group">
+              <div className="adm-icon-tile adm-icon-emerald">
+                <ArrowRightLeft size={16} />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <h2 className="adm-h2">Ingress vs Upstream Traffic</h2>
+                <p className="adm-muted-sm">Client requests absorbed by cache vs outbound origin hits</p>
+              </div>
+            </div>
+            <div className="adm-efficiency-chip">
+              <ShieldCheck size={16} style={{ color: '#059669' }} />
+              <span>Shield Efficiency: <strong>{shieldEfficiency}</strong></span>
+            </div>
+          </div>
+
+          <div className="adm-grid-2">
+            {/* Inbound */}
+            <div className="adm-subpanel">
+              <div className="adm-subpanel-head">
+                <span className="adm-subpanel-title">
+                  <Users size={15} style={{ color: '#059669' }} />
+                  Client Ingress
+                </span>
+                <span className="adm-tag adm-tag-slate">RAM CACHE</span>
+              </div>
+              <div className="adm-big-stat">
+                <span>{reqPerMinute}</span>
+                <small>req/min</small>
+              </div>
+              <div className="adm-kv-list">
+                <div className="adm-kv-row">
+                  <span>Total Requests</span>
+                  <strong>{counters.totalRequests?.toLocaleString() || 0}</strong>
                 </div>
-                <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
-                  City: <strong style={{ color: '#0f172a' }}>{currentPersona.city || 'Mumbai, Maharashtra'}</strong>
+                <div className="adm-kv-row">
+                  <span>Sports Endpoints</span>
+                  <strong>{counters.byCategory?.sports || 0}</strong>
                 </div>
-                <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
-                  Spoofed Subscriber IP: <code style={{ color: '#0369a1', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>{currentPersona.ip || '49.36.142.88'}</code>
+                <div className="adm-kv-row">
+                  <span>Casino Odds &amp; Tables</span>
+                  <strong>{counters.byCategory?.casinoOdds || 0}</strong>
                 </div>
-                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
-                  ASN: {currentPersona.asn || 'AS55836 Reliance Jio Infocomm'}
+                <div className="adm-kv-row">
+                  <span>Stream Requests</span>
+                  <strong>{counters.byCategory?.streamWatch || 0}</strong>
                 </div>
               </div>
+            </div>
 
-              {/* Quick 8-ISP Selection Grid */}
-              <div style={{ marginBottom: '14px' }}>
-                <div style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', marginBottom: '8px' }}>
-                  QUICK SWITCH RESIDENTIAL OPERATOR (1-CLICK):
+            {/* Outbound */}
+            <div className="adm-subpanel adm-subpanel-mint">
+              <div className="adm-subpanel-head">
+                <span className="adm-subpanel-title">
+                  <Radio size={15} style={{ color: '#059669' }} />
+                  Upstream Egress
+                </span>
+                <span className="adm-tag adm-tag-emerald">MASKED</span>
+              </div>
+              <div className="adm-big-stat" style={{ color: '#047857' }}>
+                <span>{upstreamMetrics.rpm || 0}</span>
+                <small style={{ color: '#059669' }}>hits/min</small>
+              </div>
+              <div className="adm-kv-list">
+                <div className="adm-kv-row">
+                  <span>Total Upstream Hits</span>
+                  <strong style={{ color: '#047857' }}>{upstreamMetrics.totalHits || 0}</strong>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '6px' }}>
-                  {(stealthConfig.allPersonas || []).map((p) => {
-                    const isActive = currentPersona.id === p.id || currentPersona.name === p.name;
+                <div className="adm-kv-row">
+                  <span>Nice444 / Startexch99</span>
+                  <strong>
+                    {upstreamMetrics.nice444Hits || 0} / {upstreamMetrics.startexchHits || 0}
+                  </strong>
+                </div>
+                <div className="adm-kv-row">
+                  <span>CBTF / Asstarplay</span>
+                  <strong>
+                    {upstreamMetrics.cbtfHits || 0} / {upstreamMetrics.asstarplayHits || 0}
+                  </strong>
+                </div>
+                <div className="adm-kv-row">
+                  <span>Active Exit IP</span>
+                  <strong style={{ color: '#047857' }}>{currentPersona.name || 'Jio 5G Fiber'}</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Controls: ISP Masking & 4-Way Router */}
+        <section className="adm-grid-2">
+          {/* ISP Masking */}
+          <div className="adm-card adm-section">
+            <div className="adm-section-head">
+              <div className="adm-section-title-group">
+                <div className="adm-icon-tile adm-icon-emerald">
+                  <EyeOff size={16} />
+                </div>
+                <h2 className="adm-h2">Origin Header Masking</h2>
+              </div>
+              <div className="adm-pill-actions">
+                <button
+                  type="button"
+                  onClick={() => handleUpdateStealthConfig({ autoRotate: !stealthConfig.autoRotate })}
+                  className={`adm-mini-btn ${stealthConfig.autoRotate ? 'is-active' : ''}`}
+                >
+                  <RefreshCw size={11} className={stealthConfig.autoRotate ? 'animate-spin' : ''} />
+                  <span>Auto: {stealthConfig.autoRotate ? 'ON' : 'OFF'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleToggleStealth}
+                  className={`adm-mini-btn ${stealthConfig.enabled ? 'is-emerald' : 'is-danger'}`}
+                >
+                  <span>{stealthConfig.enabled ? 'Enabled' : 'Disabled'}</span>
+                </button>
+              </div>
+            </div>
+
+            {stealthConfig.autoRotate && (
+              <div className="adm-lease-box">
+                <div className="adm-lease-top">
+                  <span>
+                    Next rotation: <strong>{countdownMins}m {countdownSecs}s</strong>
+                  </span>
+                  <span className="adm-muted-xs">
+                    Lease {Math.floor((stealthConfig.intervalSeconds || 165) / 60)}m{' '}
+                    {(stealthConfig.intervalSeconds || 165) % 60}s
+                  </span>
+                </div>
+                <div className="adm-profile-pills">
+                  {DURATION_PROFILES.map(({ min, max, label, Icon }) => {
+                    const isCur =
+                      (stealthConfig.minIntervalSeconds || 60) === min &&
+                      (stealthConfig.maxIntervalSeconds || 480) === max;
                     return (
                       <button
-                        key={p.id || p.name}
-                        onClick={() => handleSelectPersona(p.id)}
-                        style={{
-                          background: isActive ? '#e0f2fe' : '#ffffff',
-                          border: isActive ? '1px solid #0284c7' : '1px solid #e2e8f0',
-                          color: isActive ? '#0369a1' : '#64748b',
-                          borderRadius: '6px',
-                          padding: '6px 8px',
-                          fontSize: '10px',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          textAlign: 'left',
-                          transition: 'all 0.15s'
-                        }}
-                        title={`${p.name} - ${p.city} (${p.ip})`}
+                        type="button"
+                        key={label}
+                        disabled={updatingStealth}
+                        onClick={() => handleUpdateStealthConfig({ minIntervalSeconds: min, maxIntervalSeconds: max })}
+                        className={`adm-profile-pill ${isCur ? 'is-selected' : ''}`}
                       >
-                        <div style={{ fontWeight: 800, color: isActive ? '#0369a1' : '#0f172a' }}>{p.name}</div>
-                        <div style={{ fontSize: '9px', color: isActive ? '#0284c7' : '#94a3b8' }}>{p.city.split(',')[0]}</div>
+                        <Icon size={11} />
+                        <span>{label}</span>
                       </button>
                     );
                   })}
                 </div>
               </div>
+            )}
+
+            <div className="adm-persona-card">
+              <div className="adm-persona-top">
+                <span className="adm-label">Active Subscriber Profile</span>
+                <span className="adm-tag adm-tag-emerald">{currentPersona.carrier || 'Jio True 5G'}</span>
+              </div>
+              <div className="adm-persona-name">{currentPersona.name || 'Jio 5G Fiber'}</div>
+              <div className="adm-persona-meta">
+                <span>{currentPersona.city || 'Mumbai, Maharashtra'}</span>
+                <code>{currentPersona.ip || '49.36.142.88'}</code>
+              </div>
+              <div className="adm-muted-xs" style={{ marginTop: '4px' }}>
+                {currentPersona.asn || 'AS55836 Reliance Jio Infocomm'}
+              </div>
             </div>
 
-            {/* Persona Rotation Button */}
+            <div className="adm-isp-grid">
+              {(stealthConfig.allPersonas || []).map((p) => {
+                const isActive = currentPersona.id === p.id || currentPersona.name === p.name;
+                return (
+                  <button
+                    type="button"
+                    key={p.id || p.name}
+                    onClick={() => handleSelectPersona(p.id)}
+                    className={`adm-isp-btn ${isActive ? 'is-selected' : ''}`}
+                    title={`${p.name} - ${p.city} (${p.ip})`}
+                  >
+                    <div className="adm-isp-name">{p.name}</div>
+                    <div className="adm-isp-city">{p.city.split(',')[0]}</div>
+                  </button>
+                );
+              })}
+            </div>
+
             <button
+              type="button"
               onClick={handleRotateStealthPersona}
               disabled={rotatingPersona}
-              style={{
-                background: '#f8fafc',
-                border: '1px solid #cbd5e1',
-                color: '#0f172a',
-                borderRadius: '8px',
-                padding: '10px 14px',
-                fontSize: '12px',
-                fontWeight: 700,
-                cursor: rotatingPersona ? 'not-allowed' : 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-                transition: 'all 0.2s'
-              }}
+              className="adm-btn adm-btn-full"
             >
-              <RefreshCw size={14} className={rotatingPersona ? 'animate-spin' : ''} style={{ color: '#0284c7' }} />
-              {rotatingPersona ? 'Switching ISP Persona...' : 'Rotate to Next Indian ISP (Jio / Airtel / ACT / Vi / BSNL)'}
+              <RefreshCw size={14} className={rotatingPersona ? 'animate-spin' : ''} style={{ color: '#059669' }} />
+              <span>{rotatingPersona ? 'Rotating...' : 'Rotate ISP Profile Now'}</span>
             </button>
           </div>
 
-          {/* SECTION B: 1-CLICK DYNAMIC TRAFFIC ROUTER */}
-          <div style={{
-            background: '#ffffff',
-            border: '1px solid #e2e8f0',
-            borderRadius: '14px',
-            padding: '20px',
-            boxShadow: '0 1px 3px rgba(15, 23, 42, 0.04)'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <SlidersHorizontal size={18} style={{ color: '#0284c7' }} />
-                <span style={{ fontSize: '15px', fontWeight: 800, color: '#0f172a' }}>
-                  Dynamic Upstream Traffic Router
-                </span>
+          {/* Traffic Router */}
+          <div className="adm-card adm-section">
+            <div className="adm-section-head">
+              <div className="adm-section-title-group">
+                <div className="adm-icon-tile adm-icon-emerald">
+                  <SlidersHorizontal size={16} />
+                </div>
+                <div>
+                  <h2 className="adm-h2">Upstream Traffic Router</h2>
+                  <p className="adm-muted-sm">Hot-switch feed priority across all 4 origins</p>
+                </div>
               </div>
-              <span style={{ fontSize: '11px', color: '#64748b' }}>
-                Zero-Downtime Hot Switch
-              </span>
+              <span className="adm-tag adm-tag-emerald">4-WAY MESH</span>
             </div>
 
-            <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 16px 0', lineHeight: 1.4 }}>
-              Kabhi kisi din casino Nice444 se lega, kisi din Startexch99 se. Jispe load badhega usko switch kar sakte ho without restarting server!
-            </p>
+            <div className="adm-router-stack">
+              {[
+                { field: 'casinoProvider', label: 'Casino Odds & Results' },
+                { field: 'streamProvider', label: 'Video Stream WatchLink' },
+                { field: 'sportsProvider', label: 'Sports & Exchange API' },
+              ].map(({ field, label }) => {
+                const currentVal = routingConfig[field] || 'AUTO';
+                return (
+                  <div key={field} className="adm-router-group">
+                    <div className="adm-router-label-row">
+                      <span>{label}</span>
+                      <span className="adm-router-active">{currentVal}</span>
+                    </div>
+                    <div className="adm-router-grid">
+                      {ROUTING_MODES.map((mode) => {
+                        const isActive = currentVal === mode;
+                        return (
+                          <button
+                            type="button"
+                            key={mode}
+                            disabled={savingRouting}
+                            onClick={() => handleUpdateRouting(field, mode)}
+                            className={`adm-mode-btn ${isActive ? 'is-selected' : ''}`}
+                          >
+                            {mode === 'AUTO' ? 'AUTO (4-Way)' : mode}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
 
-            {/* Casino Feeds Selector */}
-            <div style={{ marginBottom: '20px' }}>
-              <div style={{ fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
-                <span>CASINO ODDS & RESULTS FEED</span>
-                <span style={{ color: '#0284c7', fontSize: '11px' }}>Current: {routingConfig.casinoProvider || 'AUTO'}</span>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
-                {['AUTO', 'NICE444', 'STARTEXCH99', 'CBTFEXCHANGE'].map((mode) => {
-                  const isActive = (routingConfig.casinoProvider || 'AUTO') === mode;
-                  return (
-                    <button
-                      key={mode}
-                      disabled={savingRouting}
-                      onClick={() => handleUpdateRouting('casinoProvider', mode)}
-                      style={{
-                        background: isActive ? '#0284c7' : '#f8fafc',
-                        border: isActive ? '1px solid #0284c7' : '1px solid #cbd5e1',
-                        color: isActive ? '#ffffff' : '#334155',
-                        borderRadius: '8px',
-                        padding: '10px 8px',
-                        fontSize: '11px',
-                        fontWeight: 800,
-                        cursor: 'pointer',
-                        transition: 'all 0.15s',
-                        textAlign: 'center'
-                      }}
+        {/* 4 Origin Health Cards */}
+        <section className="adm-grid-4">
+          {ORIGIN_METADATA.map((origin) => {
+            const health = providerHealth[origin.key] || {};
+            const auth = authStats[origin.key] || {};
+            const blocked = Boolean(health.isBlocked);
+            const degraded = !blocked && health.status === 'DEGRADED';
+            const badgeText = blocked ? 'BLOCKED' : degraded ? 'DEGRADED' : '200 OK';
+            const dotColor = blocked ? '#dc2626' : degraded ? '#d97706' : '#059669';
+            const badgeBg = blocked ? '#fef2f2' : degraded ? '#fffbeb' : '#ecfdf5';
+            const badgeBorder = blocked ? '#fecaca' : degraded ? '#fde68a' : '#a7f3d0';
+
+            return (
+              <div key={origin.key} className="adm-card adm-origin-card">
+                <div className="adm-origin-head">
+                  <div className="adm-origin-title-wrap">
+                    <Globe size={15} style={{ color: '#059669', flexShrink: 0 }} />
+                    <span className="adm-origin-title">{origin.title}</span>
+                  </div>
+                  <span
+                    className="adm-tag"
+                    style={{ background: badgeBg, color: dotColor, borderColor: badgeBorder }}
+                  >
+                    <span className="adm-dot" style={{ backgroundColor: dotColor }} />
+                    {badgeText}
+                  </span>
+                </div>
+
+                <div className="adm-origin-domain">
+                  <code>{origin.domain}</code>
+                </div>
+
+                <div className="adm-origin-stats">
+                  <div>
+                    <div className="adm-stat-label">Session</div>
+                    <div className="adm-stat-val">{auth.account || origin.fallbackAccount}</div>
+                  </div>
+                  <div>
+                    <div className="adm-stat-label">Auth OK</div>
+                    <div className="adm-stat-val" style={{ color: '#059669' }}>
+                      {auth.successes || 1} / {auth.attempts || 1}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="adm-stat-label">Latency</div>
+                    <div className="adm-stat-val">{health.latencyMs || origin.fallbackLatency} ms</div>
+                  </div>
+                  <div>
+                    <div className="adm-stat-label">Blocks</div>
+                    <div
+                      className="adm-stat-val"
+                      style={{ color: (health.blockCount || 0) > 0 ? '#dc2626' : '#059669' }}
                     >
-                      {mode === 'AUTO' ? '⚡ AUTO (3-Way Mesh)' : mode}
-                    </button>
-                  );
-                })}
+                      {health.blockCount || 0}
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
+            );
+          })}
+        </section>
 
-            {/* Live Video Stream Selector */}
+        {/* Live Request Log Table */}
+        <section className="adm-card adm-section">
+          <div className="adm-section-head">
             <div>
-              <div style={{ fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
-                <span>LIVE VIDEO STREAM WATCHLINK</span>
-                <span style={{ color: '#0284c7', fontSize: '11px' }}>Current: {routingConfig.streamProvider || 'AUTO'}</span>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
-                {['AUTO', 'NICE444', 'STARTEXCH99', 'CBTFEXCHANGE'].map((mode) => {
-                  const isActive = (routingConfig.streamProvider || 'AUTO') === mode;
-                  return (
-                    <button
-                      key={mode}
-                      disabled={savingRouting}
-                      onClick={() => handleUpdateRouting('streamProvider', mode)}
-                      style={{
-                        background: isActive ? '#0284c7' : '#f8fafc',
-                        border: isActive ? '1px solid #0284c7' : '1px solid #cbd5e1',
-                        color: isActive ? '#ffffff' : '#334155',
-                        borderRadius: '8px',
-                        padding: '10px 8px',
-                        fontSize: '11px',
-                        fontWeight: 800,
-                        cursor: 'pointer',
-                        transition: 'all 0.15s',
-                        textAlign: 'center'
-                      }}
-                    >
-                      {mode === 'AUTO' ? '⚡ AUTO (3-Way Mesh)' : mode}
-                    </button>
-                  );
-                })}
-              </div>
+              <h2 className="adm-h2">Live Request Log</h2>
+              <p className="adm-muted-sm">Recent gateway requests, routed origin, status &amp; latency</p>
             </div>
-          </div>
-        </div>
-
-        {/* ORIGIN HEALTH & ACCOUNT SESSIONS (3-WAY MESH: NICE444 VS STARTEXCH99 VS CBTFEXCHANGE) */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
-          gap: '20px',
-          marginBottom: '20px'
-        }}>
-          {/* Nice444 Health & Auth Card */}
-          <div style={{
-            background: '#ffffff',
-            border: '1px solid #e2e8f0',
-            borderRadius: '14px',
-            padding: '20px',
-            boxShadow: '0 1px 3px rgba(15, 23, 42, 0.04)'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: providerHealth.nice444?.isBlocked ? '#dc2626' : '#059669' }} />
-                <span style={{ fontSize: '15px', fontWeight: 800, color: '#0f172a' }}>Nice444 Exchange Origin</span>
-              </div>
-              <span style={{
-                fontSize: '11px',
-                fontWeight: 800,
-                padding: '3px 8px',
-                borderRadius: '6px',
-                background: providerHealth.nice444?.isBlocked ? '#fef2f2' : '#ecfdf5',
-                color: providerHealth.nice444?.isBlocked ? '#dc2626' : '#059669',
-                border: providerHealth.nice444?.isBlocked ? '1px solid #fecaca' : '1px solid #a7f3d0'
-              }}>
-                {providerHealth.nice444?.isBlocked ? 'BLOCKED 422' : 'HEALTHY 200 OK'}
-              </span>
-            </div>
-
-            <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '14px' }}>
-              Origin Domain: <code style={{ color: '#0369a1', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px' }}>casino.nice444.com</code>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', background: '#f8fafc', padding: '12px', borderRadius: '8px', fontSize: '12px', border: '1px solid #f1f5f9' }}>
-              <div>
-                <div style={{ color: '#64748b', fontSize: '11px' }}>Account Session</div>
-                <div style={{ color: '#0f172a', fontWeight: 700, marginTop: '2px' }}>{authStats.nice444?.account || 'demo52'}</div>
-              </div>
-              <div>
-                <div style={{ color: '#64748b', fontSize: '11px' }}>Login Success Rate</div>
-                <div style={{ color: '#059669', fontWeight: 700, marginTop: '2px' }}>
-                  {authStats.nice444?.successes || 1} / {authStats.nice444?.attempts || 1} OK
-                </div>
-              </div>
-              <div>
-                <div style={{ color: '#64748b', fontSize: '11px' }}>Latency</div>
-                <div style={{ color: '#0f172a', fontWeight: 700, marginTop: '2px' }}>{providerHealth.nice444?.latencyMs || 140} ms</div>
-              </div>
-              <div>
-                <div style={{ color: '#64748b', fontSize: '11px' }}>422/403 Block Count</div>
-                <div style={{ color: providerHealth.nice444?.blockCount > 0 ? '#dc2626' : '#059669', fontWeight: 700, marginTop: '2px' }}>
-                  {providerHealth.nice444?.blockCount || 0}
-                </div>
-              </div>
-            </div>
+            <span className="adm-tag adm-tag-emerald">LIVE 2.5s</span>
           </div>
 
-          {/* Startexch99 Health & Auth Card */}
-          <div style={{
-            background: '#ffffff',
-            border: '1px solid #e2e8f0',
-            borderRadius: '14px',
-            padding: '20px',
-            boxShadow: '0 1px 3px rgba(15, 23, 42, 0.04)'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: providerHealth.startexch99?.isBlocked ? '#dc2626' : '#059669' }} />
-                <span style={{ fontSize: '15px', fontWeight: 800, color: '#0f172a' }}>Startexch99 Exchange Origin</span>
-              </div>
-              <span style={{
-                fontSize: '11px',
-                fontWeight: 800,
-                padding: '3px 8px',
-                borderRadius: '6px',
-                background: providerHealth.startexch99?.isBlocked ? '#fef2f2' : '#ecfdf5',
-                color: providerHealth.startexch99?.isBlocked ? '#dc2626' : '#059669',
-                border: providerHealth.startexch99?.isBlocked ? '1px solid #fecaca' : '1px solid #a7f3d0'
-              }}>
-                {providerHealth.startexch99?.isBlocked ? 'BLOCKED 422' : 'HEALTHY 200 OK'}
-              </span>
-            </div>
-
-            <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '14px' }}>
-              Origin Domain: <code style={{ color: '#0369a1', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px' }}>casino.startexch99.com</code>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', background: '#f8fafc', padding: '12px', borderRadius: '8px', fontSize: '12px', border: '1px solid #f1f5f9' }}>
-              <div>
-                <div style={{ color: '#64748b', fontSize: '11px' }}>Account Session</div>
-                <div style={{ color: '#0f172a', fontWeight: 700, marginTop: '2px' }}>{authStats.startexch99?.account || 'smdemo / suraj01s / santosh01s (33/33/33 Load Balanced)'}</div>
-              </div>
-              <div>
-                <div style={{ color: '#64748b', fontSize: '11px' }}>Login Success Rate</div>
-                <div style={{ color: '#059669', fontWeight: 700, marginTop: '2px' }}>
-                  {authStats.startexch99?.successes || 1} / {authStats.startexch99?.attempts || 1} OK
-                </div>
-              </div>
-              <div>
-                <div style={{ color: '#64748b', fontSize: '11px' }}>Latency</div>
-                <div style={{ color: '#0f172a', fontWeight: 700, marginTop: '2px' }}>{providerHealth.startexch99?.latencyMs || 120} ms</div>
-              </div>
-              <div>
-                <div style={{ color: '#64748b', fontSize: '11px' }}>422/403 Block Count</div>
-                <div style={{ color: providerHealth.startexch99?.blockCount > 0 ? '#dc2626' : '#059669', fontWeight: 700, marginTop: '2px' }}>
-                  {providerHealth.startexch99?.blockCount || 0}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* CBTFexchange Health & Auth Card */}
-          <div style={{
-            background: '#ffffff',
-            border: '1px solid #e2e8f0',
-            borderRadius: '14px',
-            padding: '20px',
-            boxShadow: '0 1px 3px rgba(15, 23, 42, 0.04)'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: providerHealth.cbtfexchange?.isBlocked ? '#dc2626' : '#059669' }} />
-                <span style={{ fontSize: '15px', fontWeight: 800, color: '#0f172a' }}>CBTFexchange Origin</span>
-              </div>
-              <span style={{
-                fontSize: '11px',
-                fontWeight: 800,
-                padding: '3px 8px',
-                borderRadius: '6px',
-                background: providerHealth.cbtfexchange?.isBlocked ? '#fef2f2' : '#ecfdf5',
-                color: providerHealth.cbtfexchange?.isBlocked ? '#dc2626' : '#059669',
-                border: providerHealth.cbtfexchange?.isBlocked ? '1px solid #fecaca' : '1px solid #a7f3d0'
-              }}>
-                {providerHealth.cbtfexchange?.isBlocked ? 'BLOCKED 422' : 'HEALTHY 200 OK'}
-              </span>
-            </div>
-
-            <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '14px' }}>
-              Origin Domain: <code style={{ color: '#0369a1', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px' }}>cbtfexchange.com</code>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', background: '#f8fafc', padding: '12px', borderRadius: '8px', fontSize: '12px', border: '1px solid #f1f5f9' }}>
-              <div>
-                <div style={{ color: '#64748b', fontSize: '11px' }}>Account Session</div>
-                <div style={{ color: '#0f172a', fontWeight: 700, marginTop: '2px' }}>{authStats.cbtfexchange?.account || '8292463648'}</div>
-              </div>
-              <div>
-                <div style={{ color: '#64748b', fontSize: '11px' }}>Login Success Rate</div>
-                <div style={{ color: '#059669', fontWeight: 700, marginTop: '2px' }}>
-                  {authStats.cbtfexchange?.successes || 1} / {authStats.cbtfexchange?.attempts || 1} OK
-                </div>
-              </div>
-              <div>
-                <div style={{ color: '#64748b', fontSize: '11px' }}>Latency</div>
-                <div style={{ color: '#0f172a', fontWeight: 700, marginTop: '2px' }}>{providerHealth.cbtfexchange?.latencyMs || 135} ms</div>
-              </div>
-              <div>
-                <div style={{ color: '#64748b', fontSize: '11px' }}>422/403 Block Count</div>
-                <div style={{ color: providerHealth.cbtfexchange?.blockCount > 0 ? '#dc2626' : '#059669', fontWeight: 700, marginTop: '2px' }}>
-                  {providerHealth.cbtfexchange?.blockCount || 0}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* RECENT LIVE REQUEST TELEMETRY STREAM TABLE */}
-        <div style={{
-          background: '#ffffff',
-          border: '1px solid #e2e8f0',
-          borderRadius: '14px',
-          padding: '20px',
-          boxShadow: '0 1px 3px rgba(15, 23, 42, 0.04)'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-            <div>
-              <div style={{ fontSize: '15px', fontWeight: 800, color: '#0f172a' }}>
-                Live Request Stream & Origin Flow
-              </div>
-              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
-                Real-time audit log showing upstream provider, response latency, and simulated ISP persona.
-              </div>
-            </div>
-            <span style={{ fontSize: '11px', color: '#0284c7', fontWeight: 700 }}>
-              Auto-refreshing every 2.5s
-            </span>
-          </div>
-
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
+          <div className="adm-table-wrap">
+            <table className="adm-table">
               <thead>
-                <tr style={{ borderBottom: '1px solid #e2e8f0', color: '#64748b', fontSize: '11px', background: '#f8fafc' }}>
-                  <th style={{ padding: '10px 12px' }}>TIME</th>
-                  <th style={{ padding: '10px 12px' }}>METHOD & PATH</th>
-                  <th style={{ padding: '10px 12px' }}>CATEGORY</th>
-                  <th style={{ padding: '10px 12px' }}>PROVIDER</th>
-                  <th style={{ padding: '10px 12px' }}>SIMULATED ISP</th>
-                  <th style={{ padding: '10px 12px' }}>STATUS</th>
-                  <th style={{ padding: '10px 12px', textAlign: 'right' }}>LATENCY</th>
+                <tr>
+                  <th>Time</th>
+                  <th>Endpoint</th>
+                  <th>Category</th>
+                  <th>Origin</th>
+                  <th>ISP</th>
+                  <th>Status</th>
+                  <th style={{ textAlign: 'right' }}>Latency</th>
                 </tr>
               </thead>
               <tbody>
                 {recentRequests.length === 0 ? (
                   <tr>
-                    <td colSpan={7} style={{ padding: '24px 10px', textAlign: 'center', color: '#94a3b8' }}>
-                      Listening for incoming live requests...
+                    <td colSpan={7} className="adm-table-empty">
+                      Waiting for incoming requests...
                     </td>
                   </tr>
                 ) : (
-                  recentRequests.map((req) => (
-                    <tr key={req.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '9px 12px', color: '#64748b', fontFamily: 'monospace' }}>
-                        {req.time}
-                      </td>
-                      <td style={{ padding: '9px 12px', color: '#0f172a', fontFamily: 'monospace', maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        <span style={{ color: req.method === 'POST' ? '#0284c7' : '#059669', fontWeight: 700, marginRight: '6px' }}>{req.method}</span>
-                        {req.path}
-                      </td>
-                      <td style={{ padding: '9px 12px', color: '#334155' }}>
-                        {req.category}
-                      </td>
-                      <td style={{ padding: '9px 12px' }}>
-                        <span style={{
-                          padding: '2px 6px',
-                          borderRadius: '4px',
-                          fontSize: '10px',
-                          fontWeight: 700,
-                          background: req.provider === 'Nice444' ? '#e0f2fe' : req.provider === 'Startexch99' ? '#f3e8ff' : '#f1f5f9',
-                          color: req.provider === 'Nice444' ? '#0369a1' : req.provider === 'Startexch99' ? '#7e22ce' : '#64748b'
-                        }}>
-                          {req.provider}
-                        </span>
-                      </td>
-                      <td style={{ padding: '9px 12px', color: '#64748b', fontSize: '11px' }}>
-                        {req.ispPersona || currentPersona.name || 'Jio 5G'}
-                      </td>
-                      <td style={{ padding: '9px 12px' }}>
-                        <span style={{
-                          color: req.status >= 200 && req.status < 300 ? '#059669' : req.status === 304 ? '#0284c7' : '#dc2626',
-                          fontWeight: 700
-                        }}>
-                          {req.status}
-                        </span>
-                      </td>
-                      <td style={{ padding: '9px 12px', textAlign: 'right', color: req.latencyMs > 400 ? '#d97706' : '#64748b', fontFamily: 'monospace' }}>
-                        {req.latencyMs} ms
-                      </td>
-                    </tr>
-                  ))
+                  recentRequests.map((req) => {
+                    const badge = PROVIDER_BADGE_STYLES[req.provider] || {
+                      bg: '#f1f5f9',
+                      color: '#475569',
+                      border: '#e2e8f0',
+                    };
+                    return (
+                      <tr key={req.id}>
+                        <td className="adm-mono adm-muted-sm">{req.time}</td>
+                        <td className="adm-mono adm-endpoint-cell" title={req.path}>
+                          <span
+                            className="adm-method"
+                            style={{ color: req.method === 'POST' ? '#047857' : '#059669' }}
+                          >
+                            {req.method}
+                          </span>
+                          <span>{req.path}</span>
+                        </td>
+                        <td>{req.category}</td>
+                        <td>
+                          <span
+                            className="adm-origin-pill"
+                            style={{
+                              background: badge.bg,
+                              color: badge.color,
+                              borderColor: badge.border,
+                            }}
+                          >
+                            {req.provider}
+                          </span>
+                        </td>
+                        <td className="adm-muted-sm">{req.ispPersona || currentPersona.name || 'Jio 5G'}</td>
+                        <td>
+                          <span
+                            style={{
+                              fontWeight: 700,
+                              color:
+                                req.status >= 200 && req.status < 300
+                                  ? '#059669'
+                                  : req.status === 304
+                                    ? '#0284c7'
+                                    : '#dc2626',
+                            }}
+                          >
+                            {req.status}
+                          </span>
+                        </td>
+                        <td
+                          className="adm-mono"
+                          style={{
+                            textAlign: 'right',
+                            color: req.latencyMs > 400 ? '#d97706' : '#475569',
+                          }}
+                        >
+                          {req.latencyMs} ms
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
           </div>
-        </div>
-
-      </div>
+        </section>
+      </main>
     </div>
   );
 }
+
+const DASHBOARD_CSS = `
+.adm-root, .adm-root * {
+  box-sizing: border-box;
+}
+.adm-root {
+  position: relative;
+  min-height: 100vh;
+  background: linear-gradient(180deg, #ecfdf5 0%, #f4fbf7 22%, #f8fafc 48%, #ffffff 100%);
+  color: #0f172a;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  padding-bottom: 64px;
+  overflow-x: hidden;
+}
+.adm-hanging-fade {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 260px;
+  background: radial-gradient(ellipse 85% 100% at 50% 0%, rgba(16, 185, 129, 0.16) 0%, rgba(5, 150, 105, 0.06) 55%, rgba(255, 255, 255, 0) 100%);
+  pointer-events: none;
+  z-index: 0;
+}
+.adm-loading {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: linear-gradient(180deg, #ecfdf5 0%, #f8fafc 45%, #ffffff 100%);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+.adm-loading-box {
+  text-align: center;
+  background: #ffffff;
+  border: 1px solid #d1fae5;
+  border-radius: 14px;
+  padding: 28px 32px;
+  box-shadow: 0 8px 24px rgba(5, 150, 105, 0.08);
+}
+
+/* Header */
+.adm-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: linear-gradient(180deg, rgba(236, 253, 245, 0.94) 0%, rgba(255, 255, 255, 0.94) 100%);
+  backdrop-filter: blur(10px);
+  border-top: 3px solid #10b981;
+  border-bottom: 1px solid #d1fae5;
+  box-shadow: 0 4px 16px -4px rgba(5, 150, 105, 0.08);
+}
+.adm-header-inner {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.adm-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.adm-brand-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #10b981 0%, #047857 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.25);
+}
+.adm-brand-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.adm-title {
+  font-size: 17px;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+.adm-subtitle {
+  font-size: 12px;
+  color: #475569;
+  margin: 2px 0 0 0;
+}
+.adm-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid;
+  white-space: nowrap;
+}
+.adm-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.adm-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Container & Layout */
+.adm-container {
+  position: relative;
+  z-index: 1;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 20px 20px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.adm-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+  min-width: 0;
+}
+.adm-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+.adm-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+/* Buttons */
+.adm-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: #ffffff;
+  color: #1e293b;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+}
+.adm-btn:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #94a3b8;
+}
+.adm-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+.adm-btn-emerald {
+  background: #ecfdf5;
+  color: #047857;
+  border-color: #a7f3d0;
+}
+.adm-btn-emerald:hover:not(:disabled) {
+  background: #d1fae5;
+  border-color: #6ee7b7;
+}
+.adm-btn-primary {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: #ffffff;
+  border-color: #059669;
+  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.22);
+}
+.adm-btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+}
+.adm-btn-full {
+  width: 100%;
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: #f8fafc;
+}
+
+/* Banner */
+.adm-banner {
+  padding: 14px 18px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: linear-gradient(90deg, #ffffff 0%, #f0fdf4 100%);
+}
+.adm-banner-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+.adm-banner-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.adm-banner-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: #0f172a;
+}
+.adm-banner-desc {
+  font-size: 12px;
+  color: #475569;
+  margin: 3px 0 0 0;
+  line-height: 1.4;
+}
+.adm-icon-tile {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  border: 1px solid #d1fae5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.adm-icon-emerald {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+  color: #059669;
+}
+
+/* KPI */
+.adm-kpi {
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+}
+.adm-kpi-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.adm-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.adm-kpi-value {
+  font-size: 24px;
+  font-weight: 800;
+  color: #0f172a;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.adm-kpi-unit {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+}
+.adm-kpi-sub {
+  font-size: 12px;
+  color: #475569;
+  margin-top: 4px;
+}
+.adm-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.adm-kpi-footer {
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid #f1f5f9;
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #64748b;
+}
+.adm-progress-track {
+  margin-top: 12px;
+  height: 5px;
+  background: #ecfdf5;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.adm-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+  transition: width 0.35s ease;
+}
+
+/* Sections */
+.adm-section {
+  padding: 18px 20px;
+}
+.adm-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.adm-section-title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.adm-h2 {
+  font-size: 15px;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0;
+}
+.adm-muted-sm {
+  font-size: 12px;
+  color: #64748b;
+  margin: 2px 0 0 0;
+}
+.adm-muted-xs {
+  font-size: 11px;
+  color: #64748b;
+}
+.adm-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.adm-tag-emerald {
+  background: #ecfdf5;
+  color: #047857;
+  border-color: #a7f3d0;
+}
+.adm-tag-slate {
+  background: #f1f5f9;
+  color: #334155;
+  border-color: #cbd5e1;
+}
+.adm-efficiency-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: #334155;
+}
+.adm-efficiency-chip strong {
+  color: #047857;
+}
+
+/* Subpanels */
+.adm-subpanel {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 16px;
+  min-width: 0;
+}
+.adm-subpanel-mint {
+  background: linear-gradient(180deg, #f0fdf4 0%, #f8fafc 100%);
+  border-color: #bbf7d0;
+}
+.adm-subpanel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.adm-subpanel-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 800;
+  color: #0f172a;
+}
+.adm-big-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 28px;
+  font-weight: 800;
+  color: #0f172a;
+  margin-bottom: 12px;
+}
+.adm-big-stat small {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+}
+.adm-kv-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.adm-kv-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #475569;
+}
+.adm-kv-row strong {
+  color: #0f172a;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+/* Masking & Router */
+.adm-pill-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.adm-mini-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #475569;
+}
+.adm-mini-btn.is-active {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+  color: #047857;
+}
+.adm-mini-btn.is-emerald {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+  color: #059669;
+}
+.adm-mini-btn.is-danger {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #dc2626;
+}
+.adm-lease-box {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+.adm-lease-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+  color: #0f172a;
+  margin-bottom: 8px;
+}
+.adm-profile-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.adm-profile-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  background: #ffffff;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+.adm-profile-pill.is-selected {
+  background: #059669;
+  color: #ffffff;
+  border-color: #059669;
+}
+.adm-persona-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+.adm-persona-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.adm-persona-name {
+  font-size: 16px;
+  font-weight: 800;
+  color: #0f172a;
+  margin-top: 6px;
+}
+.adm-persona-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: #475569;
+}
+.adm-persona-meta code {
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #bbf7d0;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 11px;
+}
+.adm-isp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(115px, 1fr));
+  gap: 6px;
+}
+.adm-isp-btn {
+  text-align: left;
+  padding: 7px 8px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  cursor: pointer;
+  min-width: 0;
+}
+.adm-isp-btn.is-selected {
+  background: #ecfdf5;
+  border-color: #10b981;
+}
+.adm-isp-name {
+  font-size: 11px;
+  font-weight: 700;
+  color: #0f172a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.adm-isp-btn.is-selected .adm-isp-name {
+  color: #047857;
+}
+.adm-isp-city {
+  font-size: 10px;
+  color: #64748b;
+}
+
+/* Router */
+.adm-router-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.adm-router-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #334155;
+  margin-bottom: 8px;
+}
+.adm-router-active {
+  font-size: 11px;
+  color: #059669;
+  font-weight: 800;
+}
+.adm-router-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 6px;
+}
+.adm-mode-btn {
+  padding: 9px 6px;
+  border-radius: 7px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 10.5px;
+  font-weight: 800;
+  cursor: pointer;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: all 0.15s;
+}
+.adm-mode-btn.is-selected {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  border-color: #059669;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(5, 150, 105, 0.2);
+}
+
+/* Origin Cards */
+.adm-origin-card {
+  padding: 16px 18px;
+}
+.adm-origin-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.adm-origin-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.adm-origin-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: #0f172a;
+}
+.adm-origin-domain {
+  margin-bottom: 12px;
+}
+.adm-origin-domain code {
+  font-size: 11px;
+  color: #047857;
+  background: #ecfdf5;
+  border: 1px solid #d1fae5;
+  padding: 2px 7px;
+  border-radius: 4px;
+  word-break: break-all;
+}
+.adm-origin-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.adm-stat-label {
+  font-size: 10.5px;
+  color: #64748b;
+  font-weight: 600;
+}
+.adm-stat-val {
+  font-size: 12px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+}
+
+/* Table */
+.adm-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+.adm-table {
+  width: 100%;
+  min-width: 640px;
+  border-collapse: collapse;
+  font-size: 12px;
+  text-align: left;
+}
+.adm-table thead th {
+  background: #f0fdf4;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 9px 12px;
+  border-bottom: 1px solid #d1fae5;
+}
+.adm-table tbody td {
+  padding: 9px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  color: #334155;
+}
+.adm-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.adm-table-empty {
+  padding: 24px 12px !important;
+  text-align: center;
+  color: #64748b !important;
+}
+.adm-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+.adm-endpoint-cell {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #0f172a !important;
+}
+.adm-method {
+  font-weight: 700;
+  margin-right: 6px;
+}
+.adm-origin-pill {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  border: 1px solid;
+}
+
+/* Toast */
+.adm-toast {
+  position: fixed;
+  bottom: 18px;
+  right: 18px;
+  left: auto;
+  z-index: 9999;
+  background: #ffffff;
+  border: 1px solid #a7f3d0;
+  box-shadow: 0 16px 32px -6px rgba(15, 23, 42, 0.14);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(380px, calc(100vw - 24px));
+}
+.adm-toast-close {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 2px;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Responsive Breakpoints */
+@media (max-width: 1100px) {
+  .adm-grid-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 860px) {
+  .adm-grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 560px) {
+  .adm-header-inner {
+    padding: 10px 12px;
+  }
+  .adm-container {
+    padding: 12px 12px 0;
+    gap: 12px;
+  }
+  .adm-grid-4 {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .adm-section,
+  .adm-kpi,
+  .adm-origin-card,
+  .adm-banner {
+    padding: 14px;
+  }
+  .adm-toolbar {
+    width: 100%;
+  }
+  .adm-toolbar .adm-btn {
+    flex: 1 1 auto;
+    padding: 7px 10px;
+    font-size: 11.5px;
+  }
+  .adm-router-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .adm-toast {
+    right: 12px;
+    left: 12px;
+    bottom: 12px;
+    max-width: none;
+  }
+}
+`;

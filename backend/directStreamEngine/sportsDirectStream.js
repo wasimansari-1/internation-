@@ -1,5 +1,5 @@
 import axios from "axios";
-import { getStartexchToken, getDemoToken, getCbtfToken, proxyRequest } from "../services/authService.js";
+import { getStartexchToken, getDemoToken, getCbtfToken, getAsstarplayToken, proxyRequest } from "../services/authService.js";
 import { nativeHttpsAgent } from "../services/streamService.js";
 
 const sportsStreamCache = new Map();
@@ -81,6 +81,11 @@ export async function getDirectSportsStreamUrl(rawId, sportId = "4", forceRefres
       name: "CBTFexchange",
       domain: "https://cbtfexchange.com",
       getToken: (force) => getCbtfToken(force)
+    },
+    {
+      name: "Asstarplay",
+      domain: "https://asstarplay.com",
+      getToken: (force) => getAsstarplayToken(force)
     }
   ];
 
