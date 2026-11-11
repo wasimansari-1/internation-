@@ -138,6 +138,39 @@ router.get("/events", handleEvents);
 router.get("/all-events", handleEvents);
 router.get("/:sportId/events", handleEvents);
 
+function enrichMarketsWithNews(rawMarkets = [], liveRatesMarkets = [], fallbackNews = "") {
+  const byId = new Map();
+  const byName = new Map();
+  for (const lm of liveRatesMarkets) {
+    if (!lm?.news) continue;
+    if (lm.marketId) byId.set(String(lm.marketId), lm.news);
+    if (lm.marketName) byName.set(String(lm.marketName).toLowerCase(), lm.news);
+  }
+  return (Array.isArray(rawMarkets) ? rawMarkets : []).map((m) => {
+    const id = String(m?.exMarketId || m?.marketId || "");
+    const nameKey = String(m?.marketName || m?.sessionName || "").toLowerCase();
+    const news =
+      String(m?.news ?? m?.remark ?? m?.message ?? m?.oddsData?.news ?? "").trim() ||
+      byId.get(id) ||
+      byName.get(nameKey) ||
+      fallbackNews ||
+      "";
+    return { ...m, news };
+  });
+}
+
+function collectTickerNews(...marketArrays) {
+  const seen = new Set();
+  for (const arr of marketArrays) {
+    if (!Array.isArray(arr)) continue;
+    for (const item of arr) {
+      const txt = String(item?.news || "").trim();
+      if (txt) seen.add(txt);
+    }
+  }
+  return Array.from(seen).join("   ★   ");
+}
+
 async function getEventMarketsHandler(req, res) {
   const sportId = String(
     req.params.sportId || req.body?.sportId || req.query?.sportId || "4",
@@ -155,14 +188,14 @@ async function getEventMarketsHandler(req, res) {
     });
   }
 
-  const result = await proxyRequest(
-    "/api/exchange/markets/getMarketsEventList",
-    {
+  const [result, liveRates] = await Promise.all([
+    proxyRequest("/api/exchange/markets/getMarketsEventList", {
       eventId: String(eventId),
       sportId: String(sportId),
       key: "2",
-    },
-  );
+    }),
+    getLiveRatesForEvent(eventId, sportId).catch(() => null),
+  ]);
 
   if (!result || !result.success) {
     return res.status(result?.statusCode || 500).json({
@@ -180,17 +213,33 @@ async function getEventMarketsHandler(req, res) {
     status: true,
   };
 
+  const moNewsFallback = liveRates?.matchOdds?.news || "";
+  const bmNewsFallback = liveRates?.bookmaker?.news || "";
+
+  const fancyData = enrichMarketsWithNews(rawData.fancyData, liveRates?.fancy || []);
+  const matchOddsData = enrichMarketsWithNews(rawData.matchOddsData, liveRates?.matchOddsList || [], moNewsFallback);
+  const bookmakersData = enrichMarketsWithNews(rawData.bookmakersData, liveRates?.bookmakerList || [], bmNewsFallback);
+  const sportsbookData = enrichMarketsWithNews(rawData.sportsbookData, liveRates?.sportsbook || []);
+  const binaryData = enrichMarketsWithNews(rawData.binaryData, []);
+  const lotteryData = enrichMarketsWithNews(rawData.lotteryData, []);
+
+  const combinedNews =
+    collectTickerNews(matchOddsData, bookmakersData, fancyData, sportsbookData, binaryData, lotteryData) ||
+    liveRates?.news ||
+    "";
+
   return res.status(200).json({
     success: true,
     message: "Markets fetched successfully",
     data: {
       data: {
-        fancyData: rawData.fancyData || [],
-        matchOddsData: rawData.matchOddsData || [],
-        bookmakersData: rawData.bookmakersData || [],
-        sportsbookData: rawData.sportsbookData || [],
-        binaryData: rawData.binaryData || [],
-        lotteryData: rawData.lotteryData || [],
+        news: combinedNews,
+        fancyData,
+        matchOddsData,
+        bookmakersData,
+        sportsbookData,
+        binaryData,
+        lotteryData,
         isScore: Boolean(rawData.isScore ?? false),
       },
       meta: meta,
@@ -780,6 +829,92 @@ router.get("/live-rates/:eventId", async (req, res) => {
   try {
     const realOdds = await getLiveRatesForEvent(eventId, sportId);
     return res.json({ success: true, data: realOdds });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Global exchange ticker news
+router.get("/news", async (req, res) => {
+  try {
+    const result = await proxyRequest("/api/exchange/news/exchangeNews", {});
+    const newsText = typeof result?.data?.data === "string" ? result.data.data : "";
+    return res.json({
+      success: true,
+      data: { news: newsText },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    return res.json({ success: true, data: { news: "" }, timestamp: new Date().toISOString() });
+  }
+});
+
+// Match-level & per-market news across Match Odds, Bookmaker, Fancy, and Sportsbook
+router.get("/news/:eventId", async (req, res) => {
+  const { eventId } = req.params;
+  const { sportId = "4" } = req.query;
+  try {
+    const [liveRates, marketsRes] = await Promise.all([
+      getLiveRatesForEvent(eventId, sportId).catch(() => null),
+      proxyRequest("/api/exchange/markets/getMarketsEventList", {
+        eventId: String(eventId),
+        sportId: String(sportId),
+        key: "2",
+      }).catch(() => null),
+    ]);
+
+    const raw = marketsRes?.data?.data || {};
+    const toEntries = (list = []) =>
+      list
+        .filter((m) => String(m?.news || m?.remark || m?.message || "").trim())
+        .map((m) => ({
+          marketId: String(m.marketId || m.exMarketId || ""),
+          marketName: m.marketName || m.sessionName || "",
+          news: String(m.news || m.remark || m.message || "").trim(),
+        }));
+
+    const matchOdds = toEntries(
+      enrichMarketsWithNews(raw.matchOddsData, liveRates?.matchOddsList || [], liveRates?.matchOdds?.news || "")
+    );
+    const bookmakers = toEntries(
+      enrichMarketsWithNews(raw.bookmakersData, liveRates?.bookmakerList || [], liveRates?.bookmaker?.news || "")
+    );
+    const fancy = toEntries(
+      enrichMarketsWithNews(raw.fancyData, liveRates?.fancy || [])
+    );
+    const sportsbook = toEntries(
+      enrichMarketsWithNews(raw.sportsbookData, liveRates?.sportsbook || [])
+    );
+    const binary = toEntries(raw.binaryData || []);
+    const lottery = toEntries(raw.lotteryData || []);
+
+    const finalMo = matchOdds.length > 0 ? matchOdds : toEntries(liveRates?.matchOddsList || []);
+    const finalBm = bookmakers.length > 0 ? bookmakers : toEntries(liveRates?.bookmakerList || []);
+    const finalFancy = fancy.length > 0 ? fancy : toEntries(liveRates?.fancy || []);
+    const finalSb = sportsbook.length > 0 ? sportsbook : toEntries(liveRates?.sportsbook || []);
+
+    const news =
+      collectTickerNews(finalMo, finalBm, finalFancy, finalSb, binary, lottery) ||
+      liveRates?.news ||
+      "";
+
+    return res.json({
+      success: true,
+      data: {
+        eventId: String(eventId),
+        sportId: String(sportId),
+        news,
+        markets: {
+          matchOdds: finalMo,
+          bookmakers: finalBm,
+          fancy: finalFancy,
+          sportsbook: finalSb,
+          binary,
+          lottery,
+        },
+      },
+      timestamp: new Date().toISOString(),
+    });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
   }

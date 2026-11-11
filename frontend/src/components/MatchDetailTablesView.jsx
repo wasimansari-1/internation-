@@ -19,6 +19,28 @@ const formatSize = (size) => {
   return `${parseFloat(num.toFixed(2))}`;
 };
 
+const MarketNewsBanner = ({ news }) => {
+  if (!news) return null;
+  return (
+    <div
+      style={{
+        background: '#fffbeb',
+        color: '#92400e',
+        borderBottom: '1px solid #fde68a',
+        padding: '4px 12px',
+        fontSize: '11px',
+        fontWeight: 700,
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px'
+      }}
+    >
+      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#f59e0b', flexShrink: 0 }} />
+      <span>{news}</span>
+    </div>
+  );
+};
+
 const MemoizedLiveTvPlayer = React.memo(function MemoizedLiveTvPlayer({
   eventId,
   sportId,
@@ -143,6 +165,8 @@ export default function MatchDetailTablesView({ event, onBack }) {
       });
       const data = res.data?.data?.data || res.data?.data;
       if (data) {
+        if (data.news) setNews(data.news);
+
         if (Array.isArray(data.fancyData)) {
           const parsedFancy = data.fancyData.map((f) => {
             const odds = f.oddsData || {};
@@ -158,6 +182,7 @@ export default function MatchDetailTablesView({ event, onBack }) {
               isSuspended: isSusp,
               min: f.min ?? f.minBet ?? null,
               max: f.max ?? f.maxBet ?? null,
+              news: f.news || '',
               no: { price: l0.price ?? null, size: l0.size || 100 },
               yes: { price: b0.price ?? null, size: b0.size || 100 },
             };
@@ -175,6 +200,7 @@ export default function MatchDetailTablesView({ event, onBack }) {
               marketName: mo.marketName || 'Match Odds',
               min: mo.min ?? mo.minBet ?? null,
               max: mo.max ?? mo.maxBet ?? null,
+              news: mo.news || '',
               totalMatched: mo.oddsData?.totalMatched || '0',
               status: mo.oddsData?.status || 'OPEN',
               runners: runners.map((r) => {
@@ -204,6 +230,7 @@ export default function MatchDetailTablesView({ event, onBack }) {
               marketName: bm.marketName || 'Bookmaker Bhav',
               min: bm.min ?? bm.minBet ?? null,
               max: bm.max ?? bm.maxBet ?? null,
+              news: bm.news || '',
               totalMatched: bm.oddsData?.totalMatched || '0',
               status: bm.oddsData?.status || 'OPEN',
               runners: runners.map((r) => {
@@ -269,12 +296,25 @@ export default function MatchDetailTablesView({ event, onBack }) {
     const newFlashBack = new Set();
     const newFlashLay = new Set();
 
+    const moSource = data.matchOddsList || (data.matchOdds ? [data.matchOdds] : []);
+    const bmSourceCheck = data.bookmakerList || (data.bookmaker ? [data.bookmaker] : []);
     if (data.news) {
       setNews(data.news);
+    } else {
+      const marketNews = [
+        ...moSource,
+        ...bmSourceCheck,
+        ...(Array.isArray(data.fancy) ? data.fancy : []),
+        ...(Array.isArray(data.sportsbook) ? data.sportsbook : []),
+      ]
+        .map((m) => (m && m.news ? String(m.news).trim() : ''))
+        .filter(Boolean);
+      if (marketNews.length > 0) {
+        setNews([...new Set(marketNews)].join(' | '));
+      }
     }
 
     // Check Match Odds updates (flashes only when RATE changes)
-    const moSource = data.matchOddsList || (data.matchOdds ? [data.matchOdds] : []);
     if (moSource.length > 0) {
       moSource.forEach((m) => {
         (m.runners || []).forEach((r) => {
@@ -742,6 +782,8 @@ export default function MatchDetailTablesView({ event, onBack }) {
               </div>
             </div>
 
+            <MarketNewsBanner news={mo.news} />
+
             {/* 2-Way Side-by-Side View (e.g. To Win The Match, Which Team Will Win The Toss) */}
             {is2Way ? (
               <div style={{ padding: '8px 12px', background: '#e6f4ea' }}>
@@ -952,6 +994,8 @@ export default function MatchDetailTablesView({ event, onBack }) {
               )}
             </div>
           </div>
+
+          <MarketNewsBanner news={bm.news} />
 
           {/* Subheader */}
           <div
@@ -1420,6 +1464,8 @@ export default function MatchDetailTablesView({ event, onBack }) {
                       <span>{sb.marketName || 'Sportsbook Market'}</span>
                       <span style={{ fontSize: '13px' }}>ⓘ</span>
                     </div>
+
+                    <MarketNewsBanner news={sb.news} />
 
                     {/* Runners List */}
                     {runners.map((r, rIdx) => {

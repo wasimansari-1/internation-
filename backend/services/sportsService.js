@@ -496,6 +496,26 @@ export async function queryFirestoreForEvent(eventId, sportId = "4") {
     );
   };
 
+  const extractNews = (fields) =>
+    String(
+      fields?.news?.stringValue ??
+      fields?.remark?.stringValue ??
+      fields?.message?.stringValue ??
+      ""
+    ).trim();
+
+  const collectUniqueNews = (...lists) => {
+    const seen = new Set();
+    for (const list of lists) {
+      if (!Array.isArray(list)) continue;
+      for (const item of list) {
+        const text = String(item?.news || "").trim();
+        if (text) seen.add(text);
+      }
+    }
+    return Array.from(seen).join("   ★   ");
+  };
+
   const matchOddsList = betfairDocs
     .filter((d) => d.document && isDocActive(d.document.fields))
     .map((d) => {
@@ -503,6 +523,7 @@ export async function queryFirestoreForEvent(eventId, sportId = "4") {
       return {
         marketId: bDoc.exMarketId?.stringValue || d.document.name.split("/").pop(),
         marketName: bDoc.marketName?.stringValue || "Match Odds",
+        news: extractNews(bDoc),
         sequence: getSequence(bDoc),
         min: parseFirestoreNumber(bDoc.min) ?? parseFirestoreNumber(bDoc.minBet) ?? parseFirestoreNumber(bDoc.minStake) ?? null,
         max: parseFirestoreNumber(bDoc.max) ?? parseFirestoreNumber(bDoc.maxBet) ?? parseFirestoreNumber(bDoc.maxStake) ?? null,
@@ -528,6 +549,7 @@ export async function queryFirestoreForEvent(eventId, sportId = "4") {
       return {
         marketId: bmDoc.exMarketId?.stringValue || d.document.name.split("/").pop(),
         marketName: bmDoc.marketName?.stringValue || "Bookmaker Bhav",
+        news: extractNews(bmDoc),
         sequence: getSequence(bmDoc),
         min: parseFirestoreNumber(bmDoc.min) ?? parseFirestoreNumber(bmDoc.minBet) ?? parseFirestoreNumber(bmDoc.minStake) ?? null,
         max: parseFirestoreNumber(bmDoc.max) ?? parseFirestoreNumber(bmDoc.maxBet) ?? parseFirestoreNumber(bmDoc.maxStake) ?? null,
@@ -628,6 +650,7 @@ export async function queryFirestoreForEvent(eventId, sportId = "4") {
       return {
         marketId: f.exMarketId?.stringValue || d.document.name.split("/").pop(),
         marketName: f.marketName?.stringValue || "Sportsbook Market",
+        news: extractNews(f),
         sequence: getSequence(f),
         status: odds.status?.stringValue || "ONLINE",
         runners,
@@ -648,6 +671,7 @@ export async function queryFirestoreForEvent(eventId, sportId = "4") {
     matchOddsList.push({
       marketId: swf.exMarketId?.stringValue || toWinTheMatchDoc.document.name.split("/").pop(),
       marketName: swf.marketName?.stringValue || "To Win The Match",
+      news: extractNews(swf),
       sequence: getSequence(swf) || 20,
       min: parseFirestoreNumber(swf.min) ?? parseFirestoreNumber(swf.minBet) ?? parseFirestoreNumber(swf.minStake) ?? null,
       max: parseFirestoreNumber(swf.max) ?? parseFirestoreNumber(swf.maxBet) ?? parseFirestoreNumber(swf.maxStake) ?? null,
@@ -655,21 +679,23 @@ export async function queryFirestoreForEvent(eventId, sportId = "4") {
         odds.totalMatched?.integerValue ||
         odds.totalMatched?.stringValue ||
         "429811",
+      totalMatchedFormatted: formatDisplaySize(
+        odds.totalMatched?.integerValue ||
+        odds.totalMatched?.stringValue ||
+        "429811"
+      ),
       status: odds.status?.stringValue || "OPEN",
       runners: parseFirestoreRunners(swf),
     });
     matchOddsList.sort((a, b) => a.sequence - b.sequence);
   }
 
-  const fancyNews = fancyDocs
-    .map((d) => d.document?.fields?.news?.stringValue)
-    .filter(Boolean);
-  const allNews = [
-    bmDoc?.news?.stringValue,
-    bDoc?.news?.stringValue,
-    ...fancyNews,
-  ].filter((n) => n && n.trim().length > 0);
-  const newsTicker = Array.from(new Set(allNews)).join("   ★   ");
+  const newsTicker = collectUniqueNews(
+    matchOddsList,
+    bookmakerList,
+    validFancy,
+    validSportsbook
+  );
 
   return {
     eventId: eIdStr,
@@ -764,10 +790,14 @@ export async function getLiveRatesForEvent(eventId, sportId = "4") {
         });
       };
 
+      const pickNews = (m) =>
+        String(m?.news ?? m?.remark ?? m?.message ?? m?.oddsData?.news ?? "").trim();
+
       const matchOddsList = (data.matchOddsData || [])
         .map((mo) => ({
           marketId: String(mo.marketId || mo.exMarketId || ""),
           marketName: mo.marketName || "Match Odds",
+          news: pickNews(mo),
           sequence: Number(mo.sequence || mo.priority || 0),
           min: mo.min ?? mo.minBet ?? mo.minStake ?? null,
           max: mo.max ?? mo.maxBet ?? mo.maxStake ?? null,
@@ -781,6 +811,7 @@ export async function getLiveRatesForEvent(eventId, sportId = "4") {
         .map((bm) => ({
           marketId: String(bm.marketId || bm.exMarketId || ""),
           marketName: bm.marketName || "Bookmaker Bhav",
+          news: pickNews(bm),
           sequence: Number(bm.sequence || bm.priority || 0),
           min: bm.min ?? bm.minBet ?? bm.minStake ?? null,
           max: bm.max ?? bm.maxBet ?? bm.maxStake ?? null,
@@ -805,7 +836,7 @@ export async function getLiveRatesForEvent(eventId, sportId = "4") {
           return {
             marketId: String(f.exMarketId || f.marketId || ""),
             marketName: f.marketName || f.sessionName || "Fancy Market",
-            news: f.news || "",
+            news: pickNews(f),
             sequence: Number(f.sequence || f.priority || 0),
             status: odds.status || (isSusp ? "SUSPENDED" : "ONLINE"),
             isSuspended: isSusp,
@@ -825,15 +856,29 @@ export async function getLiveRatesForEvent(eventId, sportId = "4") {
         })
         .sort((a, b) => a.sequence - b.sequence);
 
+      const sportsbookList = (data.sportsbookData || []).map((sb) => ({
+        ...sb,
+        news: pickNews(sb),
+      }));
+
+      const newsSet = new Set();
+      for (const arr of [matchOddsList, bookmakerList, fancy, sportsbookList, data.binaryData, data.lotteryData]) {
+        if (!Array.isArray(arr)) continue;
+        for (const item of arr) {
+          const t = String(item?.news ?? item?.remark ?? item?.message ?? "").trim();
+          if (t) newsSet.add(t);
+        }
+      }
+
       const formatted = {
         eventId: eIdStr,
-        news: data.bookmakersData?.[0]?.news || data.matchOddsData?.[0]?.news || "",
+        news: Array.from(newsSet).join("   ★   "),
         matchOdds: matchOddsList[0] || null,
         matchOddsList,
         bookmaker: bookmakerList[0] || null,
         bookmakerList,
         fancy,
-        sportsbook: data.sportsbookData || [],
+        sportsbook: sportsbookList,
       };
 
       liveRatesCache.set(cacheKey, { timestamp: Date.now(), data: formatted });
