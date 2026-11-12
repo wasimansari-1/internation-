@@ -375,7 +375,8 @@ export const getAsstarplayToken = async (forceRefresh = false) => {
   if (!forceRefresh && session.token && Date.now() < session.tokenExpiry) {
     return session.token;
   }
-  if (session.token && Date.now() - session.lastLoginTime < 60000 && !forceRefresh) {
+  // Enforce 60s login cooldown even on forceRefresh (matches Startexch99) to prevent disconnect-loop login storms
+  if (session.token && Date.now() - session.lastLoginTime < 60000) {
     return session.token;
   }
   if (session.loginPromise) {

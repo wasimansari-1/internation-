@@ -225,23 +225,41 @@ function createCasinoProviderSocket({
     auth: { token, uType: "usr" },
   });
 
+  let lastConnectTime = 0;
+  let shortDisconnectStreak = 0;
+  let reconnectTimer = null;
+
   sock.on("connect", () => {
+    lastConnectTime = Date.now();
     console.log(`Connected to Real ${label} Casino Socket (/universecasino)`);
     onConnect();
   });
 
   sock.on("disconnect", async (reason) => {
+    const aliveMs = lastConnectTime ? Date.now() - lastConnectTime : 0;
+    if (aliveMs > 30000) {
+      shortDisconnectStreak = 0;
+    } else {
+      shortDisconnectStreak = Math.min(shortDisconnectStreak + 1, 6);
+    }
     console.warn(`[${label} Socket] Disconnected:`, reason);
     if (reason === "io server disconnect" || reason === "transport error") {
       try {
-        const freshToken = await getTokenFn(true);
-        if (freshToken) {
-          sock.auth = { token: freshToken, uType: "usr" };
+        // Reuse valid cached token instead of forcing a brand-new /userLogin on every socket kick
+        const cachedOrFreshToken = await getTokenFn(false);
+        if (cachedOrFreshToken) {
+          sock.auth = { token: cachedOrFreshToken, uType: "usr" };
         }
       } catch (e) {}
-      setTimeout(() => {
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      const backoffMs =
+        shortDisconnectStreak <= 1
+          ? disconnectDelayMs
+          : Math.min(disconnectDelayMs * Math.pow(2, shortDisconnectStreak - 1), 300000);
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
         if (!sock.connected) sock.connect();
-      }, disconnectDelayMs);
+      }, backoffMs);
     }
   });
 
