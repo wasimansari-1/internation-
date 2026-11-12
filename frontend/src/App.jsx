@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import axios from "axios";
 import UniverseGamesView from "./components/UniverseGamesView";
 import SportsOddsView from "./components/SportsOddsView";
 import MatchDetailTablesView from "./components/MatchDetailTablesView";
@@ -6,7 +7,7 @@ import ApiInspector from "./components/ApiInspector";
 import ApiManagementDashboard from "./components/ApiManagementDashboard";
 import WingoGameView from "./components/WingoGameView";
 import UniversalApiLogo from "./components/UniversalApiLogo";
-import { RotateCw, Menu, X } from "lucide-react";
+import { RotateCw, Menu, X, ShieldCheck, Lock, User, LogOut, ArrowRight } from "lucide-react";
 
 function getTabFromUrl() {
   const path = (window.location.pathname || "").toLowerCase();
@@ -47,6 +48,22 @@ function getTabFromUrl() {
 export default function App() {
   const [activeTab, setActiveTab] = useState(getTabFromUrl);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isPlatformAuth, setIsPlatformAuth] = useState(() => {
+    return Boolean(
+      sessionStorage.getItem("client_user_token") ||
+      localStorage.getItem("client_user_token") ||
+      sessionStorage.getItem("admin_auth_token") ||
+      localStorage.getItem("admin_auth_token")
+    );
+  });
+  const [operatorUser, setOperatorUser] = useState(() => {
+    return localStorage.getItem("client_user_name") || "Igwasim";
+  });
+  const [loginId, setLoginId] = useState("");
+  const [loginPass, setLoginPass] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginError, setLoginError] = useState("");
+
   const [selectedMatch, setSelectedMatch] = useState(() => {
     try {
       const saved = sessionStorage.getItem("app_selected_match");
@@ -55,6 +72,50 @@ export default function App() {
       return null;
     }
   });
+
+  const handleClientLogin = async (e) => {
+    e.preventDefault();
+    if (!loginId.trim() || !loginPass.trim()) {
+      setLoginError("Please enter User ID and Password.");
+      return;
+    }
+    setLoginLoading(true);
+    setLoginError("");
+    try {
+      const res = await axios.post("/api/auth/client-login", {
+        username: loginId.trim(),
+        password: loginPass,
+      });
+      if (res.data?.success && res.data?.token) {
+        sessionStorage.setItem("client_user_token", res.data.token);
+        localStorage.setItem("client_user_token", res.data.token);
+        localStorage.setItem("client_user_name", res.data.user?.username || "Igwasim");
+        axios.defaults.headers.common["Authorization"] = `Bearer ${res.data.token}`;
+        axios.defaults.headers.common["x-client-token"] = res.data.token;
+        setOperatorUser(res.data.user?.username || "Igwasim");
+        setIsPlatformAuth(true);
+      } else {
+        setLoginError(res.data?.error || "Invalid User ID or Password");
+      }
+    } catch (err) {
+      setLoginError(err.response?.data?.error || "Invalid User ID or Password");
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const handleClientLogout = async () => {
+    try {
+      await axios.post("/api/auth/client-logout");
+    } catch (e) {}
+    sessionStorage.removeItem("client_user_token");
+    localStorage.removeItem("client_user_token");
+    sessionStorage.removeItem("admin_auth_token");
+    localStorage.removeItem("admin_auth_token");
+    delete axios.defaults.headers.common["Authorization"];
+    delete axios.defaults.headers.common["x-client-token"];
+    setIsPlatformAuth(false);
+  };
 
   // Sync tab with browser URL history
   useEffect(() => {
@@ -114,6 +175,191 @@ export default function App() {
       }
     } catch (e) {}
   };
+
+  // Platform Login Gate: If operator is not authenticated, render secure login gate
+  if (!isPlatformAuth) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          backgroundColor: "#070b12",
+          backgroundImage: "radial-gradient(ellipse at 50% 20%, rgba(16, 185, 129, 0.08) 0%, transparent 60%)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "20px",
+          fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif",
+          color: "#f8fafc",
+        }}
+      >
+        <div
+          style={{
+            width: "100%",
+            maxWidth: "380px",
+            backgroundColor: "#0d141f",
+            border: "1px solid #1e293b",
+            borderRadius: "16px",
+            padding: "32px 28px",
+            boxShadow: "0 20px 50px rgba(0, 0, 0, 0.6)",
+          }}
+        >
+          <div style={{ textAlign: "center", marginBottom: "26px" }}>
+            <div style={{ display: "inline-flex", marginBottom: "14px" }}>
+              <UniversalApiLogo />
+            </div>
+            <h1 style={{ fontSize: "18px", fontWeight: 800, margin: "0 0 6px 0", letterSpacing: "-0.01em" }}>
+              Universal API Gateway
+            </h1>
+            <p style={{ fontSize: "12px", color: "#64748b", margin: 0, fontWeight: 500 }}>
+              Authorized Operator & Partner Sign In
+            </p>
+          </div>
+
+          {loginError && (
+            <div
+              style={{
+                backgroundColor: "rgba(239, 68, 68, 0.12)",
+                border: "1px solid rgba(239, 68, 68, 0.3)",
+                color: "#f87171",
+                padding: "10px 14px",
+                borderRadius: "8px",
+                fontSize: "12px",
+                marginBottom: "16px",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+              }}
+            >
+              <span>{loginError}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleClientLogin} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  color: "#94a3b8",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                  marginBottom: "6px",
+                }}
+              >
+                User ID
+              </label>
+              <div style={{ position: "relative" }}>
+                <input
+                  type="text"
+                  value={loginId}
+                  onChange={(e) => setLoginId(e.target.value)}
+                  placeholder="Enter User ID"
+                  autoFocus
+                  required
+                  style={{
+                    width: "100%",
+                    padding: "11px 14px 11px 36px",
+                    backgroundColor: "#070b12",
+                    border: "1px solid #1e293b",
+                    borderRadius: "8px",
+                    color: "#f8fafc",
+                    fontSize: "13px",
+                    outline: "none",
+                    boxSizing: "border-box",
+                  }}
+                  onFocus={(e) => (e.target.style.borderColor = "#10b981")}
+                  onBlur={(e) => (e.target.style.borderColor = "#1e293b")}
+                />
+                <User size={15} color="#64748b" style={{ position: "absolute", left: "12px", top: "13px" }} />
+              </div>
+            </div>
+
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  color: "#94a3b8",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                  marginBottom: "6px",
+                }}
+              >
+                Password
+              </label>
+              <div style={{ position: "relative" }}>
+                <input
+                  type="password"
+                  value={loginPass}
+                  onChange={(e) => setLoginPass(e.target.value)}
+                  placeholder="Enter Password"
+                  required
+                  style={{
+                    width: "100%",
+                    padding: "11px 14px 11px 36px",
+                    backgroundColor: "#070b12",
+                    border: "1px solid #1e293b",
+                    borderRadius: "8px",
+                    color: "#f8fafc",
+                    fontSize: "13px",
+                    outline: "none",
+                    boxSizing: "border-box",
+                  }}
+                  onFocus={(e) => (e.target.style.borderColor = "#10b981")}
+                  onBlur={(e) => (e.target.style.borderColor = "#1e293b")}
+                />
+                <Lock size={15} color="#64748b" style={{ position: "absolute", left: "12px", top: "13px" }} />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loginLoading}
+              style={{
+                marginTop: "6px",
+                width: "100%",
+                padding: "11px",
+                backgroundColor: loginLoading ? "#047857" : "#10b981",
+                border: "none",
+                borderRadius: "8px",
+                color: "#ffffff",
+                fontSize: "13px",
+                fontWeight: 700,
+                cursor: loginLoading ? "not-allowed" : "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "8px",
+                boxShadow: "0 4px 14px rgba(16, 185, 129, 0.35)",
+              }}
+            >
+              {loginLoading ? "Verifying..." : "Sign In to Gateway"}
+              {!loginLoading && <ArrowRight size={15} />}
+            </button>
+          </form>
+
+          <div
+            style={{
+              marginTop: "22px",
+              paddingTop: "14px",
+              borderTop: "1px solid #1e293b",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "6px",
+              fontSize: "11px",
+              color: "#475569",
+            }}
+          >
+            <ShieldCheck size={13} color="#10b981" />
+            <span>256-Bit Cryptographic Firewall Protected</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Dedicated Full-Page Senior Enterprise View for Admin/Gateway (White & Fade Blue, No Consumer Header)
   if (activeTab === "GATEWAY") {
@@ -216,6 +462,33 @@ export default function App() {
             >
               <RotateCw size={14} />
             </button>
+
+            {/* Operator Session Badge & Logout */}
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "10px", paddingLeft: "10px", borderLeft: "1px solid #1e293b" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "5px", padding: "4px 8px", background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)", borderRadius: "6px", fontSize: "11px", fontWeight: 700, color: "#34d399" }}>
+                <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#10b981", display: "inline-block" }}></span>
+                {operatorUser}
+              </div>
+              <button
+                onClick={handleClientLogout}
+                title="Sign Out"
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#94a3b8",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  padding: "4px",
+                  borderRadius: "4px",
+                  transition: "color 0.15s",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = "#ef4444")}
+                onMouseLeave={(e) => (e.currentTarget.style.color = "#94a3b8")}
+              >
+                <LogOut size={14} />
+              </button>
+            </div>
           </nav>
 
           {/* Mobile Hamburger Button */}
@@ -293,6 +566,42 @@ export default function App() {
                 </button>
               );
             })}
+
+            {/* Mobile Operator Info & Logout */}
+            <div
+              style={{
+                marginTop: "6px",
+                paddingTop: "10px",
+                borderTop: "1px solid #1e293b",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "#34d399", fontWeight: 700 }}>
+                <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#10b981" }} />
+                <span>{operatorUser}</span>
+              </div>
+              <button
+                onClick={handleClientLogout}
+                style={{
+                  background: "rgba(239, 68, 68, 0.15)",
+                  border: "1px solid rgba(239, 68, 68, 0.3)",
+                  color: "#f87171",
+                  borderRadius: "6px",
+                  padding: "6px 12px",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
+                <LogOut size={13} />
+                <span>Sign Out</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

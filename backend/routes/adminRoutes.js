@@ -1,10 +1,120 @@
 import express from "express";
 import { telemetry } from "../services/telemetryService.js";
 import { getDemoToken, getStartexchToken, getCbtfToken, getAsstarplayToken } from "../services/authService.js";
+import { securityService } from "../services/securityService.js";
+import { requireAdminAuth } from "../middleware/securityMiddleware.js";
 
 const router = express.Router();
 
-// 1. Get Live Metrics & Telemetry
+// =========================================================================
+// 1. Admin Authentication Endpoints (OAuth / Credentials Guard)
+// Credentials: Id: Igwasim, Password: Asdf123
+// =========================================================================
+router.post("/auth/login", (req, res) => {
+  try {
+    const { username, id, password } = req.body || {};
+    const adminUser = username || id || "";
+    const result = securityService.loginAdmin(adminUser, password);
+
+    if (!result.success) {
+      return res.status(401).json(result);
+    }
+    return res.json(result);
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get("/auth/verify", (req, res) => {
+  const token = req.headers["authorization"] || req.headers["x-admin-token"];
+  const isValid = securityService.verifyAdminToken(token);
+  return res.json({
+    success: true,
+    authenticated: isValid,
+    admin: isValid ? { id: "Igwasim", role: "SuperAdmin" } : null,
+  });
+});
+
+router.post("/auth/logout", (req, res) => {
+  const token = req.headers["authorization"] || req.headers["x-admin-token"];
+  securityService.logoutAdmin(token);
+  return res.json({ success: true, message: "Logged out successfully" });
+});
+
+// =========================================================================
+// Apply Admin Authorization Middleware to all endpoints below
+// =========================================================================
+router.use(requireAdminAuth);
+
+// =========================================================================
+// 2. IP Whitelisting & Threat Intelligence Endpoints
+// =========================================================================
+router.get("/security/overview", (req, res) => {
+  try {
+    const overview = securityService.getSecurityOverview();
+    return res.json({ success: true, data: overview });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post("/security/whitelist/add", (req, res) => {
+  try {
+    const { ip, partnerName, domain, scope, rateLimit } = req.body || {};
+    if (!ip) {
+      return res.status(400).json({ success: false, error: "IP address is required." });
+    }
+    const partner = securityService.addWhitelistedIp({ ip, partnerName, domain, scope, rateLimit });
+    return res.json({ success: true, message: `IP ${partner.ip} whitelisted successfully`, partner });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post("/security/whitelist/remove", (req, res) => {
+  try {
+    const { ip } = req.body || {};
+    if (!ip) {
+      return res.status(400).json({ success: false, error: "IP address is required." });
+    }
+    const removed = securityService.removeWhitelistedIp(ip);
+    return res.json({ success: true, message: removed ? `IP ${ip} removed from whitelist` : "IP not found" });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post("/security/whitelist/toggle", (req, res) => {
+  try {
+    const { ip, status } = req.body || {};
+    if (!ip) {
+      return res.status(400).json({ success: false, error: "IP address is required." });
+    }
+    const updated = securityService.toggleWhitelistedIp(ip, status);
+    return res.json({ success: true, message: `IP ${ip} status updated to ${updated.status}`, partner: updated });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post("/security/config", (req, res) => {
+  try {
+    const { strictMode, payloadEncryption, internalBypass, rateLimitPerMinute } = req.body || {};
+    const config = securityService.updateFirewallConfig({
+      ...(strictMode !== undefined && { strictMode: Boolean(strictMode) }),
+      ...(payloadEncryption !== undefined && { payloadEncryption: Boolean(payloadEncryption) }),
+      ...(internalBypass !== undefined && { internalBypass: Boolean(internalBypass) }),
+      ...(rateLimitPerMinute !== undefined && { rateLimitPerMinute: Number(rateLimitPerMinute) }),
+    });
+    return res.json({ success: true, message: "Firewall configuration updated", config });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// =========================================================================
+// 3. Existing Gateway Telemetry & Mesh Management Endpoints
+// =========================================================================
 router.get("/metrics", (req, res) => {
   try {
     const data = telemetry.getMetrics();
@@ -14,7 +124,6 @@ router.get("/metrics", (req, res) => {
   }
 });
 
-// 2. Update Dynamic Provider Routing (Instant live switch)
 router.post("/routing", (req, res) => {
   try {
     const { casinoProvider, streamProvider, sportsProvider, changedBy } = req.body;
@@ -28,7 +137,6 @@ router.post("/routing", (req, res) => {
   }
 });
 
-// 3. Trigger Active Origin Block Probe
 router.post("/probe", async (req, res) => {
   try {
     const probeResults = await telemetry.probeProviders(getDemoToken, getStartexchToken, getCbtfToken, getAsstarplayToken);
@@ -38,7 +146,6 @@ router.post("/probe", async (req, res) => {
   }
 });
 
-// 4. Rotate Stealth ISP Persona
 router.post("/stealth/rotate", (req, res) => {
   try {
     const persona = telemetry.rotatePersona();
@@ -48,7 +155,6 @@ router.post("/stealth/rotate", (req, res) => {
   }
 });
 
-// 5. Update Stealth Configuration (Auto-Rotate timer & toggle)
 router.post("/stealth/config", (req, res) => {
   try {
     const { enabled, autoRotate, intervalSeconds } = req.body;
@@ -59,7 +165,6 @@ router.post("/stealth/config", (req, res) => {
   }
 });
 
-// 6. Select Specific ISP Persona by ID (e.g. Jio, Airtel, ACT, Vi, etc.)
 router.post("/stealth/select", (req, res) => {
   try {
     const { personaId } = req.body;
@@ -70,7 +175,6 @@ router.post("/stealth/select", (req, res) => {
   }
 });
 
-// 7. Toggle Stealth Origin Masking
 router.post("/stealth/toggle", (req, res) => {
   try {
     const { enabled } = req.body;
@@ -81,7 +185,6 @@ router.post("/stealth/toggle", (req, res) => {
   }
 });
 
-// 8. 1-Click Apply Master Brain AI Recommendation
 router.post("/brain/apply", (req, res) => {
   try {
     const rec = telemetry.brainStatus.recommendedAction;
@@ -102,7 +205,6 @@ router.post("/brain/apply", (req, res) => {
   }
 });
 
-// 7. Reset Counters
 router.post("/reset", (req, res) => {
   try {
     telemetry.resetCounters();
@@ -113,4 +215,3 @@ router.post("/reset", (req, res) => {
 });
 
 export default router;
-

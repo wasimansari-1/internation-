@@ -20,6 +20,8 @@ import streamRouter from "./routes/streamRoutes.js";
 import adminRouter from "./routes/adminRoutes.js";
 import wingoRouter from "./routes/wingoRoutes.js";
 import directStreamRouter from "./directStreamEngine/index.js";
+import { ipWhitelistGuard } from "./middleware/securityMiddleware.js";
+import { securityService } from "./services/securityService.js";
 import { proxyRequest } from "./services/authService.js";
 import { getClientIp, nativeHttpsAgent } from "./services/streamService.js";
 import axios from "axios";
@@ -89,6 +91,57 @@ app.use((req, res, next) => {
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
   }
   next();
+});
+
+// Mount enterprise IP Whitelist & Firewall Guard
+app.use(ipWhitelistGuard);
+
+// =========================================================================
+// Client Platform Operator Authentication Endpoints
+// Credentials: Id: Igwasim, Password: Asdf123 (Verified strictly on server)
+// =========================================================================
+app.post("/api/auth/client-login", (req, res) => {
+  try {
+    const { username, id, password } = req.body || {};
+    const user = username || id || "";
+    const result = securityService.loginClientUser(user, password);
+    if (!result.success) {
+      return res.status(401).json(result);
+    }
+    return res.json(result);
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get("/api/auth/client-verify", (req, res) => {
+  const token = req.headers["authorization"] || req.headers["x-client-token"];
+  const isValid = securityService.verifyClientToken(token);
+  return res.json({
+    success: true,
+    authenticated: isValid,
+    user: isValid ? { username: "Igwasim", role: "PlatformOperator" } : null,
+  });
+});
+
+app.post("/api/auth/client-logout", (req, res) => {
+  const token = req.headers["authorization"] || req.headers["x-client-token"];
+  securityService.logoutClientUser(token);
+  return res.json({ success: true, message: "Logged out successfully" });
+});
+
+// Live Tester Runner (For Docs and Partner endpoint sandbox)
+app.post("/api/tester/run", async (req, res) => {
+  try {
+    const { endpoint, payload, method } = req.body || {};
+    if (!endpoint) {
+      return res.status(400).json({ error: "Missing endpoint" });
+    }
+    const result = await proxyRequest(endpoint, payload || {}, method || "POST");
+    return res.status(result.statusCode || 200).json(result.data || result);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
 });
 
 // Mount modular sub-routers

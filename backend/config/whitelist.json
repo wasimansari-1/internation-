@@ -1,0 +1,106 @@
+{
+  "updatedAt": "2026-11-12T21:20:25.713Z",
+  "firewallConfig": {
+    "strictMode": true,
+    "payloadEncryption": true,
+    "internalBypass": true,
+    "rateLimitPerMinute": 600
+  },
+  "whitelist": [
+    {
+      "ip": "127.0.0.1",
+      "partnerName": "Localhost Gateway (Primary)",
+      "domain": "localhost",
+      "apiKey": "uapi_live_localhost_001",
+      "apiSecret": "sec_live_bea4b2bf211b3ceb63e6f3af2e32ada0",
+      "scope": "ALL",
+      "status": "ACTIVE",
+      "createdAt": "2026-11-12T21:19:33.749Z",
+      "totalHits": 47,
+      "lastHit": "2026-11-12T21:20:25.712Z",
+      "rateLimit": 5000
+    },
+    {
+      "ip": "::1",
+      "partnerName": "Localhost IPv6",
+      "domain": "localhost",
+      "apiKey": "uapi_live_localhost_ipv6",
+      "apiSecret": "sec_live_1c76a85ab121d21293442fd68256e198",
+      "scope": "ALL",
+      "status": "ACTIVE",
+      "createdAt": "2026-11-12T21:19:33.750Z",
+      "totalHits": 0,
+      "lastHit": null,
+      "rateLimit": 5000
+    },
+    {
+      "ip": "::ffff:127.0.0.1",
+      "partnerName": "Localhost IPv4-mapped",
+      "domain": "localhost",
+      "apiKey": "uapi_live_localhost_v4mapped",
+      "apiSecret": "sec_live_bdf33d1d09ff3379569c192c8c2d34b6",
+      "scope": "ALL",
+      "status": "ACTIVE",
+      "createdAt": "2026-11-12T21:19:33.750Z",
+      "totalHits": 0,
+      "lastHit": null,
+      "rateLimit": 5000
+    },
+    {
+      "ip": "185.220.101.55",
+      "partnerName": "Kingz Pro Exchange",
+      "domain": "kingz.pro",
+      "apiKey": "uapi_live_1da7027748fd9a12",
+      "apiSecret": "sec_live_66c2ab82340c1046647b8bb5ac0657a0",
+      "scope": "ALL",
+      "status": "ACTIVE",
+      "createdAt": "2026-11-12T21:20:25.713Z",
+      "updatedAt": "2026-11-12T21:20:25.713Z",
+      "totalHits": 0,
+      "lastHit": null,
+      "rateLimit": 1200
+    },
+    {
+      "ip": "187.127.98.247",
+      "partnerName": "Igmaster1",
+      "domain": "",
+      "apiKey": "uapi_live_igmaster1_98247",
+      "apiSecret": "sec_live_3f8a1c9e7b2d5f0a4e6b8d1c3a5e7f9b",
+      "scope": "ALL",
+      "status": "ACTIVE",
+      "createdAt": "2026-11-12T22:15:00.000Z",
+      "updatedAt": "2026-11-12T22:15:00.000Z",
+      "totalHits": 0,
+      "lastHit": null,
+      "rateLimit": 2000
+    },
+    {
+      "ip": "187.127.119.222",
+      "partnerName": "Igmaster2",
+      "domain": "",
+      "apiKey": "uapi_live_igmaster2_119222",
+      "apiSecret": "sec_live_7c4e2a9b1d5f8a0e3b6d9c2a4f7e1b5d",
+      "scope": "ALL",
+      "status": "ACTIVE",
+      "createdAt": "2026-11-12T22:15:00.000Z",
+      "updatedAt": "2026-11-12T22:15:00.000Z",
+      "totalHits": 0,
+      "lastHit": null,
+      "rateLimit": 2000
+    },
+    {
+      "ip": "187.127.119.224",
+      "partnerName": "Igmaster3",
+      "domain": "",
+      "apiKey": "uapi_live_igmaster3_119224",
+      "apiSecret": "sec_live_5b1d9f3a7e0c4b8e2a6d1f9c5e3a7b0d",
+      "scope": "ALL",
+      "status": "ACTIVE",
+      "createdAt": "2026-11-12T22:15:00.000Z",
+      "updatedAt": "2026-11-12T22:15:00.000Z",
+      "totalHits": 0,
+      "lastHit": null,
+      "rateLimit": 2000
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Terminal, Play, Copy, Check, Clock, Shield } from 'lucide-react';
+import { Terminal, Play, Copy, Check, Clock, Shield, BookOpen, FlaskConical } from 'lucide-react';
 import axios from 'axios';
+import PartnerApiDocs from './PartnerApiDocs';
 
 const PRESET_ENDPOINTS = [
   { name: 'Sports List', endpoint: '/api/exchange/sports/sportsList', payload: {} },
@@ -18,6 +19,7 @@ const PRESET_ENDPOINTS = [
 ];
 
 export default function ApiInspector() {
+  const [activeTab, setActiveTab] = useState('docs'); // 'docs' | 'tester'
   const [selectedPreset, setSelectedPreset] = useState(PRESET_ENDPOINTS[0]);
   const [endpoint, setEndpoint] = useState(PRESET_ENDPOINTS[0].endpoint);
   const [payloadText, setPayloadText] = useState(JSON.stringify(PRESET_ENDPOINTS[0].payload, null, 2));
@@ -68,18 +70,77 @@ export default function ApiInspector() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      {/* Top Banner */}
-      <div style={{
-        background: '#131b2e',
-        borderRadius: '12px',
-        border: '1px solid #1e293b',
-        padding: '20px',
-        display: 'flex',
-        flexWrap: 'wrap',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        gap: '12px'
-      }}>
+      {/* Sub-Tab Navigation */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          borderBottom: '1px solid #1e293b',
+          paddingBottom: '12px',
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setActiveTab('docs')}
+          style={{
+            background: activeTab === 'docs' ? '#064e3b' : 'transparent',
+            color: activeTab === 'docs' ? '#34d399' : '#94a3b8',
+            border: activeTab === 'docs' ? '1px solid #059669' : '1px solid #1e293b',
+            borderRadius: '8px',
+            padding: '8px 18px',
+            fontSize: '13px',
+            fontWeight: 700,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            transition: 'all 0.15s ease',
+          }}
+        >
+          <BookOpen size={16} />
+          <span>Partner Documentation &amp; SDK</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('tester')}
+          style={{
+            background: activeTab === 'tester' ? '#0369a1' : 'transparent',
+            color: activeTab === 'tester' ? '#38bdf8' : '#94a3b8',
+            border: activeTab === 'tester' ? '1px solid #0284c7' : '1px solid #1e293b',
+            borderRadius: '8px',
+            padding: '8px 18px',
+            fontSize: '13px',
+            fontWeight: 700,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            transition: 'all 0.15s ease',
+          }}
+        >
+          <FlaskConical size={16} />
+          <span>Interactive Endpoint Tester</span>
+        </button>
+      </div>
+
+      {activeTab === 'docs' ? (
+        <PartnerApiDocs />
+      ) : (
+        <>
+          {/* Top Banner */}
+          <div style={{
+            background: '#131b2e',
+            borderRadius: '12px',
+            border: '1px solid #1e293b',
+            padding: '20px',
+            display: 'flex',
+            flexWrap: 'wrap',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '12px'
+          }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <Terminal size={22} style={{ color: '#38bdf8' }} />
           <div>
@@ -289,6 +350,8 @@ export default function ApiInspector() {
           </div>
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 }

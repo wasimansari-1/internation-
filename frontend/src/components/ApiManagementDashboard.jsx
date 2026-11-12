@@ -21,7 +21,12 @@ import {
   Shuffle,
   Zap,
   Globe,
+  Lock,
+  LogOut,
+  Shield,
+  Key,
 } from 'lucide-react';
+import FirewallWhitelistView from './FirewallWhitelistView';
 
 const ROUTING_MODES = ['AUTO', 'NICE444', 'STARTEXCH99', 'CBTFEXCHANGE', 'ASSTARPLAY'];
 
@@ -70,6 +75,18 @@ const DURATION_PROFILES = [
 ];
 
 export default function ApiManagementDashboard({ onSwitchTab }) {
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    return Boolean(sessionStorage.getItem('admin_auth_token') || localStorage.getItem('admin_auth_token'));
+  });
+  const [adminUser, setAdminUser] = useState(() => {
+    return localStorage.getItem('admin_auth_user') || 'Igwasim';
+  });
+  const [activeSubTab, setActiveSubTab] = useState('FIREWALL'); // 'FIREWALL' | 'TELEMETRY'
+  const [loginId, setLoginId] = useState('');
+  const [loginPass, setLoginPass] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginError, setLoginError] = useState('');
+
   const [metrics, setMetrics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -95,7 +112,49 @@ export default function ApiManagementDashboard({ onSwitchTab }) {
     }, 4500);
   };
 
+  const handleAdminLogin = async (e) => {
+    e.preventDefault();
+    setLoginLoading(true);
+    setLoginError('');
+    try {
+      const res = await axios.post('/api/admin/auth/login', {
+        id: loginId.trim(),
+        password: loginPass.trim(),
+      });
+      if (res.data?.success && res.data?.token) {
+        sessionStorage.setItem('admin_auth_token', res.data.token);
+        localStorage.setItem('admin_auth_token', res.data.token);
+        localStorage.setItem('admin_auth_user', res.data.admin?.id || 'Igwasim');
+        setIsAuthenticated(true);
+        setAdminUser(res.data.admin?.id || 'Igwasim');
+        showToast('Access Granted', `Welcome back, ${res.data.admin?.id || 'Igwasim'}!`, 'success');
+        fetchMetrics(true);
+      } else {
+        setLoginError(res.data?.error || 'Invalid Admin ID or Password');
+      }
+    } catch (err) {
+      setLoginError(err.response?.data?.error || err.message || 'Authentication failed');
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const handleAdminLogout = async () => {
+    try {
+      await axios.post('/api/admin/auth/logout');
+    } catch (e) {}
+    sessionStorage.removeItem('admin_auth_token');
+    localStorage.removeItem('admin_auth_token');
+    localStorage.removeItem('admin_auth_user');
+    setIsAuthenticated(false);
+    showToast('Signed Out', 'Admin session terminated safely.', 'info');
+  };
+
   const fetchMetrics = async (isManual = false) => {
+    if (!isAuthenticated) {
+      setLoading(false);
+      return;
+    }
     if (isManual) setRefreshing(true);
     try {
       const res = await axios.get('/api/admin/metrics?_t=' + Date.now());
@@ -103,7 +162,9 @@ export default function ApiManagementDashboard({ onSwitchTab }) {
         setMetrics(res.data);
       }
     } catch (err) {
-      console.error('Failed to fetch admin metrics:', err);
+      if (err.response?.status === 401) {
+        setIsAuthenticated(false);
+      }
     } finally {
       setLoading(false);
       if (isManual) setRefreshing(false);
@@ -111,10 +172,14 @@ export default function ApiManagementDashboard({ onSwitchTab }) {
   };
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      setLoading(false);
+      return;
+    }
     fetchMetrics();
-    const interval = setInterval(() => fetchMetrics(false), 2500);
+    const interval = setInterval(() => fetchMetrics(false), 3000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isAuthenticated]);
 
   const handleUpdateRouting = async (type, value) => {
     setSavingRouting(true);
@@ -254,6 +319,158 @@ export default function ApiManagementDashboard({ onSwitchTab }) {
       setProbing(false);
     }
   };
+
+  // If Admin is not authenticated, render the SuperAdmin Login Guard
+  if (!isAuthenticated) {
+    return (
+      <div className="adm-root" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: '20px' }}>
+        <div className="adm-hanging-fade" />
+        <div
+          style={{
+            position: 'relative',
+            zIndex: 10,
+            width: '100%',
+            maxWidth: '430px',
+            background: '#ffffff',
+            borderRadius: '16px',
+            border: '1px solid #d1fae5',
+            padding: '36px 32px',
+            boxShadow: '0 20px 40px -15px rgba(5, 150, 105, 0.15)',
+          }}
+        >
+          <div style={{ textAlign: 'center', marginBottom: '26px' }}>
+            <div
+              style={{
+                width: '54px',
+                height: '54px',
+                borderRadius: '14px',
+                background: 'linear-gradient(135deg, #10b981 0%, #047857 100%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 14px',
+                boxShadow: '0 6px 18px rgba(16, 185, 129, 0.3)',
+                color: '#ffffff',
+              }}
+            >
+              <Lock size={26} />
+            </div>
+            <h1 style={{ fontSize: '20px', fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0', letterSpacing: '-0.3px' }}>
+              Gateway Enterprise Console
+            </h1>
+            <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>
+              SuperAdmin Authorization Required
+            </p>
+          </div>
+
+          {loginError && (
+            <div
+              style={{
+                background: '#fef2f2',
+                border: '1px solid #fecaca',
+                color: '#dc2626',
+                borderRadius: '8px',
+                padding: '10px 14px',
+                fontSize: '12px',
+                fontWeight: 600,
+                marginBottom: '18px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+              }}
+            >
+              <AlertTriangle size={15} style={{ flexShrink: 0 }} />
+              <span>{loginError}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleAdminLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: '#334155', marginBottom: '6px' }}>
+                Admin ID / Username
+              </label>
+              <input
+                type="text"
+                placeholder="Enter Admin ID (e.g. Igwasim)"
+                value={loginId}
+                onChange={(e) => setLoginId(e.target.value)}
+                required
+                autoFocus
+                style={{
+                  width: '100%',
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '14px',
+                  outline: 'none',
+                  background: '#f8fafc',
+                }}
+              />
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: '#334155', marginBottom: '6px' }}>
+                Password
+              </label>
+              <input
+                type="password"
+                placeholder="Enter password"
+                value={loginPass}
+                onChange={(e) => setLoginPass(e.target.value)}
+                required
+                style={{
+                  width: '100%',
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '14px',
+                  outline: 'none',
+                  background: '#f8fafc',
+                }}
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loginLoading}
+              className="adm-btn adm-btn-emerald"
+              style={{
+                width: '100%',
+                height: '42px',
+                justifyContent: 'center',
+                fontSize: '14px',
+                fontWeight: 800,
+                marginTop: '6px',
+              }}
+            >
+              <Lock size={15} />
+              <span>{loginLoading ? 'Authenticating...' : 'Sign In to Gateway'}</span>
+            </button>
+          </form>
+
+          {onSwitchTab && (
+            <div style={{ marginTop: '22px', textAlign: 'center' }}>
+              <button
+                type="button"
+                onClick={() => onSwitchTab('GAMES')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#059669',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                &larr; Return to Live Platform
+              </button>
+            </div>
+          )}
+        </div>
+        <style>{DASHBOARD_CSS}</style>
+      </div>
+    );
+  }
 
   if (loading && !metrics) {
     return (
@@ -408,13 +625,117 @@ export default function ApiManagementDashboard({ onSwitchTab }) {
               <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} style={{ color: '#475569' }} />
               <span>Refresh</span>
             </button>
+
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: '#ecfdf5',
+                border: '1px solid #a7f3d0',
+                padding: '4px 10px',
+                borderRadius: '6px',
+                fontSize: '12px',
+                fontWeight: 700,
+                color: '#047857',
+              }}
+            >
+              <Lock size={12} />
+              <span>Admin: {adminUser}</span>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleAdminLogout}
+              className="adm-btn"
+              title="Sign Out Admin"
+              style={{ color: '#dc2626', borderColor: '#fecaca', background: '#fef2f2' }}
+            >
+              <LogOut size={13} />
+              <span>Logout</span>
+            </button>
           </div>
         </div>
       </header>
 
       {/* Main Content */}
       <main className="adm-container">
-        {/* Status Summary Bar */}
+        {/* Navigation Tabs Switcher */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            marginBottom: '20px',
+            borderBottom: '1px solid #d1fae5',
+            paddingBottom: '14px',
+            flexWrap: 'wrap',
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('FIREWALL')}
+            style={{
+              padding: '8px 18px',
+              borderRadius: '8px',
+              fontWeight: 800,
+              fontSize: '13px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              transition: 'all 0.15s ease',
+              background: activeSubTab === 'FIREWALL' ? '#047857' : '#ffffff',
+              color: activeSubTab === 'FIREWALL' ? '#ffffff' : '#475569',
+              border: activeSubTab === 'FIREWALL' ? '1px solid #047857' : '1px solid #cbd5e1',
+              boxShadow: activeSubTab === 'FIREWALL' ? '0 4px 12px rgba(4, 120, 87, 0.25)' : 'none',
+            }}
+          >
+            <Shield size={16} />
+            <span>Firewall &amp; IP Whitelist</span>
+            <span
+              style={{
+                fontSize: '10px',
+                padding: '1px 6px',
+                borderRadius: '999px',
+                background: activeSubTab === 'FIREWALL' ? 'rgba(255,255,255,0.25)' : '#ecfdf5',
+                color: activeSubTab === 'FIREWALL' ? '#ffffff' : '#059669',
+                fontWeight: 800,
+              }}
+            >
+              PROTECTED
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('TELEMETRY')}
+            style={{
+              padding: '8px 18px',
+              borderRadius: '8px',
+              fontWeight: 800,
+              fontSize: '13px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              transition: 'all 0.15s ease',
+              background: activeSubTab === 'TELEMETRY' ? '#047857' : '#ffffff',
+              color: activeSubTab === 'TELEMETRY' ? '#ffffff' : '#475569',
+              border: activeSubTab === 'TELEMETRY' ? '1px solid #047857' : '1px solid #cbd5e1',
+              boxShadow: activeSubTab === 'TELEMETRY' ? '0 4px 12px rgba(4, 120, 87, 0.25)' : 'none',
+            }}
+          >
+            <Activity size={16} />
+            <span>Multi-Origin Mesh Telemetry</span>
+          </button>
+        </div>
+
+        {activeSubTab === 'FIREWALL' ? (
+          <FirewallWhitelistView showToast={showToast} />
+        ) : (
+          <>
+            {/* Status Summary Bar */}
         <section className="adm-card adm-banner" style={{ borderColor: statusBorder }}>
           <div className="adm-banner-info">
             <div
@@ -936,6 +1257,8 @@ export default function ApiManagementDashboard({ onSwitchTab }) {
             </table>
           </div>
         </section>
+        </>
+        )}
       </main>
     </div>
   );
