@@ -23,18 +23,18 @@ export default function UniversalApiLogo({ size = 'md', align = 'left', onClick 
         textDecoration: 'none',
       }}
     >
-      {/* Sleek Emerald Frame Icon [U] with Live Core Pip */}
+      {/* Sleek Tomato Red Emblem with Off-White [U] & Sage Border */}
       <div
         style={{
           width: iconBoxSize,
           height: iconBoxSize,
-          borderRadius: '7px',
-          border: '1.5px solid #10b981',
-          background: 'linear-gradient(135deg, #091a14 0%, #040c09 100%)',
+          borderRadius: '8px',
+          border: '1.5px solid #9CAF88',
+          background: '#E8412C',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          boxShadow: '0 0 14px rgba(16, 185, 129, 0.22), inset 0 0 6px rgba(16, 185, 129, 0.15)',
+          boxShadow: '0 4px 12px rgba(232, 65, 44, 0.25)',
           flexShrink: 0,
           position: 'relative',
         }}
@@ -46,15 +46,15 @@ export default function UniversalApiLogo({ size = 'md', align = 'left', onClick 
           fill="none"
           xmlns="http://www.w3.org/2000/svg"
         >
-          {/* Modern geometric U path */}
+          {/* Modern geometric U path in Off-White */}
           <path
             d="M6.5 5.5V13C6.5 16.0376 8.96243 18.5 12 18.5C15.0376 18.5 17.5 16.0376 17.5 13V5.5"
-            stroke="#10b981"
-            strokeWidth="2.4"
+            stroke="#F7F5EF"
+            strokeWidth="2.5"
             strokeLinecap="round"
           />
-          {/* Signal / Data pip */}
-          <circle cx="12" cy="10" r="1.6" fill="#34d399" />
+          {/* Accent Core Pip */}
+          <circle cx="12" cy="10" r="1.6" fill="#F7F5EF" />
         </svg>
       </div>
 
@@ -71,10 +71,10 @@ export default function UniversalApiLogo({ size = 'md', align = 'left', onClick 
           style={{
             fontSize: titleSize,
             fontWeight: 900,
-            letterSpacing: '1px',
-            color: '#ffffff',
+            letterSpacing: '0.8px',
+            color: '#1e261f',
             textTransform: 'uppercase',
-            fontFamily: 'system-ui, -apple-system, sans-serif',
+            fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif",
             margin: 0,
             padding: 0,
           }}
@@ -86,7 +86,7 @@ export default function UniversalApiLogo({ size = 'md', align = 'left', onClick 
             fontSize: subtitleSize,
             fontWeight: 800,
             letterSpacing: subtitleSpacing,
-            color: '#10b981',
+            color: '#E8412C',
             textTransform: 'uppercase',
             marginTop: '3px',
             padding: 0,

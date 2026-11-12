@@ -1,3 +1,34 @@
+:root {
+  --color-sage: #9CAF88;
+  --color-offwhite: #F7F5EF;
+  --color-tomato: #E8412C;
+  --color-tomato-hover: #d23521;
+  --color-tomato-active: #be2e1b;
+  --color-text-dark: #1e261f;
+  --color-text-muted: #4e5a4d;
+  --color-text-subtle: #748373;
+  --color-sage-soft: #e3ebd9;
+  --color-sage-border: #cad7c3;
+  --color-card-bg: #FFFFFF;
+
+  --bg-app: #F7F5EF;
+  --bg-card: #FFFFFF;
+  --bg-header: #F7F5EF;
+  --bg-sage-fade: #e3ebd9;
+  --text-primary: #1e261f;
+  --text-secondary: #4e5a4d;
+  --text-muted: #748373;
+  --border-subtle: #cad7c3;
+  --border-card: #cad7c3;
+  --btn-tomato: #E8412C;
+  --btn-tomato-hover: #d23521;
+  --btn-tomato-active: #be2e1b;
+  --badge-active-bg: #e3ebd9;
+  --badge-active-text: #1e261f;
+  --badge-blocked-bg: #fbe8e5;
+  --badge-blocked-text: #E8412C;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -6,9 +37,10 @@
 
 body {
   font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-  background-color: #0b0f19;
-  color: #e2e8f0;
+  background-color: #F7F5EF;
+  color: #1e261f;
   overflow-x: hidden;
+  line-height: 1.5;
 }
 
 code, pre {
@@ -21,14 +53,14 @@ code, pre {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #0f172a;
+  background: #F7F5EF;
 }
 ::-webkit-scrollbar-thumb {
-  background: #334155;
+  background: #cad7c3;
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+  background: #9CAF88;
 }
 
 /* Odds Back & Lay Colors (Betfair Exchange standard) */

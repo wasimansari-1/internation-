@@ -85,10 +85,11 @@ export default function SportsOddsView({ onSwitchToCasino, onSelectMatch }) {
         alignItems: 'center',
         justifyContent: 'space-between',
         gap: '10px',
-        background: '#131b2e',
+        background: '#FFFFFF',
         padding: '14px',
         borderRadius: '12px',
-        border: '1px solid #1e293b'
+        border: '1.5px solid #cad7c3',
+        boxShadow: '0 4px 14px rgba(30, 38, 31, 0.05)'
       }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
           {sports.map(s => {
@@ -103,32 +104,30 @@ export default function SportsOddsView({ onSwitchToCasino, onSelectMatch }) {
                 style={{
                   padding: '7px 14px',
                   borderRadius: '20px',
-                  border: isCasinoPill 
-                    ? '1px solid #ec4899' 
-                    : isSelected 
-                    ? '1px solid #38bdf8' 
-                    : '1px solid #334155',
-                  background: isCasinoPill 
-                    ? '#831843' 
-                    : isSelected 
-                    ? '#0284c7' 
-                    : '#1e293b',
-                  color: '#ffffff',
+                  border: isSelected 
+                    ? '1.5px solid #E8412C' 
+                    : '1.5px solid #9CAF88',
+                  background: isSelected 
+                    ? '#E8412C' 
+                    : '#FFFFFF',
+                  color: isSelected ? '#FFFFFF' : '#1e261f',
                   fontWeight: 700,
                   fontSize: '12px',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '6px'
+                  gap: '6px',
+                  boxShadow: isSelected ? '0 2px 6px rgba(232, 65, 44, 0.25)' : 'none',
+                  transition: 'all 0.15s ease'
                 }}
               >
                 <span>{sName}</span>
                 <span style={{
-                  background: isCasinoPill ? '#be185d' : isSelected ? '#0369a1' : '#0f172a',
+                  background: isSelected ? '#be2e1b' : '#e3ebd9',
                   padding: '2px 6px',
                   borderRadius: '10px',
                   fontSize: '10px',
-                  color: '#e2e8f0'
+                  color: isSelected ? '#FFFFFF' : '#1e261f'
                 }}>
                   {isCasinoPill ? '42+ Live' : count}
                 </span>
@@ -140,7 +139,7 @@ export default function SportsOddsView({ onSwitchToCasino, onSelectMatch }) {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <div style={{ position: 'relative' }}>
-            <Search size={15} style={{ position: 'absolute', left: '10px', top: '9px', color: '#64748b' }} />
+            <Search size={15} style={{ position: 'absolute', left: '10px', top: '9px', color: '#748373' }} />
             <input
               type="text"
               placeholder="Search match..."
@@ -148,10 +147,10 @@ export default function SportsOddsView({ onSwitchToCasino, onSelectMatch }) {
               onChange={(e) => setSearch(e.target.value)}
               style={{
                 padding: '7px 12px 7px 32px',
-                background: '#0b0f19',
-                border: '1px solid #334155',
+                background: '#FFFFFF',
+                border: '1.5px solid #9CAF88',
                 borderRadius: '8px',
-                color: '#fff',
+                color: '#1e261f',
                 fontSize: '12px',
                 outline: 'none',
                 minWidth: '180px'
@@ -164,15 +163,16 @@ export default function SportsOddsView({ onSwitchToCasino, onSelectMatch }) {
             disabled={loading}
             style={{
               padding: '7px 12px',
-              background: '#1e293b',
-              border: '1px solid #334155',
+              background: '#FFFFFF',
+              border: '1.5px solid #cad7c3',
               borderRadius: '8px',
-              color: '#38bdf8',
+              color: '#1e261f',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '4px',
-              fontSize: '12px'
+              fontSize: '12px',
+              fontWeight: 700
             }}
           >
             <RefreshCw size={13} className={loading ? 'live-indicator' : ''} />
@@ -182,27 +182,27 @@ export default function SportsOddsView({ onSwitchToCasino, onSelectMatch }) {
       </div>
 
       {/* Matches Listing */}
-      <div style={{ background: '#131b2e', borderRadius: '12px', border: '1px solid #1e293b', overflow: 'hidden' }}>
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid #1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1.5px solid #cad7c3', overflow: 'hidden' }}>
+        <div style={{ padding: '12px 16px', borderBottom: '1.5px solid #cad7c3', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#e3ebd9' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Trophy size={16} style={{ color: '#38bdf8' }} />
-            <span style={{ fontWeight: 800, fontSize: '14px', color: '#f8fafc' }}>
-              Real Matches ({filteredEvents.length})
+            <Trophy size={16} style={{ color: '#E8412C' }} />
+            <span style={{ fontWeight: 800, fontSize: '14px', color: '#1e261f' }}>
+              Matches ({filteredEvents.length})
             </span>
           </div>
-          <span style={{ fontSize: '11px', color: '#64748b' }}>
-            Click match to open live rates & Bookmaker Bhav
+          <span style={{ fontSize: '11px', color: '#4e5a4d' }}>
+            Select a match to view live market odds &amp; rates
           </span>
         </div>
 
         {loading ? (
-          <div style={{ padding: '50px', textAlign: 'center', color: '#94a3b8' }}>
-            <RefreshCw size={24} className="live-indicator" style={{ margin: '0 auto 10px' }} />
-            <p>Fetching real scraped matches from nice444.com...</p>
+          <div style={{ padding: '50px', textAlign: 'center', color: '#4a5b52' }}>
+            <RefreshCw size={24} className="live-indicator" style={{ margin: '0 auto 10px', color: '#e04838' }} />
+            <p>Loading sports markets...</p>
           </div>
         ) : filteredEvents.length === 0 ? (
-          <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
-            No matches found for this sport in the exchange right now.
+          <div style={{ padding: '40px', textAlign: 'center', color: '#6f8076' }}>
+            No matches found for this sport at the moment.
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -221,8 +221,8 @@ export default function SportsOddsView({ onSwitchToCasino, onSelectMatch }) {
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     padding: '14px 16px',
-                    borderBottom: '1px solid #1a2234',
-                    background: idx % 2 === 0 ? '#111827' : '#0f172a',
+                    borderBottom: '1px solid #edf2ee',
+                    background: idx % 2 === 0 ? '#ffffff' : '#f7f9f7',
                     gap: '12px'
                   }}
                 >
@@ -233,39 +233,39 @@ export default function SportsOddsView({ onSwitchToCasino, onSelectMatch }) {
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                       {inPlay ? (
-                        <span style={{ background: '#059669', color: '#fff', fontSize: '10px', padding: '2px 6px', borderRadius: '4px', fontWeight: 800 }}>
+                        <span style={{ background: '#1b6e38', color: '#fff', fontSize: '10px', padding: '2px 6px', borderRadius: '4px', fontWeight: 800 }}>
                           LIVE
                         </span>
                       ) : (
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#94a3b8', fontSize: '11px' }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#6f8076', fontSize: '11px' }}>
                           <Clock size={12} />
                           {ev.eventTime ? new Date(ev.eventTime).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Upcoming'}
                         </span>
                       )}
-                      <span style={{ fontSize: '11px', color: '#38bdf8', fontWeight: 600 }}>
+                      <span style={{ fontSize: '11px', color: '#e04838', fontWeight: 700 }}>
                         {ev.tournamentName || 'Exchange Match'}
                       </span>
                     </div>
 
-                    <div style={{ fontSize: '14px', fontWeight: 800, color: '#f8fafc' }}>
+                    <div style={{ fontSize: '14px', fontWeight: 800, color: '#1c2721' }}>
                       {ev.eventName}
                     </div>
 
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
-                      <span>Event ID: <code style={{ color: '#94a3b8' }}>{ev.exEventId || ev._id}</code></span>
-                      {ev.isBookmakers && <span style={{ color: '#10b981', fontWeight: 600 }}>• Bookmakers</span>}
-                      {ev.isFancy && <span style={{ color: '#f59e0b', fontWeight: 600 }}>• Fancy</span>}
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', fontSize: '11px', color: '#6f8076', marginTop: '4px' }}>
+                      <span>Event ID: <code style={{ color: '#4a5b52' }}>{ev.exEventId || ev._id}</code></span>
+                      {ev.isBookmakers && <span style={{ color: '#1b6e38', fontWeight: 600 }}>• Bookmakers</span>}
+                      {ev.isFancy && <span style={{ color: '#d97706', fontWeight: 600 }}>• Fancy</span>}
                     </div>
                   </div>
 
                   {/* Quick Back/Lay Scraped Rates Preview */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     {status === 'CLOSED' ? (
-                      <span style={{ background: '#1e293b', color: '#94a3b8', fontSize: '11px', padding: '4px 8px', borderRadius: '4px', fontWeight: 700 }}>
+                      <span style={{ background: '#edf2ee', color: '#6f8076', fontSize: '11px', padding: '4px 8px', borderRadius: '4px', fontWeight: 700 }}>
                         CLOSED
                       </span>
                     ) : status === 'SUSPENDED' ? (
-                      <span style={{ background: '#7f1d1d', color: '#fca5a5', fontSize: '11px', padding: '4px 8px', borderRadius: '4px', fontWeight: 700 }}>
+                      <span style={{ background: '#fce8e6', color: '#c5221f', fontSize: '11px', padding: '4px 8px', borderRadius: '4px', fontWeight: 700 }}>
                         SUSPENDED
                       </span>
                     ) : runners.length >= 2 ? (
@@ -291,7 +291,7 @@ export default function SportsOddsView({ onSwitchToCasino, onSelectMatch }) {
                       onClick={() => onSelectMatch && onSelectMatch({ ...ev, sportId: String(ev.sportId || selectedSport) })}
                       style={{
                         padding: '8px 14px',
-                        background: '#0284c7',
+                        background: '#e04838',
                         border: 'none',
                         borderRadius: '6px',
                         color: '#fff',
@@ -301,7 +301,9 @@ export default function SportsOddsView({ onSwitchToCasino, onSelectMatch }) {
                         display: 'flex',
                         alignItems: 'center',
                         gap: '6px',
-                        height: '34px'
+                        height: '34px',
+                        boxShadow: '0 2px 6px rgba(224, 72, 56, 0.25)',
+                        transition: 'background 0.15s ease'
                       }}
                     >
                       <Eye size={13} />

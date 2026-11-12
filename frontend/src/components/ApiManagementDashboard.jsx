@@ -330,12 +330,12 @@ export default function ApiManagementDashboard({ onSwitchTab }) {
             position: 'relative',
             zIndex: 10,
             width: '100%',
-            maxWidth: '430px',
+            maxWidth: '420px',
             background: '#ffffff',
             borderRadius: '16px',
-            border: '1px solid #d1fae5',
+            border: '1.5px solid #cad7c3',
             padding: '36px 32px',
-            boxShadow: '0 20px 40px -15px rgba(5, 150, 105, 0.15)',
+            boxShadow: '0 20px 40px -15px rgba(30, 38, 31, 0.08)',
           }}
         >
           <div style={{ textAlign: 'center', marginBottom: '26px' }}>
@@ -344,21 +344,22 @@ export default function ApiManagementDashboard({ onSwitchTab }) {
                 width: '54px',
                 height: '54px',
                 borderRadius: '14px',
-                background: 'linear-gradient(135deg, #10b981 0%, #047857 100%)',
+                background: '#E8412C',
+                border: '1.5px solid #9CAF88',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 margin: '0 auto 14px',
-                boxShadow: '0 6px 18px rgba(16, 185, 129, 0.3)',
+                boxShadow: '0 6px 18px rgba(232, 65, 44, 0.28)',
                 color: '#ffffff',
               }}
             >
               <Lock size={26} />
             </div>
-            <h1 style={{ fontSize: '20px', fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0', letterSpacing: '-0.3px' }}>
+            <h1 style={{ fontSize: '20px', fontWeight: 800, color: '#1e261f', margin: '0 0 6px 0', letterSpacing: '-0.3px' }}>
               Gateway Enterprise Console
             </h1>
-            <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>
+            <p style={{ fontSize: '12px', color: '#4e5a4d', margin: 0 }}>
               SuperAdmin Authorization Required
             </p>
           </div>
@@ -366,9 +367,9 @@ export default function ApiManagementDashboard({ onSwitchTab }) {
           {loginError && (
             <div
               style={{
-                background: '#fef2f2',
-                border: '1px solid #fecaca',
-                color: '#dc2626',
+                background: '#fbe8e5',
+                border: '1px solid #E8412C',
+                color: '#E8412C',
                 borderRadius: '8px',
                 padding: '10px 14px',
                 fontSize: '12px',
@@ -386,7 +387,7 @@ export default function ApiManagementDashboard({ onSwitchTab }) {
 
           <form onSubmit={handleAdminLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: '#334155', marginBottom: '6px' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: '#1e261f', marginBottom: '6px' }}>
                 Admin ID / Username
               </label>
               <input
@@ -400,16 +401,17 @@ export default function ApiManagementDashboard({ onSwitchTab }) {
                   width: '100%',
                   padding: '10px 14px',
                   borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
+                  border: '1.5px solid #cad7c3',
                   fontSize: '14px',
                   outline: 'none',
-                  background: '#f8fafc',
+                  background: '#ffffff',
+                  color: '#1e261f',
                 }}
               />
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: '#334155', marginBottom: '6px' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: '#1e261f', marginBottom: '6px' }}>
                 Password
               </label>
               <input
@@ -422,10 +424,11 @@ export default function ApiManagementDashboard({ onSwitchTab }) {
                   width: '100%',
                   padding: '10px 14px',
                   borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
+                  border: '1.5px solid #cad7c3',
                   fontSize: '14px',
                   outline: 'none',
-                  background: '#f8fafc',
+                  background: '#ffffff',
+                  color: '#1e261f',
                 }}
               />
             </div>
@@ -433,7 +436,6 @@ export default function ApiManagementDashboard({ onSwitchTab }) {
             <button
               type="submit"
               disabled={loginLoading}
-              className="adm-btn adm-btn-emerald"
               style={{
                 width: '100%',
                 height: '42px',
@@ -441,6 +443,15 @@ export default function ApiManagementDashboard({ onSwitchTab }) {
                 fontSize: '14px',
                 fontWeight: 800,
                 marginTop: '6px',
+                background: '#E8412C',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: loginLoading ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                boxShadow: '0 4px 14px rgba(232, 65, 44, 0.28)',
               }}
             >
               <Lock size={15} />
@@ -1271,9 +1282,9 @@ const DASHBOARD_CSS = `
 .adm-root {
   position: relative;
   min-height: 100vh;
-  background: linear-gradient(180deg, #ecfdf5 0%, #f4fbf7 22%, #f8fafc 48%, #ffffff 100%);
-  color: #0f172a;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #f7f9f7;
+  color: #1c2721;
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   padding-bottom: 64px;
   overflow-x: hidden;
 }
@@ -1283,7 +1294,7 @@ const DASHBOARD_CSS = `
   left: 0;
   right: 0;
   height: 260px;
-  background: radial-gradient(ellipse 85% 100% at 50% 0%, rgba(16, 185, 129, 0.16) 0%, rgba(5, 150, 105, 0.06) 55%, rgba(255, 255, 255, 0) 100%);
+  background: radial-gradient(ellipse 85% 100% at 50% 0%, rgba(202, 215, 207, 0.4) 0%, rgba(247, 249, 247, 0) 100%);
   pointer-events: none;
   z-index: 0;
 }
@@ -1293,16 +1304,16 @@ const DASHBOARD_CSS = `
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: linear-gradient(180deg, #ecfdf5 0%, #f8fafc 45%, #ffffff 100%);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: #f7f9f7;
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
 }
 .adm-loading-box {
   text-align: center;
   background: #ffffff;
-  border: 1px solid #d1fae5;
+  border: 1px solid #cad7cf;
   border-radius: 14px;
   padding: 28px 32px;
-  box-shadow: 0 8px 24px rgba(5, 150, 105, 0.08);
+  box-shadow: 0 8px 24px rgba(28, 39, 33, 0.05);
 }
 
 /* Header */
@@ -1310,11 +1321,10 @@ const DASHBOARD_CSS = `
   position: sticky;
   top: 0;
   z-index: 50;
-  background: linear-gradient(180deg, rgba(236, 253, 245, 0.94) 0%, rgba(255, 255, 255, 0.94) 100%);
-  backdrop-filter: blur(10px);
-  border-top: 3px solid #10b981;
-  border-bottom: 1px solid #d1fae5;
-  box-shadow: 0 4px 16px -4px rgba(5, 150, 105, 0.08);
+  background: #edf2ee;
+  border-top: 3px solid #cad7cf;
+  border-bottom: 1px solid #cad7cf;
+  box-shadow: 0 2px 8px rgba(28, 39, 33, 0.04);
 }
 .adm-header-inner {
   max-width: 1400px;
@@ -1336,12 +1346,13 @@ const DASHBOARD_CSS = `
   width: 38px;
   height: 38px;
   border-radius: 10px;
-  background: linear-gradient(135deg, #10b981 0%, #047857 100%);
+  background: #edf2ee;
+  border: 1px solid #cad7cf;
+  color: #e04838;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.25);
 }
 .adm-brand-title-row {
   display: flex;
@@ -1352,13 +1363,13 @@ const DASHBOARD_CSS = `
 .adm-title {
   font-size: 17px;
   font-weight: 800;
-  color: #0f172a;
+  color: #1c2721;
   margin: 0;
   letter-spacing: -0.02em;
 }
 .adm-subtitle {
   font-size: 12px;
-  color: #475569;
+  color: #4a5b52;
   margin: 2px 0 0 0;
 }
 .adm-status-pill {
@@ -1398,9 +1409,9 @@ const DASHBOARD_CSS = `
 }
 .adm-card {
   background: #ffffff;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #d4ded7;
   border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+  box-shadow: 0 1px 4px rgba(28, 39, 33, 0.04);
   min-width: 0;
 }
 .adm-grid-4 {
@@ -1421,8 +1432,8 @@ const DASHBOARD_CSS = `
   justify-content: center;
   gap: 6px;
   background: #ffffff;
-  color: #1e293b;
-  border: 1px solid #cbd5e1;
+  color: #1c2721;
+  border: 1px solid #cad7cf;
   border-radius: 8px;
   padding: 8px 12px;
   font-size: 12px;
@@ -1432,36 +1443,42 @@ const DASHBOARD_CSS = `
   transition: background 0.15s, border-color 0.15s;
 }
 .adm-btn:hover:not(:disabled) {
-  background: #f8fafc;
-  border-color: #94a3b8;
+  background: #edf2ee;
+  border-color: #b2c2b7;
 }
 .adm-btn:disabled {
   opacity: 0.65;
   cursor: not-allowed;
 }
 .adm-btn-emerald {
-  background: #ecfdf5;
-  color: #047857;
-  border-color: #a7f3d0;
+  background: #edf2ee;
+  color: #1c2721;
+  border-color: #cad7cf;
 }
 .adm-btn-emerald:hover:not(:disabled) {
-  background: #d1fae5;
-  border-color: #6ee7b7;
+  background: #e2eae4;
+  border-color: #b2c2b7;
 }
 .adm-btn-primary {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  background: #e04838;
   color: #ffffff;
-  border-color: #059669;
-  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.22);
+  border: 1px solid #d43c2c;
+  box-shadow: 0 2px 8px rgba(224, 72, 56, 0.25);
 }
 .adm-btn-primary:hover:not(:disabled) {
-  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  background: #c93627;
+  border-color: #b52d1f;
 }
 .adm-btn-full {
   width: 100%;
   margin-top: 12px;
   padding: 10px 14px;
-  background: #f8fafc;
+  background: #edf2ee;
+  color: #1c2721;
+  border: 1px solid #cad7cf;
+}
+.adm-btn-full:hover:not(:disabled) {
+  background: #e2eae4;
 }
 
 /* Banner */
@@ -1472,7 +1489,8 @@ const DASHBOARD_CSS = `
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  background: linear-gradient(90deg, #ffffff 0%, #f0fdf4 100%);
+  background: #edf2ee;
+  border: 1px solid #cad7cf;
 }
 .adm-banner-info {
   display: flex;
@@ -1490,11 +1508,11 @@ const DASHBOARD_CSS = `
 .adm-banner-title {
   font-size: 14px;
   font-weight: 800;
-  color: #0f172a;
+  color: #1c2721;
 }
 .adm-banner-desc {
   font-size: 12px;
-  color: #475569;
+  color: #4a5b52;
   margin: 3px 0 0 0;
   line-height: 1.4;
 }
@@ -1502,16 +1520,16 @@ const DASHBOARD_CSS = `
   width: 36px;
   height: 36px;
   border-radius: 9px;
-  border: 1px solid #d1fae5;
+  border: 1px solid #cad7cf;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
 }
 .adm-icon-emerald {
-  background: #ecfdf5;
-  border-color: #a7f3d0;
-  color: #059669;
+  background: #e3ebd9;
+  border-color: #cad7cf;
+  color: #1e261f;
 }
 
 /* KPI */
@@ -1530,14 +1548,14 @@ const DASHBOARD_CSS = `
 .adm-label {
   font-size: 11px;
   font-weight: 700;
-  color: #64748b;
+  color: #4e5a4d;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 .adm-kpi-value {
   font-size: 24px;
   font-weight: 800;
-  color: #0f172a;
+  color: #1e261f;
   display: flex;
   align-items: baseline;
   gap: 6px;
@@ -1546,11 +1564,11 @@ const DASHBOARD_CSS = `
 .adm-kpi-unit {
   font-size: 12px;
   font-weight: 600;
-  color: #64748b;
+  color: #748373;
 }
 .adm-kpi-sub {
   font-size: 12px;
-  color: #475569;
+  color: #4e5a4d;
   margin-top: 4px;
 }
 .adm-truncate {
@@ -1561,22 +1579,22 @@ const DASHBOARD_CSS = `
 .adm-kpi-footer {
   margin-top: auto;
   padding-top: 10px;
-  border-top: 1px solid #f1f5f9;
+  border-top: 1px solid #cad7cf;
   display: flex;
   justify-content: space-between;
   font-size: 11px;
-  color: #64748b;
+  color: #4e5a4d;
 }
 .adm-progress-track {
   margin-top: 12px;
   height: 5px;
-  background: #ecfdf5;
+  background: #e3ebd9;
   border-radius: 3px;
   overflow: hidden;
 }
 .adm-progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+  background: #E8412C;
   transition: width 0.35s ease;
 }
 
@@ -1601,17 +1619,17 @@ const DASHBOARD_CSS = `
 .adm-h2 {
   font-size: 15px;
   font-weight: 800;
-  color: #0f172a;
+  color: #1e261f;
   margin: 0;
 }
 .adm-muted-sm {
   font-size: 12px;
-  color: #64748b;
+  color: #4e5a4d;
   margin: 2px 0 0 0;
 }
 .adm-muted-xs {
   font-size: 11px;
-  color: #64748b;
+  color: #748373;
 }
 .adm-tag {
   display: inline-flex;
@@ -1625,41 +1643,41 @@ const DASHBOARD_CSS = `
   white-space: nowrap;
 }
 .adm-tag-emerald {
-  background: #ecfdf5;
-  color: #047857;
-  border-color: #a7f3d0;
+  background: #e3ebd9;
+  color: #1e261f;
+  border-color: #9CAF88;
 }
 .adm-tag-slate {
-  background: #f1f5f9;
-  color: #334155;
-  border-color: #cbd5e1;
+  background: #F7F5EF;
+  color: #1e261f;
+  border-color: #cad7cf;
 }
 .adm-efficiency-chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
+  background: #e3ebd9;
+  border: 1px solid #cad7cf;
   border-radius: 8px;
   padding: 6px 12px;
   font-size: 12px;
-  color: #334155;
+  color: #1e261f;
 }
 .adm-efficiency-chip strong {
-  color: #047857;
+  color: #E8412C;
 }
 
 /* Subpanels */
 .adm-subpanel {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: #FFFFFF;
+  border: 1.5px solid #cad7c3;
   border-radius: 10px;
   padding: 16px;
   min-width: 0;
 }
 .adm-subpanel-mint {
-  background: linear-gradient(180deg, #f0fdf4 0%, #f8fafc 100%);
-  border-color: #bbf7d0;
+  background: #e3ebd9;
+  border-color: #cad7cf;
 }
 .adm-subpanel-head {
   display: flex;
@@ -1674,7 +1692,7 @@ const DASHBOARD_CSS = `
   gap: 7px;
   font-size: 13px;
   font-weight: 800;
-  color: #0f172a;
+  color: #1e261f;
 }
 .adm-big-stat {
   display: flex;
@@ -1682,13 +1700,13 @@ const DASHBOARD_CSS = `
   gap: 6px;
   font-size: 28px;
   font-weight: 800;
-  color: #0f172a;
+  color: #1e261f;
   margin-bottom: 12px;
 }
 .adm-big-stat small {
   font-size: 12px;
   font-weight: 600;
-  color: #64748b;
+  color: #748373;
 }
 .adm-kv-list {
   display: flex;
@@ -1701,14 +1719,14 @@ const DASHBOARD_CSS = `
   align-items: center;
   gap: 8px;
   padding: 7px 10px;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
+  background: #F7F5EF;
+  border: 1px solid #cad7cf;
   border-radius: 6px;
   font-size: 12px;
-  color: #475569;
+  color: #4e5a4d;
 }
 .adm-kv-row strong {
-  color: #0f172a;
+  color: #1e261f;
   text-align: right;
   overflow-wrap: anywhere;
 }
@@ -1729,28 +1747,28 @@ const DASHBOARD_CSS = `
   font-size: 11px;
   font-weight: 700;
   cursor: pointer;
-  border: 1px solid #cbd5e1;
-  background: #f8fafc;
-  color: #475569;
+  border: 1.5px solid #cad7c3;
+  background: #FFFFFF;
+  color: #1e261f;
 }
 .adm-mini-btn.is-active {
-  background: #ecfdf5;
-  border-color: #a7f3d0;
-  color: #047857;
+  background: #E8412C;
+  border-color: #E8412C;
+  color: #FFFFFF;
 }
 .adm-mini-btn.is-emerald {
-  background: #ecfdf5;
-  border-color: #a7f3d0;
-  color: #059669;
+  background: #e3ebd9;
+  border-color: #9CAF88;
+  color: #1e261f;
 }
 .adm-mini-btn.is-danger {
-  background: #fef2f2;
-  border-color: #fecaca;
-  color: #dc2626;
+  background: #fbe8e5;
+  border-color: #E8412C;
+  color: #E8412C;
 }
 .adm-lease-box {
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
+  background: #e3ebd9;
+  border: 1px solid #cad7cf;
   border-radius: 8px;
   padding: 10px 12px;
   margin-bottom: 12px;
@@ -1762,7 +1780,7 @@ const DASHBOARD_CSS = `
   flex-wrap: wrap;
   gap: 6px;
   font-size: 12px;
-  color: #0f172a;
+  color: #1e261f;
   margin-bottom: 8px;
 }
 .adm-profile-pills {
@@ -1780,17 +1798,17 @@ const DASHBOARD_CSS = `
   font-weight: 700;
   cursor: pointer;
   background: #ffffff;
-  color: #475569;
-  border: 1px solid #cbd5e1;
+  color: #4e5a4d;
+  border: 1px solid #cad7cf;
 }
 .adm-profile-pill.is-selected {
-  background: #059669;
+  background: #E8412C;
   color: #ffffff;
-  border-color: #059669;
+  border-color: #E8412C;
 }
 .adm-persona-card {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: #FFFFFF;
+  border: 1.5px solid #cad7c3;
   border-radius: 8px;
   padding: 12px 14px;
   margin-bottom: 12px;
@@ -1805,7 +1823,7 @@ const DASHBOARD_CSS = `
 .adm-persona-name {
   font-size: 16px;
   font-weight: 800;
-  color: #0f172a;
+  color: #1e261f;
   margin-top: 6px;
 }
 .adm-persona-meta {
@@ -1815,12 +1833,12 @@ const DASHBOARD_CSS = `
   gap: 8px;
   margin-top: 4px;
   font-size: 12px;
-  color: #475569;
+  color: #4e5a4d;
 }
 .adm-persona-meta code {
-  background: #ecfdf5;
-  color: #047857;
-  border: 1px solid #bbf7d0;
+  background: #e3ebd9;
+  color: #1e261f;
+  border: 1px solid #cad7cf;
   padding: 1px 6px;
   border-radius: 4px;
   font-weight: 700;
@@ -1835,29 +1853,29 @@ const DASHBOARD_CSS = `
   text-align: left;
   padding: 7px 8px;
   border-radius: 6px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #cad7cf;
   background: #ffffff;
   cursor: pointer;
   min-width: 0;
 }
 .adm-isp-btn.is-selected {
-  background: #ecfdf5;
-  border-color: #10b981;
+  background: #e3ebd9;
+  border-color: #9CAF88;
 }
 .adm-isp-name {
   font-size: 11px;
   font-weight: 700;
-  color: #0f172a;
+  color: #1e261f;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .adm-isp-btn.is-selected .adm-isp-name {
-  color: #047857;
+  color: #E8412C;
 }
 .adm-isp-city {
   font-size: 10px;
-  color: #64748b;
+  color: #748373;
 }
 
 /* Router */
@@ -1873,12 +1891,12 @@ const DASHBOARD_CSS = `
   gap: 8px;
   font-size: 12px;
   font-weight: 700;
-  color: #334155;
+  color: #1e261f;
   margin-bottom: 8px;
 }
 .adm-router-active {
   font-size: 11px;
-  color: #059669;
+  color: #E8412C;
   font-weight: 800;
 }
 .adm-router-grid {
@@ -1889,9 +1907,9 @@ const DASHBOARD_CSS = `
 .adm-mode-btn {
   padding: 9px 6px;
   border-radius: 7px;
-  border: 1px solid #cbd5e1;
-  background: #f8fafc;
-  color: #334155;
+  border: 1.5px solid #cad7c3;
+  background: #FFFFFF;
+  color: #1e261f;
   font-size: 10.5px;
   font-weight: 800;
   cursor: pointer;
@@ -1902,15 +1920,17 @@ const DASHBOARD_CSS = `
   transition: all 0.15s;
 }
 .adm-mode-btn.is-selected {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  border-color: #059669;
+  background: #E8412C;
+  border-color: #E8412C;
   color: #ffffff;
-  box-shadow: 0 2px 8px rgba(5, 150, 105, 0.2);
+  box-shadow: 0 2px 8px rgba(232, 65, 44, 0.25);
 }
 
 /* Origin Cards */
 .adm-origin-card {
   padding: 16px 18px;
+  background: #FFFFFF;
+  border: 1.5px solid #cad7c3;
 }
 .adm-origin-head {
   display: flex;
@@ -1928,16 +1948,16 @@ const DASHBOARD_CSS = `
 .adm-origin-title {
   font-size: 14px;
   font-weight: 800;
-  color: #0f172a;
+  color: #1e261f;
 }
 .adm-origin-domain {
   margin-bottom: 12px;
 }
 .adm-origin-domain code {
   font-size: 11px;
-  color: #047857;
-  background: #ecfdf5;
-  border: 1px solid #d1fae5;
+  color: #1e261f;
+  background: #e3ebd9;
+  border: 1px solid #cad7cf;
   padding: 2px 7px;
   border-radius: 4px;
   word-break: break-all;
@@ -1946,20 +1966,20 @@ const DASHBOARD_CSS = `
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: #F7F5EF;
+  border: 1px solid #cad7cf;
   border-radius: 8px;
   padding: 10px 12px;
 }
 .adm-stat-label {
   font-size: 10.5px;
-  color: #64748b;
+  color: #748373;
   font-weight: 600;
 }
 .adm-stat-val {
   font-size: 12px;
   font-weight: 700;
-  color: #0f172a;
+  color: #1e261f;
   margin-top: 2px;
   overflow-wrap: anywhere;
 }
@@ -1968,7 +1988,7 @@ const DASHBOARD_CSS = `
 .adm-table-wrap {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #cad7cf;
   border-radius: 8px;
 }
 .adm-table {
@@ -1979,19 +1999,19 @@ const DASHBOARD_CSS = `
   text-align: left;
 }
 .adm-table thead th {
-  background: #f0fdf4;
-  color: #475569;
+  background: #edf2ee;
+  color: #1c2721;
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   padding: 9px 12px;
-  border-bottom: 1px solid #d1fae5;
+  border-bottom: 1px solid #cad7cf;
 }
 .adm-table tbody td {
   padding: 9px 12px;
-  border-bottom: 1px solid #f1f5f9;
-  color: #334155;
+  border-bottom: 1px solid #edf2ee;
+  color: #1c2721;
 }
 .adm-table tbody tr:last-child td {
   border-bottom: none;
@@ -1999,7 +2019,7 @@ const DASHBOARD_CSS = `
 .adm-table-empty {
   padding: 24px 12px !important;
   text-align: center;
-  color: #64748b !important;
+  color: #4a5b52 !important;
 }
 .adm-mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -2009,7 +2029,7 @@ const DASHBOARD_CSS = `
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #0f172a !important;
+  color: #1c2721 !important;
 }
 .adm-method {
   font-weight: 700;

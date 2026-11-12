@@ -182,7 +182,7 @@ export default function UniverseGamesView() {
           margin: 0 auto;
           padding: 24px 16px;
           box-sizing: border-box;
-          color: #e2e8f0;
+          color: #1e261f;
         }
 
         .universe-games-toolbar {
@@ -193,7 +193,7 @@ export default function UniverseGamesView() {
           gap: 16px 20px;
           margin-bottom: 22px;
           padding-bottom: 16px;
-          border-bottom: 1px solid #1e293b;
+          border-bottom: 1.5px solid #cad7c3;
         }
 
         .universe-games-categories {
@@ -205,16 +205,16 @@ export default function UniverseGamesView() {
           overflow-x: auto;
           padding: 3px 2px 6px;
           scrollbar-width: thin;
-          scrollbar-color: #334155 transparent;
+          scrollbar-color: #cad7c3 transparent;
         }
 
         .universe-category-btn {
           flex: 0 0 auto;
-          border: 1px solid #263449;
+          border: 1.5px solid #9CAF88;
           border-radius: 999px;
           padding: 8px 18px;
-          background: #101827;
-          color: #a8b5c7;
+          background: #FFFFFF;
+          color: #1e261f;
           font-size: 13px;
           font-weight: 700;
           line-height: 1.2;
@@ -225,16 +225,17 @@ export default function UniverseGamesView() {
         }
 
         .universe-category-btn:hover {
-          border-color: #0d966e;
-          color: #d1fae5;
+          border-color: #9CAF88;
+          background: #e3ebd9;
+          color: #1e261f;
           transform: translateY(-1px);
         }
 
         .universe-category-btn.is-active {
-          border-color: #059669;
-          background: #064e3b;
-          color: #6ee7b7;
-          box-shadow: 0 3px 12px rgba(16, 185, 129, 0.12);
+          border-color: #E8412C;
+          background: #E8412C;
+          color: #FFFFFF;
+          box-shadow: 0 4px 14px rgba(232, 65, 44, 0.28);
         }
 
         .universe-games-search {
@@ -246,15 +247,15 @@ export default function UniverseGamesView() {
           box-sizing: border-box;
           min-height: 40px;
           padding: 0 14px;
-          border: 1px solid #263449;
+          border: 1.5px solid #9CAF88;
           border-radius: 999px;
-          background: #101827;
+          background: #FFFFFF;
           transition: border-color 160ms ease, box-shadow 160ms ease;
         }
 
         .universe-games-search:focus-within {
-          border-color: #059669;
-          box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+          border-color: #E8412C;
+          box-shadow: 0 0 0 3px rgba(232, 65, 44, 0.12);
         }
 
         .universe-games-search input {
@@ -263,12 +264,12 @@ export default function UniverseGamesView() {
           border: 0;
           outline: 0;
           background: transparent;
-          color: #f8fafc;
+          color: #1e261f;
           font-size: 13px;
         }
 
         .universe-games-search input::placeholder {
-          color: #718096;
+          color: #748373;
         }
 
         .universe-games-clear {
@@ -280,13 +281,13 @@ export default function UniverseGamesView() {
           border: 0;
           border-radius: 50%;
           background: transparent;
-          color: #94a3b8;
+          color: #748373;
           cursor: pointer;
         }
 
         .universe-games-clear:hover {
-          background: #263449;
-          color: #f8fafc;
+          background: #e3ebd9;
+          color: #1e261f;
         }
 
         /* Exactly 5 large cards per row on PC Desktop */
@@ -305,11 +306,11 @@ export default function UniverseGamesView() {
           aspect-ratio: 1 / 1.05;
           overflow: hidden;
           padding: 0;
-          border: 1px solid #263449;
+          border: 1.5px solid #cad7c3;
           border-radius: 14px;
           outline: none;
-          background: #0d131f;
-          box-shadow: 0 5px 18px rgba(0, 0, 0, 0.34);
+          background: #FFFFFF;
+          box-shadow: 0 4px 14px rgba(30, 38, 31, 0.08);
           cursor: pointer;
           isolation: isolate;
           transition: transform 180ms ease, border-color 180ms ease,
@@ -320,8 +321,8 @@ export default function UniverseGamesView() {
         .universe-game-card:focus-visible {
           z-index: 1;
           transform: translateY(-4px);
-          border-color: #10b981;
-          box-shadow: 0 12px 28px rgba(16, 185, 129, 0.2);
+          border-color: #E8412C;
+          box-shadow: 0 10px 26px rgba(232, 65, 44, 0.22);
         }
 
         .universe-game-card img {
@@ -433,7 +434,7 @@ export default function UniverseGamesView() {
       <div style={{ marginBottom: "20px" }}>
         <div
           style={{
-            color: "#10b981",
+            color: "#9CAF88",
             fontSize: "11px",
             fontWeight: 800,
             letterSpacing: "2.5px",
@@ -447,7 +448,7 @@ export default function UniverseGamesView() {
           style={{
             fontSize: "clamp(24px, 4vw, 32px)",
             fontWeight: 900,
-            color: "#ffffff",
+            color: "#1e261f",
             letterSpacing: "-0.5px",
             textTransform: "uppercase",
             margin: "0 0 8px 0",
@@ -458,7 +459,7 @@ export default function UniverseGamesView() {
         <p
           style={{
             fontSize: "13.5px",
-            color: "#94a3b8",
+            color: "#4e5a4d",
             margin: 0,
             lineHeight: 1.5,
             maxWidth: "600px",

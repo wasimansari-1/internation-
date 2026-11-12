@@ -419,13 +419,13 @@ class SecurityService {
   }
 
   /**
-   * Toggle Whitelist Status (ACTIVE / PAUSED)
+   * Toggle Whitelist Status (ACTIVE / BLOCKED)
    */
   toggleWhitelistedIp(ip, status) {
     const cleanIp = this.normalizeIp(ip);
     const entry = this.whitelist.get(cleanIp);
     if (!entry) throw new Error("IP not found in whitelist.");
-    entry.status = status || (entry.status === "ACTIVE" ? "PAUSED" : "ACTIVE");
+    entry.status = status || (entry.status === "ACTIVE" ? "BLOCKED" : "ACTIVE");
     entry.updatedAt = new Date().toISOString();
     this.saveWhitelistToDisk();
     return entry;

@@ -182,45 +182,45 @@ export default function App() {
       <div
         style={{
           minHeight: "100vh",
-          backgroundColor: "#070b12",
-          backgroundImage: "radial-gradient(ellipse at 50% 20%, rgba(16, 185, 129, 0.08) 0%, transparent 60%)",
+          backgroundColor: "#F7F5EF",
+          backgroundImage: "radial-gradient(ellipse at 50% 20%, rgba(156, 175, 136, 0.25) 0%, transparent 70%)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           padding: "20px",
           fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif",
-          color: "#f8fafc",
+          color: "#1e261f",
         }}
       >
         <div
           style={{
             width: "100%",
             maxWidth: "380px",
-            backgroundColor: "#0d141f",
-            border: "1px solid #1e293b",
-            borderRadius: "16px",
+            backgroundColor: "#FFFFFF",
+            border: "1.5px solid #cad7c3",
+            borderRadius: "14px",
             padding: "32px 28px",
-            boxShadow: "0 20px 50px rgba(0, 0, 0, 0.6)",
+            boxShadow: "0 12px 35px rgba(30, 38, 31, 0.06)",
           }}
         >
           <div style={{ textAlign: "center", marginBottom: "26px" }}>
             <div style={{ display: "inline-flex", marginBottom: "14px" }}>
               <UniversalApiLogo />
             </div>
-            <h1 style={{ fontSize: "18px", fontWeight: 800, margin: "0 0 6px 0", letterSpacing: "-0.01em" }}>
+            <h1 style={{ fontSize: "18px", fontWeight: 800, margin: "0 0 6px 0", color: "#1e261f", letterSpacing: "-0.01em" }}>
               Universal API Gateway
             </h1>
-            <p style={{ fontSize: "12px", color: "#64748b", margin: 0, fontWeight: 500 }}>
-              Authorized Operator & Partner Sign In
+            <p style={{ fontSize: "12px", color: "#4e5a4d", margin: 0, fontWeight: 500 }}>
+              Operator Authentication
             </p>
           </div>
 
           {loginError && (
             <div
               style={{
-                backgroundColor: "rgba(239, 68, 68, 0.12)",
-                border: "1px solid rgba(239, 68, 68, 0.3)",
-                color: "#f87171",
+                backgroundColor: "#fbe8e5",
+                border: "1px solid #E8412C",
+                color: "#E8412C",
                 padding: "10px 14px",
                 borderRadius: "8px",
                 fontSize: "12px",
@@ -241,7 +241,7 @@ export default function App() {
                   display: "block",
                   fontSize: "11px",
                   fontWeight: 700,
-                  color: "#94a3b8",
+                  color: "#4e5a4d",
                   textTransform: "uppercase",
                   letterSpacing: "0.05em",
                   marginBottom: "6px",
@@ -260,18 +260,18 @@ export default function App() {
                   style={{
                     width: "100%",
                     padding: "11px 14px 11px 36px",
-                    backgroundColor: "#070b12",
-                    border: "1px solid #1e293b",
+                    backgroundColor: "#FFFFFF",
+                    border: "1.5px solid #cad7c3",
                     borderRadius: "8px",
-                    color: "#f8fafc",
+                    color: "#1e261f",
                     fontSize: "13px",
                     outline: "none",
                     boxSizing: "border-box",
                   }}
-                  onFocus={(e) => (e.target.style.borderColor = "#10b981")}
-                  onBlur={(e) => (e.target.style.borderColor = "#1e293b")}
+                  onFocus={(e) => (e.target.style.borderColor = "#E8412C")}
+                  onBlur={(e) => (e.target.style.borderColor = "#cad7c3")}
                 />
-                <User size={15} color="#64748b" style={{ position: "absolute", left: "12px", top: "13px" }} />
+                <User size={15} color="#748373" style={{ position: "absolute", left: "12px", top: "13px" }} />
               </div>
             </div>
 
@@ -281,7 +281,7 @@ export default function App() {
                   display: "block",
                   fontSize: "11px",
                   fontWeight: 700,
-                  color: "#94a3b8",
+                  color: "#4e5a4d",
                   textTransform: "uppercase",
                   letterSpacing: "0.05em",
                   marginBottom: "6px",
@@ -299,18 +299,18 @@ export default function App() {
                   style={{
                     width: "100%",
                     padding: "11px 14px 11px 36px",
-                    backgroundColor: "#070b12",
-                    border: "1px solid #1e293b",
+                    backgroundColor: "#FFFFFF",
+                    border: "1.5px solid #cad7c3",
                     borderRadius: "8px",
-                    color: "#f8fafc",
+                    color: "#1e261f",
                     fontSize: "13px",
                     outline: "none",
                     boxSizing: "border-box",
                   }}
-                  onFocus={(e) => (e.target.style.borderColor = "#10b981")}
-                  onBlur={(e) => (e.target.style.borderColor = "#1e293b")}
+                  onFocus={(e) => (e.target.style.borderColor = "#E8412C")}
+                  onBlur={(e) => (e.target.style.borderColor = "#cad7c3")}
                 />
-                <Lock size={15} color="#64748b" style={{ position: "absolute", left: "12px", top: "13px" }} />
+                <Lock size={15} color="#748373" style={{ position: "absolute", left: "12px", top: "13px" }} />
               </div>
             </div>
 
@@ -321,10 +321,10 @@ export default function App() {
                 marginTop: "6px",
                 width: "100%",
                 padding: "11px",
-                backgroundColor: loginLoading ? "#047857" : "#10b981",
+                backgroundColor: loginLoading ? "#be2e1b" : "#E8412C",
                 border: "none",
                 borderRadius: "8px",
-                color: "#ffffff",
+                color: "#FFFFFF",
                 fontSize: "13px",
                 fontWeight: 700,
                 cursor: loginLoading ? "not-allowed" : "pointer",
@@ -332,7 +332,8 @@ export default function App() {
                 alignItems: "center",
                 justifyContent: "center",
                 gap: "8px",
-                boxShadow: "0 4px 14px rgba(16, 185, 129, 0.35)",
+                boxShadow: "0 4px 14px rgba(232, 65, 44, 0.28)",
+                transition: "background 0.15s",
               }}
             >
               {loginLoading ? "Verifying..." : "Sign In to Gateway"}
@@ -344,24 +345,24 @@ export default function App() {
             style={{
               marginTop: "22px",
               paddingTop: "14px",
-              borderTop: "1px solid #1e293b",
+              borderTop: "1px solid #cad7c3",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               gap: "6px",
               fontSize: "11px",
-              color: "#475569",
+              color: "#748373",
             }}
           >
-            <ShieldCheck size={13} color="#10b981" />
-            <span>256-Bit Cryptographic Firewall Protected</span>
+            <ShieldCheck size={13} color="#9CAF88" />
+            <span>Encrypted Gateway Session</span>
           </div>
         </div>
       </div>
     );
   }
 
-  // Dedicated Full-Page Senior Enterprise View for Admin/Gateway (White & Fade Blue, No Consumer Header)
+  // Dedicated View for Admin/Gateway
   if (activeTab === "GATEWAY") {
     return <ApiManagementDashboard onSwitchTab={switchTab} />;
   }
@@ -370,18 +371,18 @@ export default function App() {
     <div
       style={{
         minHeight: "100vh",
-        background: "#080b11",
-        color: "#f8fafc",
+        background: "#F7F5EF",
+        color: "#1e261f",
         display: "flex",
         flexDirection: "column",
         fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif",
       }}
     >
-      {/* Top Header - Pure API Provider Theme */}
+      {/* Top Header - Pure Off-White & Sage Theme */}
       <header
         style={{
-          background: "#0a0e14",
-          borderBottom: "1px solid #10b981",
+          background: "#F7F5EF",
+          borderBottom: "1.5px solid #cad7c3",
           position: "sticky",
           top: 0,
           zIndex: 100,
@@ -394,7 +395,7 @@ export default function App() {
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            height: "56px",
+            height: "58px",
           }}
         >
           {/* Left: Brand Emblem Logo */}
@@ -409,7 +410,7 @@ export default function App() {
             style={{
               display: "flex",
               alignItems: "center",
-              gap: "20px",
+              gap: "24px",
               height: "100%",
             }}
           >
@@ -422,19 +423,19 @@ export default function App() {
                   style={{
                     background: "none",
                     border: "none",
-                    color: isActive ? "#34d399" : "#94a3b8",
+                    color: isActive ? "#E8412C" : "#4e5a4d",
                     fontWeight: 800,
-                    fontSize: "12px",
-                    letterSpacing: "0.8px",
+                    fontSize: "13px",
+                    letterSpacing: "0.5px",
                     cursor: "pointer",
                     height: "100%",
                     display: "flex",
                     alignItems: "center",
                     borderBottom: isActive
-                      ? "2px solid #10b981"
-                      : "2px solid transparent",
-                    transition: "all 0.15s",
-                    padding: "0 4px",
+                      ? "2.5px solid #E8412C"
+                      : "2.5px solid transparent",
+                    transition: "all 0.15s ease",
+                    padding: "0 6px",
                     whiteSpace: "nowrap",
                   }}
                 >
@@ -450,23 +451,23 @@ export default function App() {
               style={{
                 background: "none",
                 border: "none",
-                color: "#64748b",
+                color: "#748373",
                 cursor: "pointer",
                 display: "flex",
                 alignItems: "center",
                 padding: "4px",
                 transition: "color 0.15s",
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = "#34d399")}
-              onMouseLeave={(e) => (e.currentTarget.style.color = "#64748b")}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "#E8412C")}
+              onMouseLeave={(e) => (e.currentTarget.style.color = "#748373")}
             >
               <RotateCw size={14} />
             </button>
 
             {/* Operator Session Badge & Logout */}
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "10px", paddingLeft: "10px", borderLeft: "1px solid #1e293b" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "5px", padding: "4px 8px", background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)", borderRadius: "6px", fontSize: "11px", fontWeight: 700, color: "#34d399" }}>
-                <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#10b981", display: "inline-block" }}></span>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "10px", paddingLeft: "10px", borderLeft: "1.5px solid #cad7c3" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "5px 10px", background: "#e3ebd9", border: "1px solid #9CAF88", borderRadius: "6px", fontSize: "11px", fontWeight: 800, color: "#1e261f" }}>
+                <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#9CAF88", display: "inline-block" }}></span>
                 {operatorUser}
               </div>
               <button
@@ -475,7 +476,7 @@ export default function App() {
                 style={{
                   background: "none",
                   border: "none",
-                  color: "#94a3b8",
+                  color: "#748373",
                   cursor: "pointer",
                   display: "flex",
                   alignItems: "center",
@@ -483,8 +484,8 @@ export default function App() {
                   borderRadius: "4px",
                   transition: "color 0.15s",
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = "#ef4444")}
-                onMouseLeave={(e) => (e.currentTarget.style.color = "#94a3b8")}
+                onMouseEnter={(e) => (e.currentTarget.style.color = "#E8412C")}
+                onMouseLeave={(e) => (e.currentTarget.style.color = "#748373")}
               >
                 <LogOut size={14} />
               </button>
@@ -499,13 +500,13 @@ export default function App() {
             style={{
               background: "none",
               border: "none",
-              color: "#f8fafc",
+              color: "#1c2721",
               cursor: "pointer",
               display: "none",
               padding: "6px",
             }}
           >
-            {mobileMenuOpen ? <X size={22} color="#10b981" /> : <Menu size={22} />}
+            {mobileMenuOpen ? <X size={22} color="#e04838" /> : <Menu size={22} />}
           </button>
         </div>
       </header>
@@ -514,8 +515,8 @@ export default function App() {
       {mobileMenuOpen && (
         <div
           style={{
-            backgroundColor: "#0d141d",
-            borderBottom: "1px solid #1e293b",
+            backgroundColor: "#edf2ee",
+            borderBottom: "1px solid #cad7cf",
             position: "sticky",
             top: "56px",
             zIndex: 99,
@@ -538,11 +539,11 @@ export default function App() {
                   key={tab}
                   onClick={() => switchTab(tab)}
                   style={{
-                    background: isActive ? "#064e3b" : "transparent",
-                    border: isActive ? "1px solid #059669" : "1px solid #1e293b",
+                    background: isActive ? "#fce8e6" : "#ffffff",
+                    border: isActive ? "1px solid #f5c2be" : "1px solid #cad7cf",
                     borderRadius: "8px",
-                    color: isActive ? "#34d399" : "#cbd5e1",
-                    fontWeight: 800,
+                    color: isActive ? "#c5221f" : "#4a5b52",
+                    fontWeight: 700,
                     fontSize: "13px",
                     padding: "10px 14px",
                     textAlign: "left",
@@ -572,22 +573,22 @@ export default function App() {
               style={{
                 marginTop: "6px",
                 paddingTop: "10px",
-                borderTop: "1px solid #1e293b",
+                borderTop: "1px solid #cad7cf",
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "#34d399", fontWeight: 700 }}>
-                <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#10b981" }} />
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "#1b6e38", fontWeight: 700 }}>
+                <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#1b6e38" }} />
                 <span>{operatorUser}</span>
               </div>
               <button
                 onClick={handleClientLogout}
                 style={{
-                  background: "rgba(239, 68, 68, 0.15)",
-                  border: "1px solid rgba(239, 68, 68, 0.3)",
-                  color: "#f87171",
+                  background: "#e04838",
+                  border: "none",
+                  color: "#ffffff",
                   borderRadius: "6px",
                   padding: "6px 12px",
                   fontSize: "12px",
@@ -596,6 +597,7 @@ export default function App() {
                   display: "flex",
                   alignItems: "center",
                   gap: "6px",
+                  boxShadow: "0 2px 6px rgba(224, 72, 56, 0.25)",
                 }}
               >
                 <LogOut size={13} />
@@ -670,7 +672,7 @@ export default function App() {
                   style={{
                     fontSize: "22px",
                     fontWeight: 800,
-                    color: "#f8fafc",
+                    color: "#1c2721",
                     letterSpacing: "-0.3px",
                     margin: 0,
                   }}
@@ -704,7 +706,7 @@ export default function App() {
                 style={{
                   fontSize: "22px",
                   fontWeight: 800,
-                  color: "#f8fafc",
+                  color: "#1c2721",
                   letterSpacing: "-0.3px",
                   margin: 0,
                 }}
@@ -717,12 +719,12 @@ export default function App() {
         )}
       </main>
 
-      {/* Footer matching user reference image media_1794350652170_5456cb32.png */}
+      {/* Footer - Faded Sage & Off-White Professional Theme */}
       <footer
         style={{
-          backgroundColor: "#070b10",
-          borderTop: "1px solid #10b981",
-          padding: "44px 0 36px",
+          backgroundColor: "#edf2ee",
+          borderTop: "1px solid #cad7cf",
+          padding: "36px 0 28px",
           marginTop: "auto",
           width: "100%",
         }}
@@ -738,7 +740,7 @@ export default function App() {
           }}
         >
           {/* Center Logo */}
-          <div style={{ marginBottom: "14px" }}>
+          <div style={{ marginBottom: "12px" }}>
             <UniversalApiLogo
               size="lg"
               align="center"
@@ -749,15 +751,15 @@ export default function App() {
           {/* Tagline */}
           <p
             style={{
-              color: "#8e9eb3",
+              color: "#4a5b52",
               fontSize: "13px",
               lineHeight: 1.5,
-              margin: "0 0 22px 0",
+              margin: "0 0 18px 0",
               maxWidth: "520px",
               fontFamily: "system-ui, -apple-system, sans-serif",
             }}
           >
-            Live tables, sports odds, TV, and a single partner contract.
+            Live tables, sports odds, TV, and unified partner integration.
           </p>
 
           {/* Footer Navigation Links */}
@@ -766,7 +768,7 @@ export default function App() {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              gap: "28px",
+              gap: "24px",
               flexWrap: "wrap",
             }}
           >
@@ -779,18 +781,18 @@ export default function App() {
                   style={{
                     background: "none",
                     border: "none",
-                    color: isActive ? "#34d399" : "#cbd5e1",
+                    color: isActive ? "#e04838" : "#4a5b52",
                     fontWeight: 800,
                     fontSize: "12px",
-                    letterSpacing: "1.2px",
+                    letterSpacing: "1px",
                     textTransform: "uppercase",
                     cursor: "pointer",
                     padding: "4px 8px",
                     transition: "color 0.15s ease",
                   }}
-                  onMouseEnter={(e) => (e.currentTarget.style.color = "#34d399")}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = "#e04838")}
                   onMouseLeave={(e) =>
-                    (e.currentTarget.style.color = isActive ? "#34d399" : "#cbd5e1")
+                    (e.currentTarget.style.color = isActive ? "#e04838" : "#4a5b52")
                   }
                 >
                   {tab}

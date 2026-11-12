@@ -120,11 +120,12 @@ export default function FirewallWhitelistView({ showToast }) {
     }
   };
 
-  const handleToggleStatus = async (ip) => {
+  const handleToggleBlock = async (ip, targetStatus) => {
     try {
-      const res = await axios.post('/api/admin/security/whitelist/toggle', { ip });
+      const res = await axios.post('/api/admin/security/whitelist/toggle', { ip, status: targetStatus });
       if (res.data?.success) {
-        showToast('Status Updated', `IP ${ip} is now ${res.data.partner?.status}`, 'info');
+        const actionWord = targetStatus === 'BLOCKED' ? 'Blocked' : 'Unblocked';
+        showToast(`IP ${actionWord}`, `IP ${ip} is now ${targetStatus}`, targetStatus === 'BLOCKED' ? 'warning' : 'success');
         fetchSecurityOverview(true);
       }
     } catch (err) {
@@ -229,9 +230,9 @@ export default function FirewallWhitelistView({ showToast }) {
         <div className="adm-card adm-kpi">
           <div className="adm-kpi-top">
             <span className="adm-label">Whitelisted IPs</span>
-            <ShieldCheck size={18} style={{ color: '#059669' }} />
+            <ShieldCheck size={18} style={{ color: '#1b6e38' }} />
           </div>
-          <div className="adm-kpi-value" style={{ color: '#047857' }}>
+          <div className="adm-kpi-value" style={{ color: '#1c2721' }}>
             {stats.totalWhitelistedIps || whitelist.length}
             <span className="adm-kpi-unit">Authorized</span>
           </div>
@@ -239,51 +240,51 @@ export default function FirewallWhitelistView({ showToast }) {
             Active Partners: <strong>{stats.totalActivePartners || whitelist.length}</strong>
           </div>
           <div className="adm-kpi-footer">
-            <span>Access Guard</span>
-            <span style={{ color: '#059669', fontWeight: 700 }}>ACTIVE</span>
+            <span>Status</span>
+            <span style={{ color: '#1b6e38', fontWeight: 700 }}>ACTIVE</span>
           </div>
         </div>
 
         {/* KPI 2: Blocked Bypass Attempts */}
         <div className="adm-card adm-kpi">
           <div className="adm-kpi-top">
-            <span className="adm-label">Blocked Bypass Attempts</span>
-            <ShieldAlert size={18} style={{ color: (stats.totalBlocked || 0) > 0 ? '#dc2626' : '#059669' }} />
+            <span className="adm-label">Blocked Requests</span>
+            <ShieldAlert size={18} style={{ color: (stats.totalBlocked || 0) > 0 ? '#e04838' : '#1b6e38' }} />
           </div>
           <div
             className="adm-kpi-value"
-            style={{ color: (stats.totalBlocked || 0) > 0 ? '#dc2626' : '#047857' }}
+            style={{ color: (stats.totalBlocked || 0) > 0 ? '#e04838' : '#1c2721' }}
           >
             {stats.totalBlocked || 0}
-            <span className="adm-kpi-unit">Blocked</span>
+            <span className="adm-kpi-unit">Denied</span>
           </div>
           <div className="adm-kpi-sub">
             {(stats.totalBlocked || 0) > 0
               ? 'Unauthorized IP access denied (403)'
-              : 'Zero unauthorized leaks detected'}
+              : 'All incoming traffic authorized'}
           </div>
           <div className="adm-kpi-footer">
-            <span>Intrusion Shield</span>
-            <span style={{ color: '#047857', fontWeight: 700 }}>ARMED</span>
+            <span>Filter</span>
+            <span style={{ color: '#1b6e38', fontWeight: 700 }}>ACTIVE</span>
           </div>
         </div>
 
         {/* KPI 3: Connected Client Domains */}
         <div className="adm-card adm-kpi">
           <div className="adm-kpi-top">
-            <span className="adm-label">Active Client Domains</span>
-            <Globe size={18} style={{ color: '#059669' }} />
+            <span className="adm-label">Active Domains</span>
+            <Globe size={18} style={{ color: '#1b6e38' }} />
           </div>
-          <div className="adm-kpi-value">
+          <div className="adm-kpi-value" style={{ color: '#1c2721' }}>
             {connectedDomains.length || 1}
             <span className="adm-kpi-unit">Domains</span>
           </div>
           <div className="adm-kpi-sub">
-            Real-time Origin / Referer Traffic Tracking
+            Origin and Referer domain monitoring
           </div>
           <div className="adm-kpi-footer">
-            <span>Origin Sensor</span>
-            <span style={{ color: '#059669', fontWeight: 700 }}>LIVE</span>
+            <span>Tracker</span>
+            <span style={{ color: '#1b6e38', fontWeight: 700 }}>RUNNING</span>
           </div>
         </div>
 
@@ -291,22 +292,22 @@ export default function FirewallWhitelistView({ showToast }) {
         <div className="adm-card adm-kpi">
           <div className="adm-kpi-top">
             <span className="adm-label">Firewall Mode</span>
-            <Lock size={18} style={{ color: '#059669' }} />
+            <Lock size={18} style={{ color: '#1b6e38' }} />
           </div>
-          <div className="adm-kpi-value" style={{ color: '#047857', fontSize: '19px' }}>
+          <div className="adm-kpi-value" style={{ color: '#1c2721', fontSize: '19px' }}>
             {firewallConfig.strictMode ? 'STRICT GUARD' : 'PERMISSIVE'}
           </div>
           <div className="adm-kpi-sub">
-            Payload Encryption: <strong>{firewallConfig.payloadEncryption ? 'AES-256 (Diamond)' : 'OFF'}</strong>
+            Payload Encryption: <strong>{firewallConfig.payloadEncryption ? 'AES-256' : 'OFF'}</strong>
           </div>
           <div className="adm-kpi-footer">
-            <span>Network Sealed</span>
-            <span style={{ color: '#059669', fontWeight: 700 }}>100% HARDENED</span>
+            <span>Security Policy</span>
+            <span style={{ color: '#1b6e38', fontWeight: 700 }}>ENFORCED</span>
           </div>
         </div>
       </section>
 
-      {/* Global Security Policy & Diamond-Grade Encryption Controls */}
+      {/* Security Policies */}
       <section className="adm-card adm-section">
         <div className="adm-section-head">
           <div className="adm-section-title-group">
@@ -314,11 +315,10 @@ export default function FirewallWhitelistView({ showToast }) {
               <Sliders size={16} />
             </div>
             <div>
-              <h2 className="adm-h2">Global Firewall &amp; Transmission Encryption</h2>
-              <p className="adm-muted-sm">Hardened edge policy rules protecting production routes</p>
+              <h2 className="adm-h2">Security &amp; Firewall Policies</h2>
+              <p className="adm-muted-sm">Control access authorization and payload encryption rules</p>
             </div>
           </div>
-          <span className="adm-tag adm-tag-emerald">ENTERPRISE GRADE</span>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px', marginTop: '12px' }}>
@@ -327,89 +327,122 @@ export default function FirewallWhitelistView({ showToast }) {
             style={{
               padding: '16px',
               borderRadius: '10px',
-              border: firewallConfig.strictMode ? '1px solid #10b981' : '1px solid #e2e8f0',
-              background: firewallConfig.strictMode ? '#f0fdf4' : '#f8fafc',
+              border: firewallConfig.strictMode ? '1px solid #d4ded7' : '1px solid #e2e8f0',
+              background: '#ffffff',
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
             }}
           >
             <div>
-              <div style={{ fontWeight: 800, fontSize: '13px', color: '#0f172a' }}>
-                Strict IP Whitelist Enforcement
+              <div style={{ fontWeight: 800, fontSize: '13px', color: '#1c2721' }}>
+                Strict IP Whitelist
               </div>
-              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-                Only authorized whitelisted IPs can call API endpoints. External unwhitelisted IPs get instant 403 Forbidden.
+              <div style={{ fontSize: '11px', color: '#4d5e54', marginTop: '2px' }}>
+                Only authorized IP addresses can access protected API endpoints.
               </div>
             </div>
             <button
               type="button"
               disabled={updatingConfig}
               onClick={() => handleUpdateFirewallConfig({ strictMode: !firewallConfig.strictMode })}
-              className={`adm-mini-btn ${firewallConfig.strictMode ? 'is-emerald' : 'is-danger'}`}
-              style={{ marginLeft: '12px', flexShrink: 0 }}
+              style={{
+                marginLeft: '12px',
+                flexShrink: 0,
+                background: firewallConfig.strictMode ? '#e04838' : '#e2eae4',
+                color: firewallConfig.strictMode ? '#ffffff' : '#4a5b52',
+                border: 'none',
+                borderRadius: '6px',
+                padding: '6px 14px',
+                fontSize: '11px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                transition: 'background 0.15s',
+              }}
             >
-              <span>{firewallConfig.strictMode ? 'STRICT (ON)' : 'PERMISSIVE'}</span>
+              <span>{firewallConfig.strictMode ? 'STRICT (ON)' : 'OFF'}</span>
             </button>
           </div>
 
-          {/* Rule 2: Diamond Payload Encryption */}
+          {/* Rule 2: Payload Encryption */}
           <div
             style={{
               padding: '16px',
               borderRadius: '10px',
-              border: firewallConfig.payloadEncryption ? '1px solid #10b981' : '1px solid #e2e8f0',
-              background: firewallConfig.payloadEncryption ? '#f0fdf4' : '#f8fafc',
+              border: firewallConfig.payloadEncryption ? '1px solid #d4ded7' : '1px solid #e2e8f0',
+              background: '#ffffff',
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
             }}
           >
             <div>
-              <div style={{ fontWeight: 800, fontSize: '13px', color: '#0f172a' }}>
-                Diamond-Style AES-256 Payload Encryption
+              <div style={{ fontWeight: 800, fontSize: '13px', color: '#1c2721' }}>
+                Payload Encryption (AES-256)
               </div>
-              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-                Inspect / Network tab displays 100% encrypted ciphertext. Scrapers &amp; competitors cannot read responses.
+              <div style={{ fontSize: '11px', color: '#4d5e54', marginTop: '2px' }}>
+                Optional encrypted JSON payloads for external client integrations.
               </div>
             </div>
             <button
               type="button"
               disabled={updatingConfig}
               onClick={() => handleUpdateFirewallConfig({ payloadEncryption: !firewallConfig.payloadEncryption })}
-              className={`adm-mini-btn ${firewallConfig.payloadEncryption ? 'is-emerald' : 'is-danger'}`}
-              style={{ marginLeft: '12px', flexShrink: 0 }}
+              style={{
+                marginLeft: '12px',
+                flexShrink: 0,
+                background: firewallConfig.payloadEncryption ? '#e04838' : '#e2eae4',
+                color: firewallConfig.payloadEncryption ? '#ffffff' : '#4a5b52',
+                border: 'none',
+                borderRadius: '6px',
+                padding: '6px 14px',
+                fontSize: '11px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                transition: 'background 0.15s',
+              }}
             >
-              <span>{firewallConfig.payloadEncryption ? 'SEALED (ON)' : 'RAW'}</span>
+              <span>{firewallConfig.payloadEncryption ? 'ENCRYPTED' : 'RAW'}</span>
             </button>
           </div>
 
-          {/* Rule 3: Internal Web App Bypass */}
+          {/* Rule 3: Localhost Access */}
           <div
             style={{
               padding: '16px',
               borderRadius: '10px',
-              border: firewallConfig.internalBypass ? '1px solid #10b981' : '1px solid #e2e8f0',
-              background: firewallConfig.internalBypass ? '#f0fdf4' : '#f8fafc',
+              border: firewallConfig.internalBypass ? '1px solid #d4ded7' : '1px solid #e2e8f0',
+              background: '#ffffff',
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
             }}
           >
             <div>
-              <div style={{ fontWeight: 800, fontSize: '13px', color: '#0f172a' }}>
-                Internal Web App Zero-Disruption Shield
+              <div style={{ fontWeight: 800, fontSize: '13px', color: '#1c2721' }}>
+                Localhost &amp; Loopback Access
               </div>
-              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-                Server-hosted frontend traffic operates seamlessly without getting blocked. Production UI never stops.
+              <div style={{ fontSize: '11px', color: '#4d5e54', marginTop: '2px' }}>
+                Allow local connections originating from this server's loopback interface.
               </div>
             </div>
             <button
               type="button"
               disabled={updatingConfig}
               onClick={() => handleUpdateFirewallConfig({ internalBypass: !firewallConfig.internalBypass })}
-              className={`adm-mini-btn ${firewallConfig.internalBypass ? 'is-emerald' : 'is-danger'}`}
-              style={{ marginLeft: '12px', flexShrink: 0 }}
+              style={{
+                marginLeft: '12px',
+                flexShrink: 0,
+                background: firewallConfig.internalBypass ? '#e04838' : '#e2eae4',
+                color: firewallConfig.internalBypass ? '#ffffff' : '#4a5b52',
+                border: 'none',
+                borderRadius: '6px',
+                padding: '6px 14px',
+                fontSize: '11px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                transition: 'background 0.15s',
+              }}
             >
               <span>{firewallConfig.internalBypass ? 'ACTIVE' : 'OFF'}</span>
             </button>
@@ -438,8 +471,8 @@ export default function FirewallWhitelistView({ showToast }) {
             marginTop: '16px',
             padding: '16px',
             borderRadius: '10px',
-            border: resultsConfig.allowDirectUrlHits ? '1px solid #10b981' : '1px solid #e2e8f0',
-            background: resultsConfig.allowDirectUrlHits ? '#f0fdf4' : '#f8fafc',
+            border: resultsConfig.allowDirectUrlHits ? '1px solid #cad7cf' : '1px solid #dbe3dc',
+            background: resultsConfig.allowDirectUrlHits ? '#edf2ee' : '#ffffff',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
@@ -448,19 +481,28 @@ export default function FirewallWhitelistView({ showToast }) {
           }}
         >
           <div>
-            <div style={{ fontWeight: 800, fontSize: '13px', color: '#0f172a' }}>
+            <div style={{ fontWeight: 800, fontSize: '13px', color: '#1c2721' }}>
               Allow Direct Browser URL Hits for Scoreboard &amp; Casino Results
             </div>
-            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-              When active, anyone can open or embed Scoreboard and Casino Results directly without receiving 403 Forbidden.
+            <div style={{ fontSize: '11px', color: '#4a5b52', marginTop: '2px' }}>
+              When active, client frontends can access Scoreboard and Casino Results directly without receiving 403 Forbidden.
             </div>
           </div>
           <button
             type="button"
             disabled={togglingDirectHits}
             onClick={() => handleToggleDirectHits(resultsConfig.allowDirectUrlHits)}
-            className={`adm-mini-btn ${resultsConfig.allowDirectUrlHits ? 'is-emerald' : 'is-danger'}`}
-            style={{ flexShrink: 0 }}
+            style={{
+              background: resultsConfig.allowDirectUrlHits ? '#e04838' : '#e2eae4',
+              color: resultsConfig.allowDirectUrlHits ? '#ffffff' : '#4a5b52',
+              border: resultsConfig.allowDirectUrlHits ? 'none' : '1px solid #cad7cf',
+              borderRadius: '6px',
+              padding: '6px 14px',
+              fontSize: '11px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              transition: 'background 0.15s',
+            }}
           >
             <span>{resultsConfig.allowDirectUrlHits ? 'DIRECT HITS (ALLOWED)' : 'RESTRICTED'}</span>
           </button>
@@ -469,7 +511,7 @@ export default function FirewallWhitelistView({ showToast }) {
         {/* Add Domain Form */}
         <form onSubmit={handleAddScoreboardDomain} style={{ display: 'grid', gridTemplateColumns: 'minmax(250px, 1fr) auto', gap: '12px', marginTop: '16px', alignItems: 'end' }}>
           <div>
-            <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: '#334155', marginBottom: '6px' }}>
+            <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: '#1e261f', marginBottom: '6px' }}>
               Whitelist Client Site Domain or URL
             </label>
             <input
@@ -482,19 +524,34 @@ export default function FirewallWhitelistView({ showToast }) {
                 width: '100%',
                 padding: '9px 12px',
                 borderRadius: '8px',
-                border: '1px solid #cbd5e1',
+                border: '1.5px solid #cad7c3',
                 fontSize: '13px',
                 fontFamily: 'monospace',
                 background: '#ffffff',
                 outline: 'none',
+                color: '#1e261f',
               }}
             />
           </div>
           <button
             type="submit"
             disabled={submittingDomain}
-            className="adm-btn adm-btn-emerald"
-            style={{ height: '38px', padding: '0 16px', display: 'flex', alignItems: 'center', gap: '6px' }}
+            style={{
+              height: '38px',
+              padding: '0 16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              background: '#E8412C',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '8px',
+              fontSize: '13px',
+              fontWeight: 700,
+              cursor: submittingDomain ? 'not-allowed' : 'pointer',
+              boxShadow: '0 2px 8px rgba(232, 65, 44, 0.25)',
+              transition: 'background 0.15s',
+            }}
           >
             <Plus size={14} />
             <span>{submittingDomain ? 'Whitelisting...' : 'Whitelist Domain'}</span>
@@ -503,7 +560,7 @@ export default function FirewallWhitelistView({ showToast }) {
 
         {/* Active Allowed Domains Badges */}
         <div style={{ marginTop: '16px' }}>
-          <div style={{ fontSize: '12px', fontWeight: 800, color: '#334155', marginBottom: '8px' }}>
+          <div style={{ fontSize: '12px', fontWeight: 800, color: '#1e261f', marginBottom: '8px' }}>
             Active Whitelisted Domains for Results &amp; Scoreboard:
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
@@ -516,14 +573,14 @@ export default function FirewallWhitelistView({ showToast }) {
                   gap: '6px',
                   padding: '5px 10px',
                   borderRadius: '6px',
-                  background: '#f1f5f9',
-                  border: '1px solid #cbd5e1',
+                  background: '#e3ebd9',
+                  border: '1px solid #cad7c3',
                   fontSize: '12px',
                   fontFamily: 'monospace',
-                  color: '#0f172a',
+                  color: '#1e261f',
                 }}
               >
-                <Globe size={13} style={{ color: '#10b981' }} />
+                <Globe size={13} style={{ color: '#9CAF88' }} />
                 <span>{dom}</span>
                 {dom !== 'localhost' && dom !== 'chimneysolutions.info' && (
                   <button
@@ -533,7 +590,7 @@ export default function FirewallWhitelistView({ showToast }) {
                       background: 'none',
                       border: 'none',
                       cursor: 'pointer',
-                      color: '#ef4444',
+                      color: '#E8412C',
                       padding: 0,
                       display: 'flex',
                       alignItems: 'center',
@@ -549,8 +606,8 @@ export default function FirewallWhitelistView({ showToast }) {
         </div>
 
         {/* Server IPs linked */}
-        <div style={{ marginTop: '14px', padding: '10px 14px', borderRadius: '8px', background: '#ecfdf5', border: '1px solid #a7f3d0', fontSize: '11px', color: '#065f46' }}>
-          <strong>Linked Infrastructure IPs:</strong> 187.127.98.247, 187.127.119.222, 187.127.119.224 &mdash; All client websites hosted on these server IPs automatically inherit direct scoreboard and casino result permissions without 403 errors.
+        <div style={{ marginTop: '14px', padding: '10px 14px', borderRadius: '8px', background: '#edf2ee', border: '1px solid #cad7cf', fontSize: '11px', color: '#1c2721' }}>
+          <strong>Linked Infrastructure IPs:</strong> 187.127.98.247, 187.127.119.222, 187.127.119.224 &mdash; Client websites hosted on these server IPs automatically have direct access to scoreboards and casino results without 403 errors.
         </div>
       </section>
 
@@ -563,20 +620,19 @@ export default function FirewallWhitelistView({ showToast }) {
             </div>
             <div>
               <h2 className="adm-h2">Whitelist Partner IP &amp; Issue API Key</h2>
-              <p className="adm-muted-sm">Authorize a new server IP address and generate credentials</p>
+              <p className="adm-muted-sm">Authorize a server IP address and generate integration credentials</p>
             </div>
           </div>
-          <span className="adm-tag adm-tag-emerald">ONBOARDING</span>
         </div>
 
         <form onSubmit={handleAddWhitelist} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', marginTop: '16px', alignItems: 'end' }}>
           <div>
-            <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: '#334155', marginBottom: '6px' }}>
+            <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: '#1e261f', marginBottom: '6px' }}>
               IP Address *
             </label>
             <input
               type="text"
-              placeholder="e.g. 103.21.124.5"
+              placeholder="e.g. 187.127.98.247"
               value={newIp}
               onChange={(e) => setNewIp(e.target.value)}
               required
@@ -584,59 +640,62 @@ export default function FirewallWhitelistView({ showToast }) {
                 width: '100%',
                 padding: '9px 12px',
                 borderRadius: '8px',
-                border: '1px solid #cbd5e1',
+                border: '1.5px solid #cad7c3',
                 fontSize: '13px',
                 fontFamily: 'monospace',
                 background: '#ffffff',
                 outline: 'none',
+                color: '#1e261f',
               }}
             />
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: '#334155', marginBottom: '6px' }}>
-              Partner / Client Name
+            <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: '#1e261f', marginBottom: '6px' }}>
+              Partner Name
             </label>
             <input
               type="text"
-              placeholder="e.g. Kingz Exchange"
+              placeholder="e.g. Igmaster1"
               value={newPartnerName}
               onChange={(e) => setNewPartnerName(e.target.value)}
               style={{
                 width: '100%',
                 padding: '9px 12px',
                 borderRadius: '8px',
-                border: '1px solid #cbd5e1',
+                border: '1.5px solid #cad7c3',
                 fontSize: '13px',
                 background: '#ffffff',
                 outline: 'none',
+                color: '#1e261f',
               }}
             />
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: '#334155', marginBottom: '6px' }}>
+            <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: '#1e261f', marginBottom: '6px' }}>
               Client Domain (Optional)
             </label>
             <input
               type="text"
-              placeholder="e.g. kingz.pro"
+              placeholder="e.g. aura.igambli.com"
               value={newDomain}
               onChange={(e) => setNewDomain(e.target.value)}
               style={{
                 width: '100%',
                 padding: '9px 12px',
                 borderRadius: '8px',
-                border: '1px solid #cbd5e1',
+                border: '1.5px solid #cad7c3',
                 fontSize: '13px',
                 background: '#ffffff',
                 outline: 'none',
+                color: '#1e261f',
               }}
             />
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: '#334155', marginBottom: '6px' }}>
+            <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: '#1e261f', marginBottom: '6px' }}>
               Access Scope
             </label>
             <select
@@ -646,13 +705,14 @@ export default function FirewallWhitelistView({ showToast }) {
                 width: '100%',
                 padding: '9px 12px',
                 borderRadius: '8px',
-                border: '1px solid #cbd5e1',
+                border: '1.5px solid #cad7c3',
                 fontSize: '13px',
                 background: '#ffffff',
                 outline: 'none',
+                color: '#1e261f',
               }}
             >
-              <option value="ALL">Full Mesh (Sports + Casino + Streams)</option>
+              <option value="ALL">Full Access (Sports + Casino + Streams)</option>
               <option value="SPORTS">Sports &amp; Exchange Only</option>
               <option value="CASINO">Live Casino Only</option>
             </select>
@@ -662,8 +722,23 @@ export default function FirewallWhitelistView({ showToast }) {
             <button
               type="submit"
               disabled={submittingIp}
-              className="adm-btn adm-btn-emerald"
-              style={{ width: '100%', height: '40px', justifyContent: 'center' }}
+              style={{
+                width: '100%',
+                height: '40px',
+                justifyContent: 'center',
+                background: '#E8412C',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '13px',
+                fontWeight: 700,
+                cursor: submittingIp ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                boxShadow: '0 2px 8px rgba(232, 65, 44, 0.25)',
+                transition: 'background 0.15s',
+              }}
             >
               <Key size={14} />
               <span>{submittingIp ? 'Whitelisting...' : 'Whitelist IP & Issue Key'}</span>
@@ -739,12 +814,12 @@ export default function FirewallWhitelistView({ showToast }) {
                   return (
                     <tr key={item.ip}>
                       <td>
-                        <div style={{ fontWeight: 700, color: '#0f172a' }}>{item.partnerName}</div>
-                        <div style={{ fontSize: '11px', color: '#64748b' }}>Scope: {item.scope || 'ALL'}</div>
+                        <div style={{ fontWeight: 700, color: '#1c2721' }}>{item.partnerName}</div>
+                        <div style={{ fontSize: '11px', color: '#4a5b52' }}>Scope: {item.scope || 'ALL'}</div>
                       </td>
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <code className="adm-mono" style={{ fontWeight: 800, color: '#047857' }}>
+                          <code className="adm-mono" style={{ fontWeight: 800, color: '#1b6e38' }}>
                             {item.ip}
                           </code>
                           <button
@@ -782,38 +857,126 @@ export default function FirewallWhitelistView({ showToast }) {
                         </div>
                       </td>
                       <td>
-                        <button
-                          type="button"
-                          onClick={() => handleToggleStatus(item.ip)}
-                          disabled={isLocal}
-                          style={{
-                            background: isActive ? '#ecfdf5' : '#fef2f2',
-                            color: isActive ? '#059669' : '#dc2626',
-                            border: `1px solid ${isActive ? '#a7f3d0' : '#fecaca'}`,
-                            borderRadius: '999px',
-                            padding: '3px 10px',
-                            fontSize: '11px',
-                            fontWeight: 800,
-                            cursor: isLocal ? 'default' : 'pointer',
-                          }}
-                        >
-                          {isActive ? 'ACTIVE' : 'PAUSED'}
-                        </button>
+                        {isActive ? (
+                          <span
+                            style={{
+                              background: '#e3ebd9',
+                              color: '#1e261f',
+                              border: '1px solid #9CAF88',
+                              borderRadius: '999px',
+                              padding: '3px 10px',
+                              fontSize: '11px',
+                              fontWeight: 800,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}
+                          >
+                            <Check size={11} color="#9CAF88" />
+                            <span>Active</span>
+                          </span>
+                        ) : (
+                          <span
+                            style={{
+                              background: '#fbe8e5',
+                              color: '#E8412C',
+                              border: '1px solid #E8412C',
+                              borderRadius: '999px',
+                              padding: '3px 10px',
+                              fontSize: '11px',
+                              fontWeight: 800,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}
+                          >
+                            <Ban size={11} />
+                            <span>Blocked</span>
+                          </span>
+                        )}
                       </td>
-                      <td className="adm-mono" style={{ fontWeight: 700, color: '#334155' }}>
+                      <td className="adm-mono" style={{ fontWeight: 700, color: '#1e261f' }}>
                         {(item.totalHits || 0).toLocaleString()}
                       </td>
-                      <td style={{ textAlign: 'right' }}>
-                        {!isLocal && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveWhitelist(item.ip)}
-                            className="adm-mini-btn is-danger"
-                            title="Remove from whitelist"
-                          >
-                            <Trash2 size={12} />
-                            <span>Delete</span>
-                          </button>
+                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        {!isLocal ? (
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                            {isActive ? (
+                              <button
+                                type="button"
+                                onClick={() => handleToggleBlock(item.ip, 'BLOCKED')}
+                                style={{
+                                  background: '#E8412C',
+                                  color: '#ffffff',
+                                  border: 'none',
+                                  borderRadius: '6px',
+                                  padding: '5px 12px',
+                                  fontSize: '11px',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  boxShadow: '0 2px 6px rgba(232, 65, 44, 0.25)',
+                                  transition: 'background 0.15s',
+                                }}
+                                title="Block this IP immediately"
+                              >
+                                <Ban size={12} />
+                                <span>Block</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleToggleBlock(item.ip, 'ACTIVE')}
+                                style={{
+                                  background: '#9CAF88',
+                                  color: '#ffffff',
+                                  border: 'none',
+                                  borderRadius: '6px',
+                                  padding: '5px 12px',
+                                  fontSize: '11px',
+                                  fontWeight: 800,
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  boxShadow: '0 2px 6px rgba(156, 175, 136, 0.3)',
+                                  transition: 'background 0.15s',
+                                }}
+                                title="Unblock this IP and restore access"
+                              >
+                                <CheckCircle2 size={12} />
+                                <span>Unblock</span>
+                              </button>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveWhitelist(item.ip)}
+                              style={{
+                                background: '#ffffff',
+                                color: '#E8412C',
+                                border: '1px solid #cad7c3',
+                                borderRadius: '6px',
+                                padding: '5px 10px',
+                                fontSize: '11px',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                              }}
+                              title="Remove from whitelist"
+                            >
+                              <Trash2 size={12} />
+                              <span>Delete</span>
+                            </button>
+                          </div>
+                        ) : (
+                          <span style={{ color: '#748373', fontSize: '11px', fontWeight: 600 }}>
+                            Gateway Local
+                          </span>
                         )}
                       </td>
                     </tr>
