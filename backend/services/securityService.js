@@ -304,17 +304,16 @@ class SecurityService {
     }
 
     // 3. Internal Web App Traffic Protection:
-    // If strictMode is disabled OR if request is genuine internal loopback/same-origin from this server's UI
+    // Only genuine loopback connections from the server itself are bypassed
     if (this.firewallConfig.internalBypass) {
       const isInternalLoopback =
         clientIp === "127.0.0.1" ||
         clientIp === "::1" ||
+        clientIp === "::ffff:127.0.0.1" ||
         clientIp.startsWith("10.") ||
         clientIp.startsWith("192.168.");
 
-      const isSameHost = host && (host.includes("localhost") || host.includes("127.0.0.1"));
-
-      if (isInternalLoopback || isSameHost) {
+      if (isInternalLoopback) {
         this.stats.totalPassed++;
         return { authorized: true, clientIp, method: "INTERNAL_LOOPBACK" };
       }

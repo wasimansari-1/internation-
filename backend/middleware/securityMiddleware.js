@@ -54,7 +54,8 @@ export const ipWhitelistGuard = (req, res, next) => {
     p.includes("/scoreboard-frame") ||
     p.includes("/casino/results") ||
     p.includes("/casino/result") ||
-    p.includes("/casino/latest-result");
+    p.includes("/casino/latest-result") ||
+    p.endsWith("/result");
 
   const isDirectBrowserDocNav =
     !isHtmlFrame &&
