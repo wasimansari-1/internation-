@@ -47,20 +47,6 @@
       "rateLimit": 5000
     },
     {
-      "ip": "185.220.101.55",
-      "partnerName": "Kingz Pro Exchange",
-      "domain": "kingz.pro",
-      "apiKey": "uapi_live_1da7027748fd9a12",
-      "apiSecret": "sec_live_66c2ab82340c1046647b8bb5ac0657a0",
-      "scope": "ALL",
-      "status": "ACTIVE",
-      "createdAt": "2026-11-12T21:20:25.713Z",
-      "updatedAt": "2026-11-12T21:20:25.713Z",
-      "totalHits": 0,
-      "lastHit": null,
-      "rateLimit": 1200
-    },
-    {
       "ip": "187.127.98.247",
       "partnerName": "Igmaster1",
       "domain": "",

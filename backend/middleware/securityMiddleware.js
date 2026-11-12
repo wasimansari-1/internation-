@@ -36,12 +36,25 @@ export const ipWhitelistGuard = (req, res, next) => {
   }
 
   // 2. Block Direct Browser Document Navigation to Raw Data APIs
-  // Prevents users from pasting API URLs directly into Chrome address bar and dumping raw data
+  // Prevents unauthorized users from pasting API URLs directly into Chrome address bar
   const isHtmlFrame =
     p.includes("/scoreboard-frame") ||
     p.includes("/embed") ||
     p.includes("/player") ||
     p.includes("/stream-proxy");
+
+  const clientIp = securityService.extractRealClientIp(req);
+  const isWhitelistedIp =
+    securityService.whitelist.has(clientIp) &&
+    securityService.whitelist.get(clientIp).status === "ACTIVE";
+
+  // Scoreboard and Casino Results endpoints:
+  const isScoreboardOrResult =
+    p.includes("/score") ||
+    p.includes("/scoreboard-frame") ||
+    p.includes("/casino/results") ||
+    p.includes("/casino/result") ||
+    p.includes("/casino/latest-result");
 
   const isDirectBrowserDocNav =
     !isHtmlFrame &&
@@ -63,12 +76,16 @@ export const ipWhitelistGuard = (req, res, next) => {
       p.startsWith("/ori/api/sports") ||
       p.startsWith("/api/stream/watch-link"));
 
-  if (isDirectBrowserDocNav && isRawDataEndpoint) {
+  // If request is from a whitelisted IP (e.g. Igmaster1, Igmaster2, Igmaster3),
+  // direct URL access for Scoreboard and Casino Results is allowed directly!
+  if (isWhitelistedIp && isScoreboardOrResult) {
+    // Whitelisted IP direct pass-through granted
+  } else if (isDirectBrowserDocNav && isRawDataEndpoint) {
     return res.status(403).json({
       success: false,
       error: "Direct browser URL navigation is restricted. Protected API requires authenticated client session or API key.",
       code: "ERR_DIRECT_ACCESS_RESTRICTED",
-      clientIp: securityService.extractRealClientIp(req),
+      clientIp,
       documentation: "/docs",
     });
   }
