@@ -112,6 +112,66 @@ router.post("/security/config", (req, res) => {
   }
 });
 
+// Scoreboard & Casino Results Whitelist Endpoints
+router.get("/security/scoreboard-whitelist", (req, res) => {
+  try {
+    return res.json({
+      success: true,
+      config: securityService.resultsScoreboardConfig,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post("/security/scoreboard-whitelist/add", (req, res) => {
+  try {
+    const { domain } = req.body || {};
+    if (!domain) {
+      return res.status(400).json({ success: false, error: "Domain or URL is required." });
+    }
+    const updated = securityService.addScoreboardDomain(domain);
+    return res.json({
+      success: true,
+      message: `"${domain}" successfully whitelisted for Scoreboard & Casino Results`,
+      config: updated,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post("/security/scoreboard-whitelist/remove", (req, res) => {
+  try {
+    const { domain } = req.body || {};
+    if (!domain) {
+      return res.status(400).json({ success: false, error: "Domain is required." });
+    }
+    const updated = securityService.removeScoreboardDomain(domain);
+    return res.json({
+      success: true,
+      message: `"${domain}" removed from Scoreboard & Results whitelist`,
+      config: updated,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post("/security/scoreboard-whitelist/toggle-direct", (req, res) => {
+  try {
+    const { allowDirectUrlHits } = req.body || {};
+    const updated = securityService.toggleScoreboardDirectHits(allowDirectUrlHits);
+    return res.json({
+      success: true,
+      message: `Direct URL hits for Scoreboard & Results ${updated.allowDirectUrlHits ? "ENABLED" : "DISABLED"}`,
+      config: updated,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // =========================================================================
 // 3. Existing Gateway Telemetry & Mesh Management Endpoints
 // =========================================================================

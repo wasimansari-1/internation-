@@ -44,6 +44,21 @@ class SecurityService {
       internalBypass: true, // Allows server-hosted frontend requests seamlessly
       rateLimitPerMinute: 600,
     };
+    this.resultsScoreboardConfig = {
+      allowDirectUrlHits: true,
+      allowedDomains: [
+        "aura.igambli.com",
+        "igambli.com",
+        "stream.chimneysolutions.info",
+        "chimneysolutions.info",
+        "localhost",
+      ],
+      allowedIps: [
+        "187.127.98.247",
+        "187.127.119.222",
+        "187.127.119.224",
+      ],
+    };
     this.stats = {
       totalBlocked: 0,
       totalPassed: 0,
@@ -69,6 +84,20 @@ class SecurityService {
         }
         if (parsed.firewallConfig) {
           this.firewallConfig = { ...this.firewallConfig, ...parsed.firewallConfig };
+        }
+        if (parsed.resultsScoreboardConfig) {
+          this.resultsScoreboardConfig = {
+            allowDirectUrlHits:
+              parsed.resultsScoreboardConfig.allowDirectUrlHits !== undefined
+                ? Boolean(parsed.resultsScoreboardConfig.allowDirectUrlHits)
+                : true,
+            allowedDomains: Array.isArray(parsed.resultsScoreboardConfig.allowedDomains)
+              ? parsed.resultsScoreboardConfig.allowedDomains
+              : ["aura.igambli.com", "igambli.com", "stream.chimneysolutions.info", "chimneysolutions.info", "localhost"],
+            allowedIps: Array.isArray(parsed.resultsScoreboardConfig.allowedIps)
+              ? parsed.resultsScoreboardConfig.allowedIps
+              : ["187.127.98.247", "187.127.119.222", "187.127.119.224"],
+          };
         }
       } else {
         // Seed default safe IPs (Localhost & internal gateway)
@@ -129,6 +158,7 @@ class SecurityService {
       const data = {
         updatedAt: new Date().toISOString(),
         firewallConfig: this.firewallConfig,
+        resultsScoreboardConfig: this.resultsScoreboardConfig,
         whitelist: Array.from(this.whitelist.values()),
       };
       fs.writeFileSync(WHITELIST_FILE, JSON.stringify(data, null, 2), "utf-8");
@@ -411,6 +441,107 @@ class SecurityService {
   }
 
   /**
+   * Scoreboard & Casino Results Whitelist Management
+   */
+  addScoreboardDomain(input) {
+    let clean = String(input || "").trim().toLowerCase();
+    clean = clean.replace(/^https?:\/\//i, "").split("/")[0].split(":")[0];
+    if (!clean) throw new Error("Valid domain or URL is required.");
+    if (!this.resultsScoreboardConfig.allowedDomains.includes(clean)) {
+      this.resultsScoreboardConfig.allowedDomains.push(clean);
+      this.saveWhitelistToDisk();
+    }
+    return this.resultsScoreboardConfig;
+  }
+
+  removeScoreboardDomain(domain) {
+    let clean = String(domain || "").trim().toLowerCase();
+    clean = clean.replace(/^https?:\/\//i, "").split("/")[0].split(":")[0];
+    this.resultsScoreboardConfig.allowedDomains = this.resultsScoreboardConfig.allowedDomains.filter(
+      (d) => d !== clean
+    );
+    this.saveWhitelistToDisk();
+    return this.resultsScoreboardConfig;
+  }
+
+  toggleScoreboardDirectHits(enabled) {
+    this.resultsScoreboardConfig.allowDirectUrlHits = Boolean(enabled);
+    this.saveWhitelistToDisk();
+    return this.resultsScoreboardConfig;
+  }
+
+  isScoreboardOrResultAllowed(req) {
+    const p = req.path || "";
+    const isScoreboardOrResult =
+      p.includes("/score") ||
+      p.includes("/scoreboard-frame") ||
+      p.includes("/casino/results") ||
+      p.includes("/casino/result") ||
+      p.includes("/casino/latest-result") ||
+      p.endsWith("/result");
+
+    if (!isScoreboardOrResult) return false;
+
+    const config = this.resultsScoreboardConfig || {};
+
+    // 1. Check Origin or Referer against allowed domains or partner domains
+    const origin = req.headers["origin"] || "";
+    const referer = req.headers["referer"] || "";
+    const incomingUrls = [origin, referer].filter(Boolean);
+
+    for (const urlStr of incomingUrls) {
+      const cleanHost = String(urlStr)
+        .replace(/^https?:\/\//i, "")
+        .split("/")[0]
+        .split(":")[0]
+        .toLowerCase();
+
+      if (!cleanHost) continue;
+
+      const allowedDomains = config.allowedDomains || [];
+      for (const d of allowedDomains) {
+        const cleanAllowed = String(d)
+          .toLowerCase()
+          .trim()
+          .replace(/^https?:\/\//i, "")
+          .split("/")[0];
+        if (cleanHost === cleanAllowed || cleanHost.endsWith("." + cleanAllowed)) {
+          return true;
+        }
+      }
+
+      for (const partner of this.whitelist.values()) {
+        if (partner.domain && partner.status === "ACTIVE") {
+          const partnerDomain = String(partner.domain)
+            .toLowerCase()
+            .trim()
+            .replace(/^https?:\/\//i, "")
+            .split("/")[0];
+          if (cleanHost === partnerDomain || cleanHost.endsWith("." + partnerDomain)) {
+            return true;
+          }
+        }
+      }
+    }
+
+    // 2. Check client IP against allowed IPs or active partner whitelist
+    const clientIp = this.extractRealClientIp(req);
+    if (
+      (config.allowedIps && config.allowedIps.includes(clientIp)) ||
+      (this.whitelist.has(clientIp) && this.whitelist.get(clientIp).status === "ACTIVE")
+    ) {
+      return true;
+    }
+
+    // 3. Direct browser address bar / curl hit
+    if (config.allowDirectUrlHits) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
    * Diamond-Grade AES-256 Payload Encryption
    * Encrypts outgoing JSON so inspect / network tab shows 100% encrypted ciphertext.
    */
@@ -582,6 +713,7 @@ class SecurityService {
 
     return {
       firewallConfig: this.firewallConfig,
+      resultsScoreboardConfig: this.resultsScoreboardConfig,
       stats: {
         ...this.stats,
         totalWhitelistedIps: this.whitelist.size,

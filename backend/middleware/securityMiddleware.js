@@ -35,6 +35,18 @@ export const ipWhitelistGuard = (req, res, next) => {
     return next();
   }
 
+  // 1.5 Dedicated Scoreboard & Casino Results Whitelist Pass-Through
+  // Allows requests originating from whitelisted domains (e.g. aura.igambli.com), whitelisted IPs,
+  // or direct URL hits without requiring end-user IP whitelisting or payload encryption.
+  if (securityService.isScoreboardOrResultAllowed(req)) {
+    const origin = req.headers["origin"] || req.headers["referer"] || "";
+    const clientIp = securityService.extractRealClientIp(req);
+    securityService.recordDomainHit(origin || req.headers["host"] || "direct", clientIp, true);
+    securityService.stats.totalPassed++;
+    req.clientIp = clientIp;
+    return next();
+  }
+
   // 2. Block Direct Browser Document Navigation to Raw Data APIs
   // Prevents unauthorized users from pasting API URLs directly into Chrome address bar
   const isHtmlFrame =

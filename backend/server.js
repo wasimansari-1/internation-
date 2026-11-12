@@ -37,9 +37,20 @@ const PORT = process.env.PORT || 5001;
 // CORS setup
 app.use(
   cors({
-    origin: "*",
+    origin: (origin, callback) => {
+      callback(null, origin || "*");
+    },
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Range"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Requested-With",
+      "Range",
+      "x-api-key",
+      "x-payload-encryption",
+      "x-admin-token",
+      "x-client-token",
+    ],
     credentials: true,
   }),
 );

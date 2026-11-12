@@ -6,6 +6,21 @@
     "internalBypass": true,
     "rateLimitPerMinute": 600
   },
+  "resultsScoreboardConfig": {
+    "allowDirectUrlHits": true,
+    "allowedDomains": [
+      "aura.igambli.com",
+      "igambli.com",
+      "stream.chimneysolutions.info",
+      "chimneysolutions.info",
+      "localhost"
+    ],
+    "allowedIps": [
+      "187.127.98.247",
+      "187.127.119.222",
+      "187.127.119.224"
+    ]
+  },
   "whitelist": [
     {
       "ip": "127.0.0.1",

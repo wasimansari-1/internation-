@@ -36,6 +36,11 @@ export default function FirewallWhitelistView({ showToast }) {
   const [newRateLimit, setNewRateLimit] = useState(600);
   const [submittingIp, setSubmittingIp] = useState(false);
 
+  // Scoreboard & Results Whitelist State
+  const [newScoreboardDomain, setNewScoreboardDomain] = useState('');
+  const [submittingDomain, setSubmittingDomain] = useState(false);
+  const [togglingDirectHits, setTogglingDirectHits] = useState(false);
+
   // Search & Filter
   const [searchTerm, setSearchTerm] = useState('');
   const [copiedKey, setCopiedKey] = useState(null);
@@ -142,8 +147,66 @@ export default function FirewallWhitelistView({ showToast }) {
     }
   };
 
+  const handleAddScoreboardDomain = async (e) => {
+    e.preventDefault();
+    if (!newScoreboardDomain.trim()) {
+      showToast('Validation Error', 'Domain or URL is required', 'warning');
+      return;
+    }
+    setSubmittingDomain(true);
+    try {
+      const res = await axios.post('/api/admin/security/scoreboard-whitelist/add', {
+        domain: newScoreboardDomain.trim(),
+      });
+      if (res.data?.success) {
+        showToast('Domain Whitelisted', res.data.message, 'success');
+        setNewScoreboardDomain('');
+        fetchSecurityOverview(true);
+      }
+    } catch (err) {
+      showToast('Whitelist Failed', err.response?.data?.error || err.message, 'error');
+    } finally {
+      setSubmittingDomain(false);
+    }
+  };
+
+  const handleRemoveScoreboardDomain = async (domain) => {
+    if (!window.confirm(`Remove "${domain}" from Scoreboard & Results whitelist?`)) return;
+    try {
+      const res = await axios.post('/api/admin/security/scoreboard-whitelist/remove', { domain });
+      if (res.data?.success) {
+        showToast('Domain Removed', res.data.message, 'warning');
+        fetchSecurityOverview(true);
+      }
+    } catch (err) {
+      showToast('Error', err.response?.data?.error || err.message, 'error');
+    }
+  };
+
+  const handleToggleDirectHits = async (currentVal) => {
+    setTogglingDirectHits(true);
+    try {
+      const res = await axios.post('/api/admin/security/scoreboard-whitelist/toggle-direct', {
+        allowDirectUrlHits: !currentVal,
+      });
+      if (res.data?.success) {
+        showToast('Direct Hits Updated', res.data.message, 'info');
+        fetchSecurityOverview(true);
+      }
+    } catch (err) {
+      showToast('Error', err.response?.data?.error || err.message, 'error');
+    } finally {
+      setTogglingDirectHits(false);
+    }
+  };
+
   const stats = securityData?.stats || {};
   const firewallConfig = securityData?.firewallConfig || {};
+  const resultsConfig = securityData?.resultsScoreboardConfig || {
+    allowDirectUrlHits: true,
+    allowedDomains: ['aura.igambli.com', 'igambli.com', 'chimneysolutions.info', 'localhost'],
+    allowedIps: ['187.127.98.247', '187.127.119.222', '187.127.119.224'],
+  };
   const whitelist = securityData?.whitelist || [];
   const blockedAttempts = securityData?.recentBlockedAttempts || [];
   const connectedDomains = securityData?.connectedDomains || [];
@@ -351,6 +414,143 @@ export default function FirewallWhitelistView({ showToast }) {
               <span>{firewallConfig.internalBypass ? 'ACTIVE' : 'OFF'}</span>
             </button>
           </div>
+        </div>
+      </section>
+
+      {/* Scoreboard & Casino Results Dedicated Whitelist & Direct URL Access Card */}
+      <section className="adm-card adm-section">
+        <div className="adm-section-head">
+          <div className="adm-section-title-group">
+            <div className="adm-icon-tile adm-icon-emerald">
+              <Globe size={16} />
+            </div>
+            <div>
+              <h2 className="adm-h2">Scoreboard &amp; Casino Results Whitelist (Domains &amp; Direct URL Access)</h2>
+              <p className="adm-muted-sm">Whitelist client domains (e.g. aura.igambli.com) &amp; direct hits so players and client frontends never face 403 blocks</p>
+            </div>
+          </div>
+          <span className="adm-tag adm-tag-emerald">RESULTS &amp; SCOREBOARD</span>
+        </div>
+
+        {/* Direct URL Hits Toggle */}
+        <div
+          style={{
+            marginTop: '16px',
+            padding: '16px',
+            borderRadius: '10px',
+            border: resultsConfig.allowDirectUrlHits ? '1px solid #10b981' : '1px solid #e2e8f0',
+            background: resultsConfig.allowDirectUrlHits ? '#f0fdf4' : '#f8fafc',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '12px',
+          }}
+        >
+          <div>
+            <div style={{ fontWeight: 800, fontSize: '13px', color: '#0f172a' }}>
+              Allow Direct Browser URL Hits for Scoreboard &amp; Casino Results
+            </div>
+            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+              When active, anyone can open or embed Scoreboard and Casino Results directly without receiving 403 Forbidden.
+            </div>
+          </div>
+          <button
+            type="button"
+            disabled={togglingDirectHits}
+            onClick={() => handleToggleDirectHits(resultsConfig.allowDirectUrlHits)}
+            className={`adm-mini-btn ${resultsConfig.allowDirectUrlHits ? 'is-emerald' : 'is-danger'}`}
+            style={{ flexShrink: 0 }}
+          >
+            <span>{resultsConfig.allowDirectUrlHits ? 'DIRECT HITS (ALLOWED)' : 'RESTRICTED'}</span>
+          </button>
+        </div>
+
+        {/* Add Domain Form */}
+        <form onSubmit={handleAddScoreboardDomain} style={{ display: 'grid', gridTemplateColumns: 'minmax(250px, 1fr) auto', gap: '12px', marginTop: '16px', alignItems: 'end' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: '11px', fontWeight: 800, color: '#334155', marginBottom: '6px' }}>
+              Whitelist Client Site Domain or URL
+            </label>
+            <input
+              type="text"
+              placeholder="e.g. aura.igambli.com or https://aura.igambli.com"
+              value={newScoreboardDomain}
+              onChange={(e) => setNewScoreboardDomain(e.target.value)}
+              required
+              style={{
+                width: '100%',
+                padding: '9px 12px',
+                borderRadius: '8px',
+                border: '1px solid #cbd5e1',
+                fontSize: '13px',
+                fontFamily: 'monospace',
+                background: '#ffffff',
+                outline: 'none',
+              }}
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={submittingDomain}
+            className="adm-btn adm-btn-emerald"
+            style={{ height: '38px', padding: '0 16px', display: 'flex', alignItems: 'center', gap: '6px' }}
+          >
+            <Plus size={14} />
+            <span>{submittingDomain ? 'Whitelisting...' : 'Whitelist Domain'}</span>
+          </button>
+        </form>
+
+        {/* Active Allowed Domains Badges */}
+        <div style={{ marginTop: '16px' }}>
+          <div style={{ fontSize: '12px', fontWeight: 800, color: '#334155', marginBottom: '8px' }}>
+            Active Whitelisted Domains for Results &amp; Scoreboard:
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+            {(resultsConfig.allowedDomains || []).map((dom) => (
+              <span
+                key={dom}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '5px 10px',
+                  borderRadius: '6px',
+                  background: '#f1f5f9',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '12px',
+                  fontFamily: 'monospace',
+                  color: '#0f172a',
+                }}
+              >
+                <Globe size={13} style={{ color: '#10b981' }} />
+                <span>{dom}</span>
+                {dom !== 'localhost' && dom !== 'chimneysolutions.info' && (
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveScoreboardDomain(dom)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: '#ef4444',
+                      padding: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                    }}
+                    title={`Remove ${dom}`}
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                )}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* Server IPs linked */}
+        <div style={{ marginTop: '14px', padding: '10px 14px', borderRadius: '8px', background: '#ecfdf5', border: '1px solid #a7f3d0', fontSize: '11px', color: '#065f46' }}>
+          <strong>Linked Infrastructure IPs:</strong> 187.127.98.247, 187.127.119.222, 187.127.119.224 &mdash; All client websites hosted on these server IPs automatically inherit direct scoreboard and casino result permissions without 403 errors.
         </div>
       </section>
 
