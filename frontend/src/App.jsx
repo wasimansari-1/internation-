@@ -9,6 +9,21 @@ import WingoGameView from "./components/WingoGameView";
 import UniversalApiLogo from "./components/UniversalApiLogo";
 import { RotateCw, Menu, X, ShieldCheck, Lock, User, LogOut, ArrowRight } from "lucide-react";
 
+function WhatsAppIcon({ size = 18, color = "currentColor" }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill={color}
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ display: "inline-block", verticalAlign: "middle" }}
+    >
+      <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91C2.13 13.66 2.59 15.36 3.45 16.86L2.05 22L7.3 20.62C8.75 21.41 10.38 21.83 12.04 21.83C17.5 21.83 21.95 17.38 21.95 11.92C21.95 9.27 20.92 6.78 19.05 4.91C17.18 3.04 14.69 2 12.04 2ZM12.04 20.15C10.56 20.15 9.11 19.76 7.85 19.01L7.55 18.83L4.44 19.65L5.27 16.61L5.07 16.29C4.24 14.97 3.81 13.46 3.81 11.91C3.81 7.37 7.5 3.69 12.05 3.69C14.25 3.69 16.31 4.55 17.87 6.11C19.42 7.67 20.28 9.73 20.28 11.92C20.28 16.46 16.58 20.15 12.04 20.15ZM16.57 14.39C16.32 14.26 15.11 13.67 14.88 13.59C14.66 13.5 14.5 13.46 14.33 13.71C14.17 13.96 13.71 14.5 13.56 14.67C13.42 14.83 13.28 14.86 13.03 14.73C12.78 14.61 11.99 14.35 11.05 13.51C10.31 12.85 9.82 12.04 9.68 11.79C9.53 11.54 9.66 11.41 9.79 11.28C9.9 11.17 10.03 11 10.16 10.85C10.29 10.7 10.33 10.59 10.42 10.42C10.5 10.26 10.46 10.11 10.4 9.99C10.33 9.86 9.84 8.66 9.63 8.16C9.43 7.68 9.23 7.74 9.07 7.73C8.93 7.73 8.76 7.72 8.59 7.72C8.42 7.72 8.15 7.78 7.92 8.03C7.69 8.28 7.05 8.88 7.05 10.1C7.05 11.32 7.94 12.49 8.06 12.66C8.19 12.83 9.81 15.33 12.3 16.4C12.89 16.66 13.35 16.81 13.71 16.93C14.31 17.12 14.85 17.09 15.28 17.03C15.76 16.96 16.76 16.42 16.97 15.83C17.18 15.24 17.18 14.74 17.11 14.62C17.05 14.51 16.82 14.51 16.57 14.39Z" />
+    </svg>
+  );
+}
+
 function getTabFromUrl() {
   const path = (window.location.pathname || "").toLowerCase();
   const hash = (window.location.hash || "").toLowerCase();
@@ -20,10 +35,11 @@ function getTabFromUrl() {
   }
 
   if (
+    path.includes("/master") ||
     path.includes("/admin") ||
     path.includes("/dashboard") ||
     path.includes("/gateway") ||
-    path.includes("/telemetry") ||
+    hash.includes("master") ||
     hash.includes("admin") ||
     hash.includes("dashboard") ||
     hash.includes("gateway")
@@ -129,7 +145,7 @@ export default function App() {
   // Ensure browser URL pathname reflects restored tab on page load
   useEffect(() => {
     let targetPath = "/";
-    if (activeTab === "GATEWAY") targetPath = "/admin";
+    if (activeTab === "GATEWAY") targetPath = "/master";
     else if (activeTab === "WINGO") targetPath = "/wingo";
     else if (activeTab === "SPORTS") targetPath = "/sports";
     else if (activeTab === "DOCS") targetPath = "/docs";
@@ -156,7 +172,7 @@ export default function App() {
     }
 
     let newPath = "/";
-    if (tab === "GATEWAY") newPath = "/admin";
+    if (tab === "GATEWAY") newPath = "/master";
     else if (tab === "WINGO") newPath = "/wingo";
     else if (tab === "SPORTS") newPath = "/sports";
     else if (tab === "DOCS") newPath = "/docs";
@@ -176,193 +192,7 @@ export default function App() {
     } catch (e) {}
   };
 
-  // Platform Login Gate: If operator is not authenticated, render secure login gate
-  if (!isPlatformAuth) {
-    return (
-      <div
-        style={{
-          minHeight: "100vh",
-          backgroundColor: "#F7F5EF",
-          backgroundImage: "radial-gradient(ellipse at 50% 20%, rgba(156, 175, 136, 0.25) 0%, transparent 70%)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: "20px",
-          fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif",
-          color: "#1e261f",
-        }}
-      >
-        <div
-          style={{
-            width: "100%",
-            maxWidth: "380px",
-            backgroundColor: "#FFFFFF",
-            border: "1.5px solid #cad7c3",
-            borderRadius: "14px",
-            padding: "32px 28px",
-            boxShadow: "0 12px 35px rgba(30, 38, 31, 0.06)",
-          }}
-        >
-          <div style={{ textAlign: "center", marginBottom: "26px" }}>
-            <div style={{ display: "inline-flex", marginBottom: "14px" }}>
-              <UniversalApiLogo />
-            </div>
-            <h1 style={{ fontSize: "18px", fontWeight: 800, margin: "0 0 6px 0", color: "#1e261f", letterSpacing: "-0.01em" }}>
-              Universal API Gateway
-            </h1>
-            <p style={{ fontSize: "12px", color: "#4e5a4d", margin: 0, fontWeight: 500 }}>
-              Operator Authentication
-            </p>
-          </div>
-
-          {loginError && (
-            <div
-              style={{
-                backgroundColor: "#fbe8e5",
-                border: "1px solid #E8412C",
-                color: "#E8412C",
-                padding: "10px 14px",
-                borderRadius: "8px",
-                fontSize: "12px",
-                marginBottom: "16px",
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-              }}
-            >
-              <span>{loginError}</span>
-            </div>
-          )}
-
-          <form onSubmit={handleClientLogin} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-            <div>
-              <label
-                style={{
-                  display: "block",
-                  fontSize: "11px",
-                  fontWeight: 700,
-                  color: "#4e5a4d",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.05em",
-                  marginBottom: "6px",
-                }}
-              >
-                User ID
-              </label>
-              <div style={{ position: "relative" }}>
-                <input
-                  type="text"
-                  value={loginId}
-                  onChange={(e) => setLoginId(e.target.value)}
-                  placeholder="Enter User ID"
-                  autoFocus
-                  required
-                  style={{
-                    width: "100%",
-                    padding: "11px 14px 11px 36px",
-                    backgroundColor: "#FFFFFF",
-                    border: "1.5px solid #cad7c3",
-                    borderRadius: "8px",
-                    color: "#1e261f",
-                    fontSize: "13px",
-                    outline: "none",
-                    boxSizing: "border-box",
-                  }}
-                  onFocus={(e) => (e.target.style.borderColor = "#E8412C")}
-                  onBlur={(e) => (e.target.style.borderColor = "#cad7c3")}
-                />
-                <User size={15} color="#748373" style={{ position: "absolute", left: "12px", top: "13px" }} />
-              </div>
-            </div>
-
-            <div>
-              <label
-                style={{
-                  display: "block",
-                  fontSize: "11px",
-                  fontWeight: 700,
-                  color: "#4e5a4d",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.05em",
-                  marginBottom: "6px",
-                }}
-              >
-                Password
-              </label>
-              <div style={{ position: "relative" }}>
-                <input
-                  type="password"
-                  value={loginPass}
-                  onChange={(e) => setLoginPass(e.target.value)}
-                  placeholder="Enter Password"
-                  required
-                  style={{
-                    width: "100%",
-                    padding: "11px 14px 11px 36px",
-                    backgroundColor: "#FFFFFF",
-                    border: "1.5px solid #cad7c3",
-                    borderRadius: "8px",
-                    color: "#1e261f",
-                    fontSize: "13px",
-                    outline: "none",
-                    boxSizing: "border-box",
-                  }}
-                  onFocus={(e) => (e.target.style.borderColor = "#E8412C")}
-                  onBlur={(e) => (e.target.style.borderColor = "#cad7c3")}
-                />
-                <Lock size={15} color="#748373" style={{ position: "absolute", left: "12px", top: "13px" }} />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loginLoading}
-              style={{
-                marginTop: "6px",
-                width: "100%",
-                padding: "11px",
-                backgroundColor: loginLoading ? "#be2e1b" : "#E8412C",
-                border: "none",
-                borderRadius: "8px",
-                color: "#FFFFFF",
-                fontSize: "13px",
-                fontWeight: 700,
-                cursor: loginLoading ? "not-allowed" : "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "8px",
-                boxShadow: "0 4px 14px rgba(232, 65, 44, 0.28)",
-                transition: "background 0.15s",
-              }}
-            >
-              {loginLoading ? "Verifying..." : "Sign In to Gateway"}
-              {!loginLoading && <ArrowRight size={15} />}
-            </button>
-          </form>
-
-          <div
-            style={{
-              marginTop: "22px",
-              paddingTop: "14px",
-              borderTop: "1px solid #cad7c3",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "6px",
-              fontSize: "11px",
-              color: "#748373",
-            }}
-          >
-            <ShieldCheck size={13} color="#9CAF88" />
-            <span>Encrypted Gateway Session</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Dedicated View for Admin/Gateway
+  // Dedicated View for Admin/Gateway (Admin authentication handled inside ApiManagementDashboard)
   if (activeTab === "GATEWAY") {
     return <ApiManagementDashboard onSwitchTab={switchTab} />;
   }
@@ -464,32 +294,61 @@ export default function App() {
               <RotateCw size={14} />
             </button>
 
-            {/* Operator Session Badge & Logout */}
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "10px", paddingLeft: "10px", borderLeft: "1.5px solid #cad7c3" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "5px 10px", background: "#e3ebd9", border: "1px solid #9CAF88", borderRadius: "6px", fontSize: "11px", fontWeight: 800, color: "#1e261f" }}>
-                <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#9CAF88", display: "inline-block" }}></span>
-                {operatorUser}
+            {/* WhatsApp Direct Sales & Integration Link */}
+            <a
+              href="https://wa.me/639159224695?text=Hello%2C%20I%20want%20to%20purchase%20API%20access"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Chat on WhatsApp: +63 915 922 4695"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "7px",
+                padding: "6px 14px",
+                backgroundColor: "#25D366",
+                color: "#FFFFFF",
+                borderRadius: "20px",
+                fontSize: "12px",
+                fontWeight: 700,
+                textDecoration: "none",
+                boxShadow: "0 2px 8px rgba(37, 211, 102, 0.28)",
+                transition: "all 0.15s ease",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#20BA5A")}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#25D366")}
+            >
+              <WhatsAppIcon size={15} color="#FFFFFF" />
+              <span>+63 915 922 4695</span>
+            </a>
+
+            {/* Operator Session Badge & Logout (when signed in) */}
+            {isPlatformAuth && (
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "4px", paddingLeft: "8px", borderLeft: "1.5px solid #cad7c3" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "5px 10px", background: "#e3ebd9", border: "1px solid #9CAF88", borderRadius: "6px", fontSize: "11px", fontWeight: 800, color: "#1e261f" }}>
+                  <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#9CAF88", display: "inline-block" }}></span>
+                  {operatorUser}
+                </div>
+                <button
+                  onClick={handleClientLogout}
+                  title="Sign Out"
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#748373",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    padding: "4px",
+                    borderRadius: "4px",
+                    transition: "color 0.15s",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = "#E8412C")}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = "#748373")}
+                >
+                  <LogOut size={14} />
+                </button>
               </div>
-              <button
-                onClick={handleClientLogout}
-                title="Sign Out"
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "#748373",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  padding: "4px",
-                  borderRadius: "4px",
-                  transition: "color 0.15s",
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = "#E8412C")}
-                onMouseLeave={(e) => (e.currentTarget.style.color = "#748373")}
-              >
-                <LogOut size={14} />
-              </button>
-            </div>
+            )}
           </nav>
 
           {/* Mobile Hamburger Button */}
@@ -568,42 +427,69 @@ export default function App() {
               );
             })}
 
-            {/* Mobile Operator Info & Logout */}
-            <div
+            {/* Mobile WhatsApp Direct Button */}
+            <a
+              href="https://wa.me/639159224695?text=Hello%2C%20I%20want%20to%20purchase%20API%20access"
+              target="_blank"
+              rel="noopener noreferrer"
               style={{
-                marginTop: "6px",
-                paddingTop: "10px",
-                borderTop: "1px solid #cad7cf",
+                background: "#25D366",
+                color: "#FFFFFF",
+                borderRadius: "8px",
+                fontWeight: 700,
+                fontSize: "13px",
+                padding: "10px 14px",
+                textDecoration: "none",
                 display: "flex",
-                justifyContent: "space-between",
                 alignItems: "center",
+                gap: "8px",
+                justifyContent: "center",
+                marginTop: "4px",
+                boxShadow: "0 2px 8px rgba(37, 211, 102, 0.28)",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "#1b6e38", fontWeight: 700 }}>
-                <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#1b6e38" }} />
-                <span>{operatorUser}</span>
-              </div>
-              <button
-                onClick={handleClientLogout}
+              <WhatsAppIcon size={16} color="#FFFFFF" />
+              <span>WhatsApp: +63 915 922 4695</span>
+            </a>
+
+            {/* Mobile Operator Info & Logout (Only when signed in) */}
+            {isPlatformAuth && (
+              <div
                 style={{
-                  background: "#e04838",
-                  border: "none",
-                  color: "#ffffff",
-                  borderRadius: "6px",
-                  padding: "6px 12px",
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  cursor: "pointer",
+                  marginTop: "6px",
+                  paddingTop: "10px",
+                  borderTop: "1px solid #cad7cf",
                   display: "flex",
+                  justifyContent: "space-between",
                   alignItems: "center",
-                  gap: "6px",
-                  boxShadow: "0 2px 6px rgba(224, 72, 56, 0.25)",
                 }}
               >
-                <LogOut size={13} />
-                <span>Sign Out</span>
-              </button>
-            </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "#1b6e38", fontWeight: 700 }}>
+                  <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#1b6e38" }} />
+                  <span>{operatorUser}</span>
+                </div>
+                <button
+                  onClick={handleClientLogout}
+                  style={{
+                    background: "#e04838",
+                    border: "none",
+                    color: "#ffffff",
+                    borderRadius: "6px",
+                    padding: "6px 12px",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    boxShadow: "0 2px 6px rgba(224, 72, 56, 0.25)",
+                  }}
+                >
+                  <LogOut size={13} />
+                  <span>Sign Out</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -754,13 +640,52 @@ export default function App() {
               color: "#4a5b52",
               fontSize: "13px",
               lineHeight: 1.5,
-              margin: "0 0 18px 0",
+              margin: "0 0 14px 0",
               maxWidth: "520px",
               fontFamily: "system-ui, -apple-system, sans-serif",
             }}
           >
             Live tables, sports odds, TV, and unified partner integration.
           </p>
+
+          {/* WhatsApp Direct Sales & Integration Bar */}
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "16px",
+              flexWrap: "wrap",
+              margin: "0 0 20px 0",
+              padding: "10px 20px",
+              background: "#FFFFFF",
+              border: "1px solid #cad7c3",
+              borderRadius: "10px",
+              boxShadow: "0 2px 8px rgba(30, 38, 31, 0.04)",
+            }}
+          >
+            <a
+              href="https://wa.me/639159224695?text=Hello%2C%20I%20want%20to%20purchase%20API%20access"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "7px",
+                color: "#1e261f",
+                textDecoration: "none",
+                fontSize: "12px",
+                fontWeight: 800,
+              }}
+            >
+              <WhatsAppIcon size={16} color="#25D366" />
+              <span>WhatsApp: +63 915 922 4695</span>
+            </a>
+            <span style={{ color: "#cad7c3" }}>•</span>
+            <span style={{ fontSize: "12px", fontWeight: 700, color: "#4e5a4d" }}>
+              Call / Inquiry: +63 945 146 9623
+            </span>
+          </div>
 
           {/* Footer Navigation Links */}
           <div
@@ -802,6 +727,49 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {/* Floating WhatsApp Action Button */}
+      <aside
+        style={{
+          position: "fixed",
+          bottom: "22px",
+          right: "22px",
+          zIndex: 9999,
+        }}
+      >
+        <a
+          href="https://wa.me/639159224695?text=Hello%2C%20I%20want%20to%20purchase%20API%20access"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Chat on WhatsApp: +63 915 922 4695"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "9px",
+            backgroundColor: "#25D366",
+            color: "#FFFFFF",
+            padding: "12px 20px",
+            borderRadius: "50px",
+            boxShadow: "0 6px 20px rgba(37, 211, 102, 0.45)",
+            textDecoration: "none",
+            fontWeight: 800,
+            fontSize: "13px",
+            letterSpacing: "0.2px",
+            transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = "translateY(-2px) scale(1.03)";
+            e.currentTarget.style.backgroundColor = "#20BA5A";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = "translateY(0) scale(1)";
+            e.currentTarget.style.backgroundColor = "#25D366";
+          }}
+        >
+          <WhatsAppIcon size={20} color="#FFFFFF" />
+          <span>Buy API Access</span>
+        </a>
+      </aside>
     </div>
   );
 }

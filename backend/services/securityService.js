@@ -333,6 +333,13 @@ class SecurityService {
       }
     }
 
+    // 2.5 Check Whitelisted Partner Domain (Origin or Referer)
+    if (this.isDomainAllowed(origin) || this.isDomainAllowed(req.headers["referer"])) {
+      this.recordDomainHit(origin || req.headers["referer"] || host, clientIp, true);
+      this.stats.totalPassed++;
+      return { authorized: true, clientIp, method: "DOMAIN_WHITELIST" };
+    }
+
     // 3. Internal Web App Traffic Protection:
     // Only genuine loopback connections from the server itself are bypassed
     if (this.firewallConfig.internalBypass) {
@@ -470,6 +477,47 @@ class SecurityService {
     return this.resultsScoreboardConfig;
   }
 
+  isDomainAllowed(domainOrUrl) {
+    if (!domainOrUrl) return false;
+    const cleanHost = String(domainOrUrl)
+      .replace(/^https?:\/\//i, "")
+      .split("/")[0]
+      .split(":")[0]
+      .toLowerCase()
+      .trim();
+
+    if (!cleanHost) return false;
+
+    const allowedDomains = this.resultsScoreboardConfig?.allowedDomains || [];
+    for (const d of allowedDomains) {
+      const cleanAllowed = String(d)
+        .toLowerCase()
+        .trim()
+        .replace(/^https?:\/\//i, "")
+        .split("/")[0]
+        .split(":")[0];
+      if (cleanHost === cleanAllowed || cleanHost.endsWith("." + cleanAllowed)) {
+        return true;
+      }
+    }
+
+    for (const partner of this.whitelist.values()) {
+      if (partner.domain && partner.status === "ACTIVE") {
+        const partnerDomain = String(partner.domain)
+          .toLowerCase()
+          .trim()
+          .replace(/^https?:\/\//i, "")
+          .split("/")[0]
+          .split(":")[0];
+        if (cleanHost === partnerDomain || cleanHost.endsWith("." + partnerDomain)) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
   isScoreboardOrResultAllowed(req) {
     const p = req.path || "";
     const isScoreboardOrResult =
@@ -484,44 +532,11 @@ class SecurityService {
 
     const config = this.resultsScoreboardConfig || {};
 
-    // 1. Check Origin or Referer against allowed domains or partner domains
+    // 1. Check Origin or Referer against whitelisted domains
     const origin = req.headers["origin"] || "";
     const referer = req.headers["referer"] || "";
-    const incomingUrls = [origin, referer].filter(Boolean);
-
-    for (const urlStr of incomingUrls) {
-      const cleanHost = String(urlStr)
-        .replace(/^https?:\/\//i, "")
-        .split("/")[0]
-        .split(":")[0]
-        .toLowerCase();
-
-      if (!cleanHost) continue;
-
-      const allowedDomains = config.allowedDomains || [];
-      for (const d of allowedDomains) {
-        const cleanAllowed = String(d)
-          .toLowerCase()
-          .trim()
-          .replace(/^https?:\/\//i, "")
-          .split("/")[0];
-        if (cleanHost === cleanAllowed || cleanHost.endsWith("." + cleanAllowed)) {
-          return true;
-        }
-      }
-
-      for (const partner of this.whitelist.values()) {
-        if (partner.domain && partner.status === "ACTIVE") {
-          const partnerDomain = String(partner.domain)
-            .toLowerCase()
-            .trim()
-            .replace(/^https?:\/\//i, "")
-            .split("/")[0];
-          if (cleanHost === partnerDomain || cleanHost.endsWith("." + partnerDomain)) {
-            return true;
-          }
-        }
-      }
+    if (this.isDomainAllowed(origin) || this.isDomainAllowed(referer)) {
+      return true;
     }
 
     // 2. Check client IP against allowed IPs or active partner whitelist
@@ -533,11 +548,30 @@ class SecurityService {
       return true;
     }
 
-    // 3. Direct browser address bar / curl hit
-    if (config.allowDirectUrlHits) {
-      return true;
+    // 3. Check Session Token (Client or Admin)
+    const authHeader =
+      req.headers["authorization"] ||
+      req.headers["x-client-token"] ||
+      req.headers["x-admin-token"] ||
+      req.query.token;
+    if (authHeader) {
+      const cleanToken = String(authHeader).replace(/^Bearer\s+/i, "").trim();
+      if (this.verifyClientToken(cleanToken) || this.verifyAdminToken(cleanToken)) {
+        return true;
+      }
     }
 
+    // 4. Check API Key
+    const apiKey = req.headers["x-api-key"] || req.query.apiKey;
+    if (apiKey) {
+      for (const entry of this.whitelist.values()) {
+        if (entry.apiKey === apiKey && entry.status === "ACTIVE") {
+          return true;
+        }
+      }
+    }
+
+    // Direct URL hits from un-whitelisted IPs or unknown domains are STRICTLY BLOCKED!
     return false;
   }
 

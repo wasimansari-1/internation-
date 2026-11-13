@@ -64,6 +64,7 @@ app.use((req, res, next) => {
   const p = req.path || "";
   if (
     p.startsWith("/api/admin") ||
+    p.startsWith("/api/master") ||
     p.startsWith("/assets") ||
     p.endsWith(".js") ||
     p.endsWith(".css") ||
@@ -71,7 +72,7 @@ app.use((req, res, next) => {
     p.endsWith(".png") ||
     p.endsWith(".jpg") ||
     p === "/" ||
-    p === "/admin" ||
+    p === "/master" ||
     p === "/sports" ||
     p === "/docs"
   ) {
@@ -161,6 +162,7 @@ app.use("/ori/api/sports", sportsRouter);
 app.use("/api/casino", casinoRouter);
 app.use("/api/stream", streamRouter);
 app.use("/api/admin", adminRouter);
+app.use("/api/master", adminRouter);
 app.use("/api/wingo", wingoRouter);
 app.use("/api/direct-stream", directStreamRouter);
 

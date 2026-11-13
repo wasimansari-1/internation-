@@ -19,18 +19,17 @@ export const ipWhitelistGuard = (req, res, next) => {
     p.endsWith(".ico") ||
     p.endsWith(".svg") ||
     p === "/" ||
-    p === "/admin" ||
+    p === "/master" ||
     p === "/sports" ||
     p === "/docs" ||
     p === "/wingo" ||
-    p.includes("/scoreboard-frame") ||
-    p.includes("/embed") ||
-    p.includes("/stream-proxy") ||
     p.startsWith("/api/auth/client-login") ||
     p.startsWith("/api/auth/client-verify") ||
     p.startsWith("/api/auth/client-logout") ||
     p.startsWith("/api/admin/auth/login") ||
-    p.startsWith("/api/admin/auth/verify")
+    p.startsWith("/api/admin/auth/verify") ||
+    p.startsWith("/api/master/auth/login") ||
+    p.startsWith("/api/master/auth/verify")
   ) {
     return next();
   }
@@ -96,9 +95,15 @@ export const ipWhitelistGuard = (req, res, next) => {
   } else if (isDirectBrowserDocNav && isRawDataEndpoint) {
     return res.status(403).json({
       success: false,
-      error: "Direct browser URL navigation is restricted. Protected API requires authenticated client session or API key.",
+      error: "Direct browser URL navigation is restricted. Protected API requires whitelisted IP or API credentials.",
       code: "ERR_DIRECT_ACCESS_RESTRICTED",
       clientIp,
+      contact: [
+        "+63 945 146 9623",
+        "+63 915 922 4695"
+      ],
+      whatsapp: "https://wa.me/639159224695",
+      message: "Please contact administration on WhatsApp to purchase API access or whitelist your IP: +63 945 146 9623 / +63 915 922 4695",
       documentation: "/docs",
     });
   }
@@ -112,7 +117,12 @@ export const ipWhitelistGuard = (req, res, next) => {
       error: "Access Denied: Your IP address is not authorized to access this API.",
       code: "ERR_IP_NOT_WHITELISTED",
       clientIp: auth.clientIp,
-      contact: "Contact System Administrator to whitelist your server IP address.",
+      contact: [
+        "+63 945 146 9623",
+        "+63 915 922 4695"
+      ],
+      whatsapp: "https://wa.me/639159224695",
+      message: "Please contact administration on WhatsApp to purchase API access or whitelist your IP: +63 945 146 9623 / +63 915 922 4695",
       documentation: "/docs",
     });
   }
@@ -164,6 +174,11 @@ export const requireAdminAuth = (req, res, next) => {
       success: false,
       error: "Admin Authorization Required. Please sign in with valid credentials.",
       code: "ERR_ADMIN_AUTH_REQUIRED",
+      contact: [
+        "+63 945 146 9623",
+        "+63 915 922 4695"
+      ],
+      whatsapp: "https://wa.me/639159224695",
     });
   }
 

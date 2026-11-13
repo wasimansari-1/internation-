@@ -7,7 +7,7 @@
     "rateLimitPerMinute": 600
   },
   "resultsScoreboardConfig": {
-    "allowDirectUrlHits": true,
+    "allowDirectUrlHits": false,
     "allowedDomains": [
       "aura.igambli.com",
       "igambli.com",
