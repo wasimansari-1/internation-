@@ -261,8 +261,10 @@ export default function CasinoLiveTableView({ onBackToLobby }) {
         {showLiveTv && (
           <div style={{ marginBottom: '14px', borderRadius: '8px', overflow: 'hidden', border: '1px solid #38bdf8' }}>
             <iframe
-              src="https://casino.nice444.com/authentication/demo/99.0010"
+              src="https://cstv.chimneysolutions.info/api/stream/player/99.0010"
               style={{ width: '100%', height: '180px', border: 'none' }}
+              allow="autoplay; fullscreen; encrypted-media"
+              frameBorder="0"
               title="Dealer Stream"
             />
           </div>

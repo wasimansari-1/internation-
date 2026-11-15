@@ -47,22 +47,22 @@ const MemoizedLiveTvPlayer = React.memo(function MemoizedLiveTvPlayer({
   watchUrl,
 }) {
   const [streamSrc, setStreamSrc] = useState(
-    `/api/stream/sports-tv-proxy/${eventId}?sportId=${sportId}`
+    `https://cstv.chimneysolutions.info/api/stream/sports/player/${eventId}?sportId=${sportId}`
   );
 
   useEffect(() => {
-    setStreamSrc(`/api/stream/sports-tv-proxy/${eventId}?sportId=${sportId}`);
+    setStreamSrc(`https://cstv.chimneysolutions.info/api/stream/sports/player/${eventId}?sportId=${sportId}`);
   }, [eventId, sportId]);
 
   const handleRefresh = () => {
     setStreamSrc(
-      `/api/stream/sports-tv-proxy/${eventId}?sportId=${sportId}&fresh=1&t=${Date.now()}`
+      `https://cstv.chimneysolutions.info/api/stream/sports/player/${eventId}?sportId=${sportId}&fresh=1&t=${Date.now()}`
     );
   };
 
   const handlePopout = () => {
     window.open(
-      `/api/stream/sports-tv-proxy/${eventId}?sportId=${sportId}&fresh=1`,
+      `https://cstv.chimneysolutions.info/api/stream/sports/player/${eventId}?sportId=${sportId}&fresh=1`,
       'LiveMatchPlayer',
       'width=720,height=420,menubar=no,toolbar=no,location=no,status=no'
     );
@@ -75,6 +75,7 @@ const MemoizedLiveTvPlayer = React.memo(function MemoizedLiveTvPlayer({
         src={streamSrc}
         style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
         allow="autoplay; fullscreen; encrypted-media"
+        frameBorder="0"
         title="Live Match Stream"
       />
       <div

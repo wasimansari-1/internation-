@@ -724,7 +724,7 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
             {/* Direct Studio Live Casino Video Stream */}
             {showLiveTv && (
               <iframe
-                src={`/api/direct-stream/casino/player/${gameId}`}
+                src={`https://cstv.chimneysolutions.info/api/stream/player/${gameId}`}
                 title={gameName || 'Live Casino Table'}
                 style={{
                   position: 'absolute',
@@ -736,7 +736,8 @@ export default function CustomCasinoGameView({ gameId, gameName, onClose }) {
                   backgroundColor: '#000',
                   zIndex: 1
                 }}
-                allow="autoplay; fullscreen; unload"
+                allow="autoplay; fullscreen; encrypted-media"
+                frameBorder="0"
               />
             )}
 
