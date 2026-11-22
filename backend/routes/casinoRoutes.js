@@ -452,66 +452,75 @@ const lastKnownResultsMap = new Map();
 
 router.get("/results/:gameId", async (req, res) => {
   const { gameId } = req.params;
-  resultsProviderCounter++;
-  const mode = (telemetry.routingConfig.casinoProvider || "AUTO").toUpperCase();
-  const baseProviders = [
-    { key: "NICE444", domain: "https://casino.nice444.com", getToken: getDemoToken },
-    { key: "STARTEXCH99", domain: "https://casino.startexch99.com", getToken: getStartexchToken },
-    { key: "ASSTARPLAY", domain: "https://casino.asstarplay.com", getToken: getAsstarplayToken },
-  ];
+  const cacheKey = `casino_results_${gameId}`;
 
-  let providers;
-  const preferredIdx = baseProviders.findIndex((p) => p.key === mode);
-  if (preferredIdx >= 0) {
-    providers = [
-      baseProviders[preferredIdx],
-      ...baseProviders.filter((_, idx) => idx !== preferredIdx),
+  const enrichedData = await telemetry.deduplicateOrFetch(cacheKey, 2500, async () => {
+    resultsProviderCounter++;
+    const mode = (telemetry.routingConfig.casinoProvider || "AUTO").toUpperCase();
+    const baseProviders = [
+      { key: "NICE444", domain: "https://casino.nice444.com", getToken: getDemoToken },
+      { key: "STARTEXCH99", domain: "https://casino.startexch99.com", getToken: getStartexchToken },
+      { key: "ASSTARPLAY", domain: "https://casino.asstarplay.com", getToken: getAsstarplayToken },
     ];
-  } else {
-    const startIdx = resultsProviderCounter % baseProviders.length;
-    providers = baseProviders.map((_, idx) => baseProviders[(startIdx + idx) % baseProviders.length]);
-  }
 
-  for (const p of providers) {
-    try {
-      const token = await p.getToken();
-      if (!token) continue;
-      const upstreamRes = await axios.post(
-        `${p.domain}/casinoapp/users/casino/casinoEventResults`,
-        { eventId: String(gameId) },
-        {
-          headers: {
-            Origin: p.domain,
-            Referer: `${p.domain}/`,
-            Authorization: `Bearer ${token}`,
-            "User-Agent":
-              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-          },
-          timeout: 4500,
-        },
-      );
-      if (Array.isArray(upstreamRes.data?.data) && upstreamRes.data.data.length > 0) {
-        const enriched = upstreamRes.data.data.map((item) => {
-          const mainMkt = item.results?.find((m) => m.marketName === "WINNER" || m.index === 0);
-          const winRunner = mainMkt?.runners?.find((rn) => rn.result === "WINNER");
-          const runnerName = winRunner && mainMkt?.runnersName ? mainMkt.runnersName[winRunner.selectionId] : null;
-          const badge = resolveWinnerLabel(item.winner || item.gameResult, runnerName, item.eventName, gameId);
-          return {
-            ...item,
-            badgeresult: badge,
-            badgeResult: badge,
-          };
-        });
-        lastKnownResultsMap.set(String(gameId), enriched);
-        return res.json({ success: true, data: enriched });
-      }
-    } catch (err) {
-      continue;
+    let providers;
+    const preferredIdx = baseProviders.findIndex((p) => p.key === mode);
+    if (preferredIdx >= 0) {
+      providers = [
+        baseProviders[preferredIdx],
+        ...baseProviders.filter((_, idx) => idx !== preferredIdx),
+      ];
+    } else {
+      const startIdx = resultsProviderCounter % baseProviders.length;
+      providers = baseProviders.map((_, idx) => baseProviders[(startIdx + idx) % baseProviders.length]);
     }
-  }
 
-  const cached = lastKnownResultsMap.get(String(gameId)) || [];
-  return res.json({ success: true, data: cached });
+    for (const p of providers) {
+      try {
+        const token = await p.getToken();
+        if (!token) continue;
+        const upstreamRes = await axios.post(
+          `${p.domain}/casinoapp/users/casino/casinoEventResults`,
+          { eventId: String(gameId) },
+          {
+            headers: {
+              Origin: p.domain,
+              Referer: `${p.domain}/`,
+              Authorization: `Bearer ${token}`,
+              "User-Agent":
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+            },
+            timeout: 3500,
+          },
+        );
+        if (Array.isArray(upstreamRes.data?.data) && upstreamRes.data.data.length > 0) {
+          const enriched = upstreamRes.data.data.map((item) => {
+            const mainMkt = item.results?.find((m) => m.marketName === "WINNER" || m.index === 0);
+            const winRunner = mainMkt?.runners?.find((rn) => rn.result === "WINNER");
+            const runnerName = winRunner && mainMkt?.runnersName ? mainMkt.runnersName[winRunner.selectionId] : null;
+            const badge = resolveWinnerLabel(item.winner || item.gameResult, runnerName, item.eventName, gameId);
+            return {
+              ...item,
+              badgeresult: badge,
+              badgeResult: badge,
+            };
+          });
+          lastKnownResultsMap.set(String(gameId), enriched);
+          return enriched;
+        }
+      } catch (err) {
+        continue;
+      }
+    }
+
+    return lastKnownResultsMap.get(String(gameId)) || [];
+  });
+
+  const finalData = (Array.isArray(enrichedData) && enrichedData.length > 0)
+    ? enrichedData
+    : (lastKnownResultsMap.get(String(gameId)) || []);
+
+  return res.json({ success: true, data: finalData });
 });
 
 // Dedicated ultra-fast result API (instant response as soon as round ends)
