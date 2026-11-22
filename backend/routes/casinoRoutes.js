@@ -1,6 +1,11 @@
 import express from "express";
 import axios from "axios";
-import { getDemoToken, getStartexchToken, getAsstarplayToken, proxyRequest } from "../services/authService.js";
+import {
+  getDemoToken,
+  getStartexchToken,
+  getAsstarplayToken,
+  proxyRequest,
+} from "../services/authService.js";
 import { telemetry } from "../services/telemetryService.js";
 import {
   getScrapedCasinoLiveOdds,
@@ -54,16 +59,48 @@ router.get("/international-tables", async (req, res) => {
     }
 
     const defaultEvoTables = [
-      { eventId: "evo_roulette_live", eventName: "Lightning Roulette", companyName: "EVOLUTION", category: "roulette" },
-      { eventId: "evo_crazy_time", eventName: "Crazy Time", companyName: "EVOLUTION", category: "game_shows" },
-      { eventId: "evo_monopoly_live", eventName: "Monopoly Live", companyName: "EVOLUTION", category: "game_shows" },
-      { eventId: "evo_baccarat_squeeze", eventName: "Baccarat Squeeze", companyName: "EVOLUTION", category: "baccarat" },
-      { eventId: "evo_infinite_blackjack", eventName: "Infinite Blackjack", companyName: "EVOLUTION", category: "blackjack" },
-      { eventId: "evo_mega_ball", eventName: "Mega Ball 100x", companyName: "EVOLUTION", category: "game_shows" },
+      {
+        eventId: "evo_roulette_live",
+        eventName: "Lightning Roulette",
+        companyName: "EVOLUTION",
+        category: "roulette",
+      },
+      {
+        eventId: "evo_crazy_time",
+        eventName: "Crazy Time",
+        companyName: "EVOLUTION",
+        category: "game_shows",
+      },
+      {
+        eventId: "evo_monopoly_live",
+        eventName: "Monopoly Live",
+        companyName: "EVOLUTION",
+        category: "game_shows",
+      },
+      {
+        eventId: "evo_baccarat_squeeze",
+        eventName: "Baccarat Squeeze",
+        companyName: "EVOLUTION",
+        category: "baccarat",
+      },
+      {
+        eventId: "evo_infinite_blackjack",
+        eventName: "Infinite Blackjack",
+        companyName: "EVOLUTION",
+        category: "blackjack",
+      },
+      {
+        eventId: "evo_mega_ball",
+        eventName: "Mega Ball 100x",
+        companyName: "EVOLUTION",
+        category: "game_shows",
+      },
     ];
     return res.json({ success: true, data: defaultEvoTables });
   } catch (err) {
-    return res.status(500).json({ success: false, error: err.message, data: [] });
+    return res
+      .status(500)
+      .json({ success: false, error: err.message, data: [] });
   }
 });
 
@@ -78,15 +115,42 @@ router.get("/slots-tables", async (req, res) => {
       return res.json(result);
     }
     const defaultSlots = [
-      { eventId: "slot_gates_olympus", eventName: "Gates of Olympus", companyName: "PRAGMATIC", category: "slots" },
-      { eventId: "slot_sweet_bonanza", eventName: "Sweet Bonanza", companyName: "PRAGMATIC", category: "slots" },
-      { eventId: "slot_sugar_rush", eventName: "Sugar Rush 1000", companyName: "PRAGMATIC", category: "slots" },
-      { eventId: "slot_wolf_gold", eventName: "Wolf Gold", companyName: "PRAGMATIC", category: "slots" },
-      { eventId: "slot_big_bass", eventName: "Big Bass Bonanza", companyName: "PRAGMATIC", category: "slots" },
+      {
+        eventId: "slot_gates_olympus",
+        eventName: "Gates of Olympus",
+        companyName: "PRAGMATIC",
+        category: "slots",
+      },
+      {
+        eventId: "slot_sweet_bonanza",
+        eventName: "Sweet Bonanza",
+        companyName: "PRAGMATIC",
+        category: "slots",
+      },
+      {
+        eventId: "slot_sugar_rush",
+        eventName: "Sugar Rush 1000",
+        companyName: "PRAGMATIC",
+        category: "slots",
+      },
+      {
+        eventId: "slot_wolf_gold",
+        eventName: "Wolf Gold",
+        companyName: "PRAGMATIC",
+        category: "slots",
+      },
+      {
+        eventId: "slot_big_bass",
+        eventName: "Big Bass Bonanza",
+        companyName: "PRAGMATIC",
+        category: "slots",
+      },
     ];
     return res.json({ success: true, data: defaultSlots });
   } catch (err) {
-    return res.status(500).json({ success: false, error: err.message, data: [] });
+    return res
+      .status(500)
+      .json({ success: false, error: err.message, data: [] });
   }
 });
 
@@ -101,7 +165,10 @@ router.post("/providers/configure", (req, res) => {
       ...credentials,
       ...settings,
     });
-    return res.json({ success: true, message: `Provider ${providerName} configured` });
+    return res.json({
+      success: true,
+      message: `Provider ${providerName} configured`,
+    });
   } catch (err) {
     return res.status(400).json({ success: false, error: err.message });
   }
@@ -110,11 +177,16 @@ router.post("/providers/configure", (req, res) => {
 router.post("/update-evo-session", (req, res) => {
   const { sessionToken, launchUrl, clientBase } = req.body;
   if (!sessionToken && !launchUrl) {
-    return res.status(400).json({ success: false, error: "sessionToken or launchUrl required" });
+    return res
+      .status(400)
+      .json({ success: false, error: "sessionToken or launchUrl required" });
   }
   if (launchUrl) casinoConfig.evolution.gatewayUrl = launchUrl;
   if (clientBase) casinoConfig.evolution.clientBaseUrl = clientBase;
-  return res.json({ success: true, message: "Evolution configuration updated successfully" });
+  return res.json({
+    success: true,
+    message: "Evolution configuration updated successfully",
+  });
 });
 
 router.get("/evolution-lobby", (req, res) => {
@@ -143,11 +215,15 @@ router.post("/launch-game", async (req, res) => {
     const token = await getDemoToken();
     const provider = (companyName || "").toUpperCase();
     if (provider.includes("EVOLUTION")) {
-      const evoSession = await providerManager.createGameSession("EVOLUTION", { eventId });
+      const evoSession = await providerManager.createGameSession("EVOLUTION", {
+        eventId,
+      });
       return res.json({ success: true, launchUrl: evoSession.launchUrl });
     }
     if (provider.includes("EZUGI")) {
-      const ezugiSession = await providerManager.createGameSession("EZUGI", { eventId });
+      const ezugiSession = await providerManager.createGameSession("EZUGI", {
+        eventId,
+      });
       return res.json({ success: true, launchUrl: ezugiSession.launchUrl });
     }
     const targetUrl = `https://casino.nice444.com/authentication/${token}/${eventId}`;
@@ -194,28 +270,76 @@ async function fetchUpstreamWatchUrl(gameId, incomingIp) {
 
   if (mode === "ASSTARPLAY") {
     providers = [
-      { name: "Asstarplay", domain: "https://casino.asstarplay.com", getToken: () => getAsstarplayToken() },
-      { name: "Startexch99", domain: "https://casino.startexch99.com", getToken: () => getStartexchToken() },
-      { name: "Nice444", domain: "https://casino.nice444.com", getToken: () => getDemoToken() },
+      {
+        name: "Asstarplay",
+        domain: "https://casino.asstarplay.com",
+        getToken: () => getAsstarplayToken(),
+      },
+      {
+        name: "Startexch99",
+        domain: "https://casino.startexch99.com",
+        getToken: () => getStartexchToken(),
+      },
+      {
+        name: "Nice444",
+        domain: "https://casino.nice444.com",
+        getToken: () => getDemoToken(),
+      },
     ];
   } else if (mode === "STARTEXCH99") {
     providers = [
-      { name: "Startexch99", domain: "https://casino.startexch99.com", getToken: () => getStartexchToken() },
-      { name: "Asstarplay", domain: "https://casino.asstarplay.com", getToken: () => getAsstarplayToken() },
-      { name: "Nice444", domain: "https://casino.nice444.com", getToken: () => getDemoToken() },
+      {
+        name: "Startexch99",
+        domain: "https://casino.startexch99.com",
+        getToken: () => getStartexchToken(),
+      },
+      {
+        name: "Asstarplay",
+        domain: "https://casino.asstarplay.com",
+        getToken: () => getAsstarplayToken(),
+      },
+      {
+        name: "Nice444",
+        domain: "https://casino.nice444.com",
+        getToken: () => getDemoToken(),
+      },
     ];
   } else if (mode === "NICE444") {
     providers = [
-      { name: "Nice444", domain: "https://casino.nice444.com", getToken: () => getDemoToken() },
-      { name: "Asstarplay", domain: "https://casino.asstarplay.com", getToken: () => getAsstarplayToken() },
-      { name: "Startexch99", domain: "https://casino.startexch99.com", getToken: () => getStartexchToken() },
+      {
+        name: "Nice444",
+        domain: "https://casino.nice444.com",
+        getToken: () => getDemoToken(),
+      },
+      {
+        name: "Asstarplay",
+        domain: "https://casino.asstarplay.com",
+        getToken: () => getAsstarplayToken(),
+      },
+      {
+        name: "Startexch99",
+        domain: "https://casino.startexch99.com",
+        getToken: () => getStartexchToken(),
+      },
     ];
   } else {
     // AUTO: Rotates across Asstarplay, Startexch99, Nice444 to avoid overloading any single provider
     const pool = [
-      { name: "Asstarplay", domain: "https://casino.asstarplay.com", getToken: () => getAsstarplayToken() },
-      { name: "Startexch99", domain: "https://casino.startexch99.com", getToken: () => getStartexchToken() },
-      { name: "Nice444", domain: "https://casino.nice444.com", getToken: () => getDemoToken() },
+      {
+        name: "Asstarplay",
+        domain: "https://casino.asstarplay.com",
+        getToken: () => getAsstarplayToken(),
+      },
+      {
+        name: "Startexch99",
+        domain: "https://casino.startexch99.com",
+        getToken: () => getStartexchToken(),
+      },
+      {
+        name: "Nice444",
+        domain: "https://casino.nice444.com",
+        getToken: () => getDemoToken(),
+      },
     ];
     const startIdx = streamProviderCounter % pool.length;
     providers = pool.map((_, i) => pool[(startIdx + i) % pool.length]);
@@ -245,7 +369,12 @@ async function fetchUpstreamWatchUrl(gameId, incomingIp) {
           },
         );
         if (res.data?.data?.url) {
-          telemetry.recordUpstreamHit(provider.name, "/watch-link", res.status, 150);
+          telemetry.recordUpstreamHit(
+            provider.name,
+            "/watch-link",
+            res.status,
+            150,
+          );
           return res.data.data.url;
         }
       } catch (e) {
@@ -319,15 +448,21 @@ router.get("/stream-proxy/:gameId", async (req, res) => {
       } catch (e) {}
 
       // Correct player.js path to the actual stream host
-      html = html.replace(/src="\/player\/player\.js/g, `src="${streamOrigin}/player/player.js`);
+      html = html.replace(
+        /src="\/player\/player\.js/g,
+        `src="${streamOrigin}/player/player.js`,
+      );
       html = html.replace(/href="\/player\//g, `href="${streamOrigin}/player/`);
 
       // Neutralize frame enforcement and devtools guard in configuration
       html = html.replace(/"enforce"\s*:\s*true/g, '"enforce":false');
-      html = html.replace(/"devtoolsGuard"\s*:\s*true/g, '"devtoolsGuard":false');
+      html = html.replace(
+        /"devtoolsGuard"\s*:\s*true/g,
+        '"devtoolsGuard":false',
+      );
 
       // Strip any raw debugger statements
-      html = html.replace(/\bdebugger\b/g, '/*noop*/');
+      html = html.replace(/\bdebugger\b/g, "/*noop*/");
 
       // Cleanly inject inside <head> with base href, CORS /ping bypass, and anti-debugger
       const injectedScript = `
@@ -560,7 +695,8 @@ router.get("/live-odds/:gameId", async (req, res) => {
     const data = await getScrapedCasinoLiveOdds(gameId);
     if (data) {
       const recent = lastCelebratedWinnerCache.get(gameId);
-      const isRecentCelebration = recent && Date.now() - recent.declaredAt < 6000;
+      const isRecentCelebration =
+        recent && Date.now() - recent.declaredAt < 6000;
 
       const raw = data.winner || data.gameResult;
       if (raw && raw !== "WINNER" && raw !== "DECLARED") {
@@ -579,9 +715,10 @@ router.get("/live-odds/:gameId", async (req, res) => {
     }
     return res.json({ success: true, data });
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message, data: null });
+    return res
+      .status(500)
+      .json({ success: false, message: err.message, data: null });
   }
 });
 
 export default router;
-

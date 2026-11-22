@@ -65,6 +65,10 @@ class SecurityService {
       lastAttackTime: null,
     };
 
+    // High-performance Sliding Window Rate Limiter
+    this.rateLimiterWindowMs = 60000; // 1-minute window
+    this.ipRateLimits = new Map(); // ip -> { count: number, resetAt: number }
+
     this.initStorage();
   }
 
@@ -290,14 +294,14 @@ class SecurityService {
     const clientIp = this.extractRealClientIp(req);
     const origin = req.headers["origin"] || req.headers["referer"] || "";
     const host = req.headers["host"] || "";
-    const apiKey = req.headers["x-api-key"] || req.query.apiKey || "";
+    const apiKey = req.headers["x-api-key"] || req.query?.apiKey || "";
 
     // 0. Check Authenticated Session Token (Client Platform Operator or Admin)
     const authHeader =
       req.headers["authorization"] ||
       req.headers["x-client-token"] ||
       req.headers["x-admin-token"] ||
-      req.query.token;
+      req.query?.token;
     if (authHeader) {
       const cleanToken = String(authHeader).replace(/^Bearer\s+/i, "").trim();
       if (this.verifyClientToken(cleanToken) || this.verifyAdminToken(cleanToken)) {
@@ -333,11 +337,24 @@ class SecurityService {
       }
     }
 
-    // 2.5 Check Whitelisted Partner Domain (Origin or Referer)
+    // 2.5 Check Whitelisted Partner Domain (Origin or Referer) for Genuine Browser Traffic
     if (this.isDomainAllowed(origin) || this.isDomainAllowed(req.headers["referer"])) {
-      this.recordDomainHit(origin || req.headers["referer"] || host, clientIp, true);
-      this.stats.totalPassed++;
-      return { authorized: true, clientIp, method: "DOMAIN_WHITELIST" };
+      const ua = String(req.headers["user-agent"] || "").toLowerCase();
+      const isScriptScraper =
+        ua.includes("curl") ||
+        ua.includes("python") ||
+        ua.includes("postman") ||
+        ua.includes("go-http-client") ||
+        ua.includes("aiohttp") ||
+        ua.includes("httpclient") ||
+        !ua;
+
+      // Reject non-browser automated CLI scrapers faking Origin headers
+      if (!isScriptScraper) {
+        this.recordDomainHit(origin || req.headers["referer"] || host, clientIp, true);
+        this.stats.totalPassed++;
+        return { authorized: true, clientIp, method: "DOMAIN_WHITELIST" };
+      }
     }
 
     // 3. Internal Web App Traffic Protection:
@@ -417,8 +434,24 @@ class SecurityService {
    */
   removeWhitelistedIp(ip) {
     const cleanIp = this.normalizeIp(ip);
+    let modified = false;
+
     if (this.whitelist.has(cleanIp)) {
       this.whitelist.delete(cleanIp);
+      modified = true;
+    }
+
+    if (this.resultsScoreboardConfig?.allowedIps) {
+      const prevLen = this.resultsScoreboardConfig.allowedIps.length;
+      this.resultsScoreboardConfig.allowedIps = this.resultsScoreboardConfig.allowedIps.filter(
+        (allowedIp) => this.normalizeIp(allowedIp) !== cleanIp
+      );
+      if (this.resultsScoreboardConfig.allowedIps.length !== prevLen) {
+        modified = true;
+      }
+    }
+
+    if (modified) {
       this.saveWhitelistToDisk();
       return true;
     }
@@ -518,6 +551,48 @@ class SecurityService {
     return false;
   }
 
+  /**
+   * Enforce Sliding Window Rate Limiting per IP / Partner
+   * Protects against reseller scraping, DDoS, and runaway loops
+   * NOTE: Whitelisted partners (with millions of users) have ZERO RATE LIMIT (100% UNLIMITED)
+   */
+  checkRateLimit(clientIp, customMax = null) {
+    if (!clientIp) return true;
+    const isLoopback =
+      clientIp === "127.0.0.1" ||
+      clientIp === "::1" ||
+      clientIp === "::ffff:127.0.0.1";
+    if (isLoopback) return true;
+
+    // Authorized Whitelisted Partner IPs have ZERO RATE LIMIT (100% UNLIMITED for genuine high-traffic users)
+    const isWhitelistedPartner =
+      (this.whitelist.has(clientIp) && this.whitelist.get(clientIp).status === "ACTIVE") ||
+      (this.resultsScoreboardConfig?.allowedIps && this.resultsScoreboardConfig.allowedIps.includes(clientIp));
+
+    if (isWhitelistedPartner) {
+      return true; // Zero throttle, unlimited scale for whitelisted partners!
+    }
+
+    const now = Date.now();
+    let record = this.ipRateLimits.get(clientIp);
+    if (!record || now > record.resetAt) {
+      record = { count: 1, resetAt: now + this.rateLimiterWindowMs };
+      this.ipRateLimits.set(clientIp, record);
+      return true;
+    }
+
+    record.count++;
+
+    // Non-whitelisted or general public traffic gets firewallConfig.rateLimitPerMinute (e.g. 600 req/min)
+    const limit = customMax || (this.firewallConfig.rateLimitPerMinute || 600);
+
+    if (record.count > limit) {
+      return false;
+    }
+
+    return true;
+  }
+
   isScoreboardOrResultAllowed(req) {
     const p = req.path || "";
     const isScoreboardOrResult =
@@ -530,21 +605,43 @@ class SecurityService {
 
     if (!isScoreboardOrResult) return false;
 
+    const clientIp = this.extractRealClientIp(req);
     const config = this.resultsScoreboardConfig || {};
 
-    // 1. Check Origin or Referer against whitelisted domains
-    const origin = req.headers["origin"] || "";
-    const referer = req.headers["referer"] || "";
-    if (this.isDomainAllowed(origin) || this.isDomainAllowed(referer)) {
+    // 0. Explicit Block Check: If IP is marked as BLOCKED in /master, reject immediately!
+    if (this.whitelist.has(clientIp) && this.whitelist.get(clientIp).status === "BLOCKED") {
+      return false;
+    }
+
+    // 1. Whitelisted IPs (e.g. 187.127.98.247, 187.127.119.222, etc.) ALWAYS PASS directly
+    const isAllowedIp =
+      (this.whitelist.has(clientIp) && this.whitelist.get(clientIp).status === "ACTIVE") ||
+      (config.allowedIps &&
+        config.allowedIps.includes(clientIp) &&
+        (!this.whitelist.has(clientIp) || this.whitelist.get(clientIp).status !== "BLOCKED"));
+
+    if (isAllowedIp) {
       return true;
     }
 
-    // 2. Check client IP against allowed IPs or active partner whitelist
-    const clientIp = this.extractRealClientIp(req);
-    if (
-      (config.allowedIps && config.allowedIps.includes(clientIp)) ||
-      (this.whitelist.has(clientIp) && this.whitelist.get(clientIp).status === "ACTIVE")
-    ) {
+    // 2. Check Whitelisted Domain (Origin or Referer) for real browser traffic
+    const origin = req.headers["origin"] || "";
+    const referer = req.headers["referer"] || "";
+    if (this.isDomainAllowed(origin) || this.isDomainAllowed(referer)) {
+      // Anti-spoofing: reject non-browser CLI scrapers (curl/python) faking Origin unless IP is whitelisted
+      const ua = String(req.headers["user-agent"] || "").toLowerCase();
+      const isScriptScraper =
+        ua.includes("curl") ||
+        ua.includes("python") ||
+        ua.includes("postman") ||
+        ua.includes("go-http-client") ||
+        ua.includes("aiohttp") ||
+        ua.includes("httpclient") ||
+        !ua;
+
+      if (isScriptScraper) {
+        return false;
+      }
       return true;
     }
 
@@ -553,7 +650,7 @@ class SecurityService {
       req.headers["authorization"] ||
       req.headers["x-client-token"] ||
       req.headers["x-admin-token"] ||
-      req.query.token;
+      req.query?.token;
     if (authHeader) {
       const cleanToken = String(authHeader).replace(/^Bearer\s+/i, "").trim();
       if (this.verifyClientToken(cleanToken) || this.verifyAdminToken(cleanToken)) {
@@ -562,7 +659,7 @@ class SecurityService {
     }
 
     // 4. Check API Key
-    const apiKey = req.headers["x-api-key"] || req.query.apiKey;
+    const apiKey = req.headers["x-api-key"] || req.query?.apiKey;
     if (apiKey) {
       for (const entry of this.whitelist.values()) {
         if (entry.apiKey === apiKey && entry.status === "ACTIVE") {

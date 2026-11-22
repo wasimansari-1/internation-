@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-11-12T23:22:18.905Z",
+  "updatedAt": "2026-11-22T13:42:30.406Z",
   "firewallConfig": {
     "strictMode": true,
     "payloadEncryption": true,
@@ -14,12 +14,25 @@
       "stream.chimneysolutions.info",
       "cstv.chimneysolutions.info",
       "chimneysolutions.info",
-      "localhost"
+      "localhost",
+      "exchange444.com",
+      "rolexwin.online",
+      "ag.exchange444.com",
+      "punt666.biz",
+      "ag.punt666.biz",
+      "drean444.cc",
+      "ag.drean444.cc",
+      "ag.rolexwin.online",
+      "king444.art",
+      "ag.king444.art",
+      "dollar000.com"
     ],
     "allowedIps": [
       "187.127.98.247",
       "187.127.119.222",
-      "187.127.119.224"
+      "187.127.119.224",
+      "223.185.60.83",
+      "23.111.15.175"
     ]
   },
   "whitelist": [
@@ -103,6 +116,34 @@
       "totalHits": 0,
       "lastHit": null,
       "rateLimit": 2000
+    },
+    {
+      "ip": "223.185.60.83",
+      "partnerName": "test",
+      "domain": "",
+      "apiKey": "uapi_live_19aad4ca927c8d9e",
+      "apiSecret": "sec_live_9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d",
+      "scope": "ALL",
+      "status": "ACTIVE",
+      "createdAt": "2026-11-12T22:15:00.000Z",
+      "updatedAt": "2026-11-22T13:42:30.406Z",
+      "totalHits": 17145,
+      "lastHit": null,
+      "rateLimit": 100000
+    },
+    {
+      "ip": "23.111.15.175",
+      "partnerName": "Partner-23.111.15.175",
+      "domain": "customer1",
+      "apiKey": "uapi_live_431ecd8971f1a5b4",
+      "apiSecret": "sec_live_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d",
+      "scope": "ALL",
+      "status": "ACTIVE",
+      "createdAt": "2026-11-12T22:15:00.000Z",
+      "updatedAt": "2026-11-12T22:15:00.000Z",
+      "totalHits": 6522573,
+      "lastHit": null,
+      "rateLimit": 100000
     }
   ]
 }

@@ -34,11 +34,22 @@ const projectRoot = path.resolve(__dirname, "..");
 const app = express();
 const PORT = process.env.PORT || 5001;
 
-// CORS setup
+// Enterprise Strict Dynamic CORS Lockdown (Protects against unauthorized domain scraping & reselling)
 app.use(
   cors({
     origin: (origin, callback) => {
-      callback(null, origin || "*");
+      // 1. Direct server-to-server or non-browser hits (no Origin header) -> pass to IP Whitelist Guard
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      // 2. Check if the Origin is in whitelisted domains (e.g. aura.igambli.com, chimneysolutions.info, localhost)
+      if (securityService.isDomainAllowed(origin)) {
+        return callback(null, origin);
+      }
+
+      // 3. Unauthorized third-party website: reject CORS!
+      return callback(null, false);
     },
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: [
