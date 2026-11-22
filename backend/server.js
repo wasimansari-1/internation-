@@ -417,18 +417,6 @@ if (!process.env.VERCEL) {
   const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`🚀 Modular Backend Server running on http://0.0.0.0:${PORT}`);
   });
-
-  // Dual-Port Zero 502 Bad Gateway Shield:
-  // If Nginx proxies to 5001 or 3000, listen on both ports simultaneously!
-  const SECONDARY_PORT = Number(PORT) === 5001 ? 3000 : (Number(PORT) === 3000 ? 5001 : null);
-  if (SECONDARY_PORT) {
-    const secondaryServer = http.createServer(app);
-    secondaryServer.listen(SECONDARY_PORT, "0.0.0.0", () => {
-      console.log(`🛡️ Secondary Zero-502 Port listener active on http://0.0.0.0:${SECONDARY_PORT}`);
-    }).on("error", (e) => {
-      // Port already in use by dev tool or another process, ignore safely
-    });
-  }
 }
 
 export default app;
