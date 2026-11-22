@@ -6,6 +6,11 @@ import { securityService } from "../services/securityService.js";
  */
 export const ipWhitelistGuard = (req, res, next) => {
   const p = req.path || "";
+  const isHtmlFrame =
+    p.includes("/scoreboard-frame") ||
+    p.includes("/embed") ||
+    p.includes("/player") ||
+    p.includes("/stream-proxy");
 
   // 1. Bypass public static assets, favicon, frontend pages, authentication endpoints, and UI iframe frames
   if (

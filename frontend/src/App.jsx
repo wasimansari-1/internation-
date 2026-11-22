@@ -65,12 +65,16 @@ export default function App() {
   const [activeTab, setActiveTab] = useState(getTabFromUrl);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isPlatformAuth, setIsPlatformAuth] = useState(() => {
-    return Boolean(
+    const savedToken =
       sessionStorage.getItem("client_user_token") ||
       localStorage.getItem("client_user_token") ||
       sessionStorage.getItem("admin_auth_token") ||
-      localStorage.getItem("admin_auth_token")
-    );
+      localStorage.getItem("admin_auth_token");
+    if (savedToken) {
+      axios.defaults.headers.common["Authorization"] = `Bearer ${savedToken}`;
+      axios.defaults.headers.common["x-client-token"] = savedToken;
+    }
+    return Boolean(savedToken);
   });
   const [operatorUser, setOperatorUser] = useState(() => {
     return localStorage.getItem("client_user_name") || "Igwasim";
