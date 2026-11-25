@@ -1,0 +1,8 @@
+<svg width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Sleek Tomato Red Emblem with Off-White [U] & Sage Border -->
+  <rect x="0.5" y="0.5" width="23" height="23" rx="5.5" fill="#E8412C" stroke="#9CAF88" stroke-width="1"/>
+  <!-- Modern geometric U path in Off-White -->
+  <path d="M6.5 5.5V13C6.5 16.0376 8.96243 18.5 12 18.5C15.0376 18.5 17.5 16.0376 17.5 13V5.5" stroke="#F7F5EF" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- Accent Core Pip -->
+  <circle cx="12" cy="10" r="1.6" fill="#F7F5EF"/>
+</svg>
