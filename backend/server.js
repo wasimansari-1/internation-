@@ -324,6 +324,14 @@ app.post("/api/evolution/seamless/credit", (req, res) => {
   });
 });
 
+// Public Configuration Endpoint (exposes non-sensitive UI settings such as stealth contact mode)
+app.get("/api/public/config", (req, res) => {
+  res.json({
+    success: true,
+    hideContactInfo: Boolean(securityService.firewallConfig?.hideContactInfo),
+  });
+});
+
 // Serve frontend dist static assets
 const candidateDistPaths = [
   path.join(projectRoot, "frontend", "dist"),

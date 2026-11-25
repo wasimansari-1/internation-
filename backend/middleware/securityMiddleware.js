@@ -28,6 +28,7 @@ export const ipWhitelistGuard = (req, res, next) => {
     p === "/sports" ||
     p === "/docs" ||
     p === "/wingo" ||
+    p.startsWith("/api/public/config") ||
     p.startsWith("/api/auth/client-login") ||
     p.startsWith("/api/auth/client-verify") ||
     p.startsWith("/api/auth/client-logout") ||

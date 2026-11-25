@@ -447,6 +447,60 @@ export default function FirewallWhitelistView({ showToast }) {
               <span>{firewallConfig.internalBypass ? 'ACTIVE' : 'OFF'}</span>
             </button>
           </div>
+
+          {/* Rule 4: UI Contact Numbers & WhatsApp Stealth Mode */}
+          <div
+            style={{
+              padding: '16px',
+              borderRadius: '10px',
+              border: firewallConfig.hideContactInfo ? '1.5px solid #10b981' : '1px solid #e2e8f0',
+              background: firewallConfig.hideContactInfo ? '#f0fdf4' : '#ffffff',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              boxShadow: firewallConfig.hideContactInfo ? '0 2px 8px rgba(16, 185, 129, 0.12)' : 'none',
+              transition: 'all 0.2s ease',
+            }}
+          >
+            <div>
+              <div style={{ fontWeight: 800, fontSize: '13px', color: '#1c2721', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>UI Contact Numbers &amp; WhatsApp Stealth Mode</span>
+                {firewallConfig.hideContactInfo ? (
+                  <span style={{ fontSize: '10px', background: '#10b981', color: '#ffffff', padding: '2px 8px', borderRadius: '4px', fontWeight: 800, letterSpacing: '0.5px' }}>
+                    HIDDEN (STEALTH ON)
+                  </span>
+                ) : (
+                  <span style={{ fontSize: '10px', background: '#e2eae4', color: '#4a5b52', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
+                    VISIBLE (STEALTH OFF)
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: '11px', color: '#4d5e54', marginTop: '3px', lineHeight: 1.4 }}>
+                When ON, automatically hides all WhatsApp badges (+63 915 922 4695), floating "Buy API Access" button, and telephone numbers from header, footer and mobile menu across the entire website.
+              </div>
+            </div>
+            <button
+              type="button"
+              disabled={updatingConfig}
+              onClick={() => handleUpdateFirewallConfig({ hideContactInfo: !firewallConfig.hideContactInfo })}
+              style={{
+                marginLeft: '12px',
+                flexShrink: 0,
+                background: firewallConfig.hideContactInfo ? '#10b981' : '#e2eae4',
+                color: firewallConfig.hideContactInfo ? '#ffffff' : '#4a5b52',
+                border: 'none',
+                borderRadius: '6px',
+                padding: '7px 16px',
+                fontSize: '11px',
+                fontWeight: 800,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                boxShadow: firewallConfig.hideContactInfo ? '0 2px 6px rgba(16, 185, 129, 0.3)' : 'none',
+              }}
+            >
+              <span>{firewallConfig.hideContactInfo ? 'ON (NUMBERS HIDDEN)' : 'OFF (NUMBERS VISIBLE)'}</span>
+            </button>
+          </div>
         </div>
       </section>
 

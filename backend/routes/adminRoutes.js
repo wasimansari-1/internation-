@@ -99,12 +99,13 @@ router.post("/security/whitelist/toggle", (req, res) => {
 
 router.post("/security/config", (req, res) => {
   try {
-    const { strictMode, payloadEncryption, internalBypass, rateLimitPerMinute } = req.body || {};
+    const { strictMode, payloadEncryption, internalBypass, rateLimitPerMinute, hideContactInfo } = req.body || {};
     const config = securityService.updateFirewallConfig({
       ...(strictMode !== undefined && { strictMode: Boolean(strictMode) }),
       ...(payloadEncryption !== undefined && { payloadEncryption: Boolean(payloadEncryption) }),
       ...(internalBypass !== undefined && { internalBypass: Boolean(internalBypass) }),
       ...(rateLimitPerMinute !== undefined && { rateLimitPerMinute: Number(rateLimitPerMinute) }),
+      ...(hideContactInfo !== undefined && { hideContactInfo: Boolean(hideContactInfo) }),
     });
     return res.json({ success: true, message: "Firewall configuration updated", config });
   } catch (err) {

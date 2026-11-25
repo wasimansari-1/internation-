@@ -84,6 +84,38 @@ export default function App() {
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState("");
 
+  // UI Stealth Mode: Hide WhatsApp & Contact Phone Numbers when enabled by Master Admin
+  const [hideContactInfo, setHideContactInfo] = useState(() => {
+    try {
+      return localStorage.getItem("app_hide_contact_info") === "true";
+    } catch (e) {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchPublicConfig = async () => {
+      try {
+        const res = await axios.get("/api/public/config?_t=" + Date.now());
+        if (isMounted && res.data && typeof res.data.hideContactInfo === "boolean") {
+          setHideContactInfo(res.data.hideContactInfo);
+          try {
+            localStorage.setItem("app_hide_contact_info", String(res.data.hideContactInfo));
+          } catch (e) {}
+        }
+      } catch (err) {
+        // Retain fallback / cached value quietly
+      }
+    };
+    fetchPublicConfig();
+    const interval = setInterval(fetchPublicConfig, 4000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
   const [selectedMatch, setSelectedMatch] = useState(() => {
     try {
       const saved = sessionStorage.getItem("app_selected_match");
@@ -298,32 +330,34 @@ export default function App() {
               <RotateCw size={14} />
             </button>
 
-            {/* WhatsApp Direct Sales & Integration Link */}
-            <a
-              href="https://wa.me/639159224695?text=Hello%2C%20I%20want%20to%20purchase%20API%20access"
-              target="_blank"
-              rel="noopener noreferrer"
-              title="Chat on WhatsApp: +63 915 922 4695"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "7px",
-                padding: "6px 14px",
-                backgroundColor: "#25D366",
-                color: "#FFFFFF",
-                borderRadius: "20px",
-                fontSize: "12px",
-                fontWeight: 700,
-                textDecoration: "none",
-                boxShadow: "0 2px 8px rgba(37, 211, 102, 0.28)",
-                transition: "all 0.15s ease",
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#20BA5A")}
-              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#25D366")}
-            >
-              <WhatsAppIcon size={15} color="#FFFFFF" />
-              <span>+63 915 922 4695</span>
-            </a>
+            {/* WhatsApp Direct Sales & Integration Link (Hidden in Stealth Mode) */}
+            {!hideContactInfo && (
+              <a
+                href="https://wa.me/639159224695?text=Hello%2C%20I%20want%20to%20purchase%20API%20access"
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Chat on WhatsApp: +63 915 922 4695"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "7px",
+                  padding: "6px 14px",
+                  backgroundColor: "#25D366",
+                  color: "#FFFFFF",
+                  borderRadius: "20px",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  textDecoration: "none",
+                  boxShadow: "0 2px 8px rgba(37, 211, 102, 0.28)",
+                  transition: "all 0.15s ease",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#20BA5A")}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#25D366")}
+              >
+                <WhatsAppIcon size={15} color="#FFFFFF" />
+                <span>+63 915 922 4695</span>
+              </a>
+            )}
 
             {/* Operator Session Badge & Logout (when signed in) */}
             {isPlatformAuth && (
@@ -431,30 +465,32 @@ export default function App() {
               );
             })}
 
-            {/* Mobile WhatsApp Direct Button */}
-            <a
-              href="https://wa.me/639159224695?text=Hello%2C%20I%20want%20to%20purchase%20API%20access"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                background: "#25D366",
-                color: "#FFFFFF",
-                borderRadius: "8px",
-                fontWeight: 700,
-                fontSize: "13px",
-                padding: "10px 14px",
-                textDecoration: "none",
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                justifyContent: "center",
-                marginTop: "4px",
-                boxShadow: "0 2px 8px rgba(37, 211, 102, 0.28)",
-              }}
-            >
-              <WhatsAppIcon size={16} color="#FFFFFF" />
-              <span>WhatsApp: +63 915 922 4695</span>
-            </a>
+            {/* Mobile WhatsApp Direct Button (Hidden in Stealth Mode) */}
+            {!hideContactInfo && (
+              <a
+                href="https://wa.me/639159224695?text=Hello%2C%20I%20want%20to%20purchase%20API%20access"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  background: "#25D366",
+                  color: "#FFFFFF",
+                  borderRadius: "8px",
+                  fontWeight: 700,
+                  fontSize: "13px",
+                  padding: "10px 14px",
+                  textDecoration: "none",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  justifyContent: "center",
+                  marginTop: "4px",
+                  boxShadow: "0 2px 8px rgba(37, 211, 102, 0.28)",
+                }}
+              >
+                <WhatsAppIcon size={16} color="#FFFFFF" />
+                <span>WhatsApp: +63 915 922 4695</span>
+              </a>
+            )}
 
             {/* Mobile Operator Info & Logout (Only when signed in) */}
             {isPlatformAuth && (
@@ -652,44 +688,46 @@ export default function App() {
             Live tables, sports odds, TV, and unified partner integration.
           </p>
 
-          {/* WhatsApp Direct Sales & Integration Bar */}
-          <div
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "16px",
-              flexWrap: "wrap",
-              margin: "0 0 20px 0",
-              padding: "10px 20px",
-              background: "#FFFFFF",
-              border: "1px solid #cad7c3",
-              borderRadius: "10px",
-              boxShadow: "0 2px 8px rgba(30, 38, 31, 0.04)",
-            }}
-          >
-            <a
-              href="https://wa.me/639159224695?text=Hello%2C%20I%20want%20to%20purchase%20API%20access"
-              target="_blank"
-              rel="noopener noreferrer"
+          {/* WhatsApp Direct Sales & Integration Bar (Hidden in Stealth Mode) */}
+          {!hideContactInfo && (
+            <div
               style={{
                 display: "inline-flex",
                 alignItems: "center",
-                gap: "7px",
-                color: "#1e261f",
-                textDecoration: "none",
-                fontSize: "12px",
-                fontWeight: 800,
+                justifyContent: "center",
+                gap: "16px",
+                flexWrap: "wrap",
+                margin: "0 0 20px 0",
+                padding: "10px 20px",
+                background: "#FFFFFF",
+                border: "1px solid #cad7c3",
+                borderRadius: "10px",
+                boxShadow: "0 2px 8px rgba(30, 38, 31, 0.04)",
               }}
             >
-              <WhatsAppIcon size={16} color="#25D366" />
-              <span>WhatsApp: +63 915 922 4695</span>
-            </a>
-            <span style={{ color: "#cad7c3" }}>•</span>
-            <span style={{ fontSize: "12px", fontWeight: 700, color: "#4e5a4d" }}>
-              Call / Inquiry: +63 945 146 9623
-            </span>
-          </div>
+              <a
+                href="https://wa.me/639159224695?text=Hello%2C%20I%20want%20to%20purchase%20API%20access"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "7px",
+                  color: "#1e261f",
+                  textDecoration: "none",
+                  fontSize: "12px",
+                  fontWeight: 800,
+                }}
+              >
+                <WhatsAppIcon size={16} color="#25D366" />
+                <span>WhatsApp: +63 915 922 4695</span>
+              </a>
+              <span style={{ color: "#cad7c3" }}>•</span>
+              <span style={{ fontSize: "12px", fontWeight: 700, color: "#4e5a4d" }}>
+                Call / Inquiry: +63 945 146 9623
+              </span>
+            </div>
+          )}
 
           {/* Footer Navigation Links */}
           <div
@@ -732,48 +770,50 @@ export default function App() {
         </div>
       </footer>
 
-      {/* Floating WhatsApp Action Button */}
-      <aside
-        style={{
-          position: "fixed",
-          bottom: "22px",
-          right: "22px",
-          zIndex: 9999,
-        }}
-      >
-        <a
-          href="https://wa.me/639159224695?text=Hello%2C%20I%20want%20to%20purchase%20API%20access"
-          target="_blank"
-          rel="noopener noreferrer"
-          title="Chat on WhatsApp: +63 915 922 4695"
+      {/* Floating WhatsApp Action Button (Hidden in Stealth Mode) */}
+      {!hideContactInfo && (
+        <aside
           style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "9px",
-            backgroundColor: "#25D366",
-            color: "#FFFFFF",
-            padding: "12px 20px",
-            borderRadius: "50px",
-            boxShadow: "0 6px 20px rgba(37, 211, 102, 0.45)",
-            textDecoration: "none",
-            fontWeight: 800,
-            fontSize: "13px",
-            letterSpacing: "0.2px",
-            transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.transform = "translateY(-2px) scale(1.03)";
-            e.currentTarget.style.backgroundColor = "#20BA5A";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.transform = "translateY(0) scale(1)";
-            e.currentTarget.style.backgroundColor = "#25D366";
+            position: "fixed",
+            bottom: "22px",
+            right: "22px",
+            zIndex: 9999,
           }}
         >
-          <WhatsAppIcon size={20} color="#FFFFFF" />
-          <span>Buy API Access</span>
-        </a>
-      </aside>
+          <a
+            href="https://wa.me/639159224695?text=Hello%2C%20I%20want%20to%20purchase%20API%20access"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Chat on WhatsApp: +63 915 922 4695"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "9px",
+              backgroundColor: "#25D366",
+              color: "#FFFFFF",
+              padding: "12px 20px",
+              borderRadius: "50px",
+              boxShadow: "0 6px 20px rgba(37, 211, 102, 0.45)",
+              textDecoration: "none",
+              fontWeight: 800,
+              fontSize: "13px",
+              letterSpacing: "0.2px",
+              transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = "translateY(-2px) scale(1.03)";
+              e.currentTarget.style.backgroundColor = "#20BA5A";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = "translateY(0) scale(1)";
+              e.currentTarget.style.backgroundColor = "#25D366";
+            }}
+          >
+            <WhatsAppIcon size={20} color="#FFFFFF" />
+            <span>Buy API Access</span>
+          </a>
+        </aside>
+      )}
     </div>
   );
 }

@@ -43,6 +43,7 @@ class SecurityService {
       payloadEncryption: true, // Diamond-style AES-256 encryption on inspect/network payloads
       internalBypass: true, // Allows server-hosted frontend requests seamlessly
       rateLimitPerMinute: 600,
+      hideContactInfo: false,
     };
     this.resultsScoreboardConfig = {
       allowDirectUrlHits: true,
